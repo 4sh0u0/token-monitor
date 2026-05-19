@@ -2,7 +2,7 @@
    <strong>EN</strong> | <a href="./README.zh-CN.md">简</a> | <a href="./README.zh-TW.md">繁</a>
 </p>
 <div align="center">
-    <img src=".github/assets/app.png" alt="Token Monitor logo" width="256" height="256">
+    <img src=".github/assets/app.png" alt="Token Monitor logo" width="120">
     <h1>Token Monitor</h1>
 </div>
 
@@ -89,6 +89,10 @@ See [docs/API.md](docs/API.md) for the hub HTTP API reference.
 A Worker-based deployment that speaks the same protocol as the Node hub.
 Public HTTPS, no always-on machine, free tier covers small-team usage,
 reachable from Widgy / Scriptable on iOS.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Javis603/token-monitor/tree/main/worker)
+
+One-click deploy — Cloudflare will prompt for the `TOKEN_MONITOR_SECRET` during setup. Or deploy manually:
 
 ```bash
 cd worker
