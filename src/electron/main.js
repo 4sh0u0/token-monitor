@@ -7,6 +7,7 @@ const { defaultDeviceId, loadDotEnv, pidFilePath } = require('../shared/config')
 const { startCollector } = require('../shared/collector');
 const { normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders } = require('../shared/limitCollector');
 const { aggregateDevices } = require('../shared/usage');
+const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
 
 loadDotEnv();
 
@@ -31,6 +32,7 @@ function defaultSettings() {
     systemGlass: true,
     showLiveDot: true,
     showToolIcons: true,
+    discordRpcEnabled: false,
     deviceId: process.env.TOKEN_MONITOR_DEVICE_ID || defaultDeviceId(),
     lastPostedDeviceId: '',
     clients: process.env.TOKEN_MONITOR_CLIENTS || 'claude,codex,hermes,opencode,openclaw,cursor',
@@ -207,6 +209,7 @@ function startLocalCollector() {
     onUpdate: (summary, reason) => {
       localDevice = { ...summary, receivedAt: new Date().toISOString() };
       localStats = aggregateDevices([localDevice], 0);
+      updateDiscordRpc(localStats);
       sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } });
       sendStatus(true, { reason });
     },
@@ -270,7 +273,10 @@ async function startStatsStream() {
         const chunk = buffer.slice(0, idx);
         buffer = buffer.slice(idx + 2);
         const parsed = parseSseChunk(chunk);
-        if (parsed) sendPush(parsed);
+        if (parsed) {
+          if (parsed.event === 'stats' && parsed.data?.stats) updateDiscordRpc(parsed.data.stats);
+          sendPush(parsed);
+        }
       }
     }
     sendStatus(false, { reason: 'eof' });
@@ -298,6 +304,7 @@ function stopAll() {
   stopLocalCollector();
   stopStatsStream();
   stopSyncCollector();
+  stopDiscordRpc();
 }
 
 async function fetchStats() {
@@ -362,6 +369,7 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_ICON_PATH);
   createWindow();
   startMode();
+  if (settings.discordRpcEnabled) startDiscordRpc();
   ipcMain.handle('settings:get', () => settings);
   ipcMain.handle('settings:update', (_event, patch) => {
     const previousSystemGlass = settings.systemGlass;
@@ -372,6 +380,7 @@ app.whenReady().then(() => {
     const previousLimitsEnabled = settings.limitsEnabled;
     const previousLimitProviders = settings.limitProviders;
     const previousLimitsRefreshMs = settings.limitsRefreshMs;
+    const previousDiscordRpcEnabled = settings.discordRpcEnabled;
     settings = {
       ...settings,
       ...patch,
@@ -382,12 +391,15 @@ app.whenReady().then(() => {
       systemGlass: patch.systemGlass ?? settings.systemGlass ?? true,
       showLiveDot: patch.showLiveDot ?? settings.showLiveDot ?? true,
       showToolIcons: patch.showToolIcons ?? settings.showToolIcons ?? true,
+      discordRpcEnabled: patch.discordRpcEnabled ?? settings.discordRpcEnabled ?? false,
       limitsEnabled: parseBoolean(patch.limitsEnabled ?? settings.limitsEnabled, true),
       limitProviders: patch.limitProviders !== undefined ? parseLimitProviders(patch.limitProviders).join(',') : settings.limitProviders,
       limitsRefreshMs: normalizeLimitsRefreshMs(patch.limitsRefreshMs ?? settings.limitsRefreshMs),
       showLimitSource: parseBoolean(patch.showLimitSource ?? settings.showLimitSource, false)
     };
     saveSettings();
+    if (settings.discordRpcEnabled && !previousDiscordRpcEnabled) startDiscordRpc();
+    else if (!settings.discordRpcEnabled && previousDiscordRpcEnabled) stopDiscordRpc();
     applyWindowSettings();
     if (process.platform === 'win32' && previousSystemGlass !== settings.systemGlass) {
       rebuildWindow();

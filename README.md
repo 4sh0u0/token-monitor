@@ -41,6 +41,7 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 - Local-first — no servers needed for single-device use
 - Self-hosted sync backend — use a Node hub or Cloudflare Worker over Server-Sent Events
 - iOS widget support (Widgy, Scriptable) through the Worker hub
+- Discord Rich Presence — broadcast today's tokens, cost, and top client to your Discord profile (opt-in)
 - Privacy-first — only summary numbers ever leave your machine
 
 | Limits View | Devices View | Models View |
@@ -133,7 +134,7 @@ Click the `⚙` button in the widget header to open the Settings panel.
 - **Multi-device Sync** — Hub URL and secret. Leave Hub URL empty to run in local mode (this device only).
 - **Tracked Tools** — checkboxes for each supported AI tool. Toggles take effect immediately and restart the collector with the new client list.
 - **AI Tool Limits** — choose Claude Code and Codex limit detection and refresh frequency.
-- **Appearance** — system glass, live dot, glass opacity, and glass blur.
+- **Appearance** — system glass, live dot, tool icons, Discord Rich Presence, glass opacity, and glass blur.
 - **Advanced** — opens the underlying `settings.json` for less-common options like `allTimeSince`.
 
 The pin button in the widget header toggles "always on top".

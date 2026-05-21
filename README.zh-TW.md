@@ -41,6 +41,7 @@
 - 本地優先——單裝置使用完全不需伺服器
 - 自架同步後端——支援 Node hub 或 Cloudflare Worker，透過 Server-Sent Events 推送
 - 透過 Worker hub 支援 iOS 小工具（Widgy、Scriptable）
+- Discord Rich Presence——將今日 Token、花費與主要工具廣播到你的 Discord 個人檔案（需手動開啟）
 - 隱私優先——只有摘要數字會離開你的機器
 
 | 用量上限檢視 | 裝置檢視 | 模型檢視 |
@@ -133,7 +134,7 @@ Wrangler 會印出部署的 URL——把它貼到每台裝置的小工具 設定
 - **多裝置同步**——Hub URL 與 secret。Hub URL 留空即為本地模式（僅本機）。
 - **追蹤的工具**——各支援 AI 工具的勾選框。切換立即生效，並會用新的客戶端清單重啟收集器。
 - **AI 工具用量上限**——選擇 Claude Code 與 Codex 的用量上限偵測與更新頻率。
-- **外觀**——系統玻璃、即時點、玻璃透明度、玻璃模糊度。
+- **外觀**——系統玻璃、即時點、工具圖示、Discord Rich Presence、玻璃透明度、玻璃模糊度。
 - **進階**——開啟底層 `settings.json` 來調整較少用的選項，例如 `allTimeSince`。
 
 小工具標題列上的釘選按鈕可切換「永遠置頂」。
