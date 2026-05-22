@@ -18,7 +18,7 @@ const APP_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
 const DEFAULT_WINDOW = { width: 360, height: 500 };
 const WINDOW_LIMITS = { minWidth: 240, minHeight: 140, maxWidth: 1200, maxHeight: 1400 };
 const ZOOM_LIMITS = { min: 0.7, max: 1.6, step: 0.1 };
-const TRAY_CONTENT_VALUES = new Set(['cost', 'tokens', 'both', 'tokensAll', 'limit', 'icon']);
+const TRAY_CONTENT_VALUES = new Set(['cost', 'tokens', 'both', 'tokensAll', 'limit', 'bars', 'icon']);
 
 let mainWindow = null;
 let settingsPath = null;
@@ -292,6 +292,8 @@ function updateTrayDisplay() {
   if (mode === 'limit') {
     const worst = pickWorstLimit(latestStats);
     if (worst && providerTrayIcons[worst.provider]) icon = providerTrayIcons[worst.provider];
+  } else if (mode === 'bars' && providerTrayIcons.bars) {
+    icon = providerTrayIcons.bars;
   }
   tray.setImage(icon || getDefaultTrayIcon());
 }
@@ -693,7 +695,9 @@ app.whenReady().then(() => {
       if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png')) continue;
       const img = nativeImage.createFromDataURL(dataUrl);
       if (img.isEmpty()) continue;
-      const sized = img.resize({ width: 18, height: 18, quality: 'best' });
+      // Resize by height only; aspect ratio is preserved, so wide bar-style
+      // icons keep their width while square provider icons stay 18x18.
+      const sized = img.resize({ height: 18, quality: 'best' });
       if (process.platform === 'darwin') sized.setTemplateImage(true);
       providerTrayIcons[id] = sized;
     }

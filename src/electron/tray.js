@@ -41,6 +41,10 @@ function pickWorstLimit(stats) {
 
 function formatTrayText(stats, contentMode = 'cost') {
   if (contentMode === 'icon') return '';
+  if (contentMode === 'bars') {
+    // Icon carries all the info; only show text if we have no limit data at all.
+    if (pickWorstLimit(stats)) return '';
+  }
   if (contentMode === 'limit') {
     const worst = pickWorstLimit(stats);
     if (worst) return `${Math.round(worst.remaining)}%`;

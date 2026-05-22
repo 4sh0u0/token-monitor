@@ -459,6 +459,7 @@ async function refreshStats() {
     state.stats = await window.tokenMonitor.getStats();
     setStatus(statusTextFor(state.mode, state.streamConnected));
     render();
+    maybeUpdateBarsIcon();
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -519,7 +520,7 @@ function syncSettingsForm() {
   els.toolIconsInput.checked = state.settings.showToolIcons !== false;
   els.discordRpcInput.checked = Boolean(state.settings.discordRpcEnabled);
   els.trayModeInput.checked = Boolean(state.settings.trayMode);
-  els.trayContentInput.value = ['cost', 'tokens', 'tokensAll', 'both', 'limit', 'icon'].includes(state.settings.trayContent) ? state.settings.trayContent : 'cost';
+  els.trayContentInput.value = ['cost', 'tokens', 'tokensAll', 'both', 'limit', 'bars', 'icon'].includes(state.settings.trayContent) ? state.settings.trayContent : 'cost';
   els.glassInput.value = String(state.settings.glassOpacity ?? 68);
   els.blurInput.value = String(state.settings.glassBlur ?? 32);
   els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
@@ -611,6 +612,7 @@ async function saveSettings(patch) {
   state.settings = await window.tokenMonitor.updateSettings(patch);
   syncSettingsForm();
   restartTimer();
+  maybeUpdateBarsIcon();
 }
 
 function updateTitleFit() {
@@ -714,6 +716,7 @@ window.tokenMonitor.onSettingsPush?.((next) => {
   if (!next) return;
   state.settings = next;
   syncSettingsForm();
+  maybeUpdateBarsIcon();
 });
 
 window.tokenMonitor.onStatsPush?.((payload) => {
@@ -730,24 +733,112 @@ window.tokenMonitor.onStatsPush?.((payload) => {
   }
   setLiveDot(state.streamConnected);
   setStatus(statusTextFor(state.mode, state.streamConnected));
-  if (payload.data?.stats) render();
+  if (payload.data?.stats) {
+    render();
+    maybeUpdateBarsIcon();
+  }
   restartTimer();
 });
 
-function rasterizeSvg(src, size) {
+function pickWorstProvider(stats) {
+  const providers = stats?.limits?.providers || [];
+  let worstProvider = null;
+  let worstRemaining = Infinity;
+  for (const provider of providers) {
+    if (provider.status !== 'ok' || provider.stale) continue;
+    for (const window of provider.windows || []) {
+      const remaining = Number(window.remainingPercent);
+      if (!Number.isFinite(remaining)) continue;
+      if (remaining < worstRemaining) {
+        worstRemaining = remaining;
+        worstProvider = provider;
+      }
+    }
+  }
+  return worstProvider;
+}
+
+function roundedRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+const trayProviderImages = {};
+
+function renderBarsIcon(stats, height = 36) {
+  const provider = pickWorstProvider(stats);
+  if (!provider) return null;
+  const session = (provider.windows || []).find((w) => w.kind === 'session');
+  const weekly = (provider.windows || []).find((w) => w.kind === 'weekly');
+  const providerImage = trayProviderImages[provider.provider];
+
+  const width = Math.round(height * 2.06); // Resolves to ~37x18: full icon presence with compact bars.
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, width, height);
+
+  const padX = 0;
+  const iconSize = Math.round(height * 1);
+  const iconY = Math.round((height - iconSize) / 2);
+  const innerGap = Math.round(height * 0.14);
+  const barsX = padX + iconSize + innerGap;
+  const barsWidth = width - barsX - padX;
+  const barHeight = Math.round(height * 0.24);
+  const barGap = Math.round(height * 0.13);
+  const totalBarsH = barHeight * 2 + barGap;
+  const barsStartY = Math.round((height - totalBarsH) / 2);
+  const radius = barHeight / 2;
+
+  if (providerImage) ctx.drawImage(providerImage, padX, iconY, iconSize, iconSize);
+
+  function drawBar(y, percent) {
+    roundedRectPath(ctx, barsX, y, barsWidth, barHeight, radius);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+    ctx.fill();
+    if (!Number.isFinite(percent)) return;
+    const fillW = Math.max(barHeight, Math.round(barsWidth * Math.max(0, Math.min(100, percent)) / 100));
+    roundedRectPath(ctx, barsX, y, fillW, barHeight, radius);
+    ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    ctx.fill();
+  }
+
+  drawBar(barsStartY, Number(session?.remainingPercent));
+  drawBar(barsStartY + barHeight + barGap, Number(weekly?.remainingPercent));
+  return canvas.toDataURL('image/png');
+}
+
+async function maybeUpdateBarsIcon() {
+  if (state.settings?.trayContent !== 'bars') return;
+  if (!window.tokenMonitor.setTrayIcons) return;
+  const dataUrl = renderBarsIcon(state.stats);
+  if (!dataUrl) return;
+  try { await window.tokenMonitor.setTrayIcons({ bars: dataUrl }); } catch (_) {}
+}
+
+function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, size, size);
-      resolve(canvas.toDataURL('image/png'));
-    };
+    img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`load failed: ${src}`));
     img.src = src;
   });
+}
+
+function imageToPngDataUrl(img, size) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, size, size);
+  return canvas.toDataURL('image/png');
 }
 
 async function deliverTrayProviderIcons() {
@@ -755,9 +846,15 @@ async function deliverTrayProviderIcons() {
   const sources = { claude: '../../../assets/icons/tray-claude.svg', codex: '../../../assets/icons/tray-codex.svg' };
   const icons = {};
   for (const [id, path] of Object.entries(sources)) {
-    try { icons[id] = await rasterizeSvg(path, 36); } catch (_) { /* skip missing */ }
+    try {
+      const img = await loadImage(path);
+      trayProviderImages[id] = img;
+      icons[id] = imageToPngDataUrl(img, 36);
+    } catch (_) { /* skip missing */ }
   }
   if (Object.keys(icons).length) await window.tokenMonitor.setTrayIcons(icons);
+  // Provider images may unlock a richer bars icon now that they're cached.
+  maybeUpdateBarsIcon();
 }
 
 deliverTrayProviderIcons();
