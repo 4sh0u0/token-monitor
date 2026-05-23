@@ -520,7 +520,7 @@ function syncSettingsForm() {
   els.toolIconsInput.checked = state.settings.showToolIcons !== false;
   els.discordRpcInput.checked = Boolean(state.settings.discordRpcEnabled);
   els.trayModeInput.checked = Boolean(state.settings.trayMode);
-  els.trayContentInput.value = ['cost', 'tokens', 'tokensAll', 'both', 'limit', 'bars', 'icon'].includes(state.settings.trayContent) ? state.settings.trayContent : 'cost';
+  els.trayContentInput.value = ['cost', 'tokens', 'tokensAll', 'both', 'limit', 'bars', 'barsSession', 'icon'].includes(state.settings.trayContent) ? state.settings.trayContent : 'cost';
   els.glassInput.value = String(state.settings.glassOpacity ?? 68);
   els.blurInput.value = String(state.settings.glassBlur ?? 32);
   els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
@@ -740,13 +740,14 @@ window.tokenMonitor.onStatsPush?.((payload) => {
   restartTimer();
 });
 
-function pickWorstProvider(stats) {
+function pickWorstProvider(stats, windowFilter) {
   const providers = stats?.limits?.providers || [];
   let worstProvider = null;
   let worstRemaining = Infinity;
   for (const provider of providers) {
     if (provider.status !== 'ok' || provider.stale) continue;
     for (const window of provider.windows || []) {
+      if (windowFilter && !windowFilter(window)) continue;
       const remaining = Number(window.remainingPercent);
       if (!Number.isFinite(remaining)) continue;
       if (remaining < worstRemaining) {
@@ -756,6 +757,10 @@ function pickWorstProvider(stats) {
     }
   }
   return worstProvider;
+}
+
+function pickWorstSessionProvider(stats) {
+  return pickWorstProvider(stats, (window) => window.kind === 'session');
 }
 
 function roundedRectPath(ctx, x, y, w, h, r) {
@@ -771,8 +776,8 @@ function roundedRectPath(ctx, x, y, w, h, r) {
 
 const trayProviderImages = {};
 
-function renderBarsIcon(stats, height = 36) {
-  const provider = pickWorstProvider(stats);
+function renderBarsIcon(stats, height = 36, picker = pickWorstProvider) {
+  const provider = picker(stats);
   if (!provider) return null;
   const session = (provider.windows || []).find((w) => w.kind === 'session');
   const weekly = (provider.windows || []).find((w) => w.kind === 'weekly');
@@ -816,11 +821,13 @@ function renderBarsIcon(stats, height = 36) {
 }
 
 async function maybeUpdateBarsIcon() {
-  if (state.settings?.trayContent !== 'bars') return;
+  const mode = state.settings?.trayContent;
+  if (mode !== 'bars' && mode !== 'barsSession') return;
   if (!window.tokenMonitor.setTrayIcons) return;
-  const dataUrl = renderBarsIcon(state.stats);
+  const picker = mode === 'barsSession' ? pickWorstSessionProvider : pickWorstProvider;
+  const dataUrl = renderBarsIcon(state.stats, 36, picker);
   if (!dataUrl) return;
-  try { await window.tokenMonitor.setTrayIcons({ bars: dataUrl }); } catch (_) {}
+  try { await window.tokenMonitor.setTrayIcons({ [mode]: dataUrl }); } catch (_) {}
 }
 
 function loadImage(src) {

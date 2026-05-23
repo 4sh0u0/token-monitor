@@ -41,7 +41,7 @@ function pickWorstLimit(stats) {
 
 function formatTrayText(stats, contentMode = 'cost') {
   if (contentMode === 'icon') return '';
-  if (contentMode === 'bars') {
+  if (contentMode === 'bars' || contentMode === 'barsSession') {
     // Icon carries all the info; only show text if we have no limit data at all.
     if (pickWorstLimit(stats)) return '';
   }

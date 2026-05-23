@@ -18,7 +18,7 @@ const APP_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
 const DEFAULT_WINDOW = { width: 360, height: 500 };
 const WINDOW_LIMITS = { minWidth: 240, minHeight: 140, maxWidth: 1200, maxHeight: 1400 };
 const ZOOM_LIMITS = { min: 0.7, max: 1.6, step: 0.1 };
-const TRAY_CONTENT_VALUES = new Set(['cost', 'tokens', 'both', 'tokensAll', 'limit', 'bars', 'icon']);
+const TRAY_CONTENT_VALUES = new Set(['cost', 'tokens', 'both', 'tokensAll', 'limit', 'bars', 'barsSession', 'icon']);
 
 let mainWindow = null;
 let settingsPath = null;
@@ -292,8 +292,8 @@ function updateTrayDisplay() {
   if (mode === 'limit') {
     const worst = pickWorstLimit(latestStats);
     if (worst && providerTrayIcons[worst.provider]) icon = providerTrayIcons[worst.provider];
-  } else if (mode === 'bars' && providerTrayIcons.bars) {
-    icon = providerTrayIcons.bars;
+  } else if ((mode === 'bars' || mode === 'barsSession') && providerTrayIcons[mode]) {
+    icon = providerTrayIcons[mode];
   }
   tray.setImage(icon || getDefaultTrayIcon());
 }
