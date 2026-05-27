@@ -44,6 +44,7 @@ const CSP_HEADER = [
 ].join('; ');
 const TRAY_CONTENT_VALUES = new Set(['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon']);
 const HUB_MODE_VALUES = new Set(['local', 'client', 'host']);
+const LANGUAGE_VALUES = new Set(['auto', 'en', 'zh-TW', 'zh-CN']);
 const HUB_DEFAULT_PORT = 17321;
 
 let mainWindow = null;
@@ -90,6 +91,7 @@ function defaultSettings() {
     trayMode: false,
     trayContent: 'tokens',
     startAtLogin: false,
+    language: 'auto',
     appUpdate: {
       lastCheckedAt: null,
       lastKnownLatest: null,
@@ -124,6 +126,16 @@ function normalizeTrayContent(value, fallback = 'tokens') {
 function normalizeHubMode(value, fallback = 'local') {
   const v = String(value || '').trim();
   return HUB_MODE_VALUES.has(v) ? v : fallback;
+}
+
+function normalizeLanguageSetting(value, fallback = 'auto') {
+  const raw = String(value || '').replace(/_/g, '-').trim();
+  const lower = raw.toLowerCase();
+  if (lower === 'auto') return 'auto';
+  if (lower === 'en' || lower.startsWith('en-')) return 'en';
+  if (lower === 'zh-tw' || lower.startsWith('zh-hant') || /-(tw|hk|mo)\b/i.test(raw)) return 'zh-TW';
+  if (lower === 'zh-cn' || lower.startsWith('zh-hans') || /-(cn|sg|my)\b/i.test(raw)) return 'zh-CN';
+  return LANGUAGE_VALUES.has(raw) ? raw : fallback;
 }
 
 function normalizeHubPort(value, fallback = HUB_DEFAULT_PORT) {
@@ -223,6 +235,7 @@ function readSettings() {
       merged.limitProviderOrder = migrateLimitProviderOrder(saved.limitProviderOrder);
     }
     merged.hubMode = normalizeHubMode(merged.hubMode);
+    merged.language = normalizeLanguageSetting(merged.language);
     merged.hubHostPort = normalizeHubPort(merged.hubHostPort);
     merged.hubHostSecret = typeof merged.hubHostSecret === 'string' ? merged.hubHostSecret : '';
     return merged;
@@ -1100,6 +1113,7 @@ app.whenReady().then(() => {
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),
       trayMode: parseBoolean(patch.trayMode ?? settings.trayMode, false),
       trayContent: normalizeTrayContent(patch.trayContent ?? settings.trayContent),
+      language: patch.language !== undefined ? normalizeLanguageSetting(patch.language, settings.language) : normalizeLanguageSetting(settings.language),
       startAtLogin: loginItemEnabledHere() ? parseBoolean(patch.startAtLogin ?? settings.startAtLogin, false) : false
     };
     saveSettings();

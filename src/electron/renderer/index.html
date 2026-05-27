@@ -31,75 +31,86 @@
 
       <section id="settingsPanel" class="settings-panel hidden">
         <div class="settings-group">
-          <div class="settings-group-header"><span>Multi-device Sync</span></div>
+          <div class="settings-group-header"><span data-i18n="settings.language.title">Language</span></div>
+          <label><span data-i18n="settings.language.label">Interface language</span>
+            <select id="languageInput">
+              <option value="auto" data-i18n="settings.language.auto">Auto (system)</option>
+              <option value="en" data-i18n="settings.language.english">English</option>
+              <option value="zh-TW" data-i18n="settings.language.zhTW">繁體中文</option>
+              <option value="zh-CN" data-i18n="settings.language.zhCN">简体中文</option>
+            </select>
+          </label>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-header"><span data-i18n="settings.sync.title">Multi-device Sync</span></div>
           <div id="hubModeOptions" class="hub-mode-options" role="radiogroup">
             <label class="hub-mode-option">
               <input type="radio" name="hubMode" value="local" />
-              <div class="hub-mode-text"><strong>Local only</strong><span>This device only.</span></div>
+              <div class="hub-mode-text"><strong data-i18n="settings.sync.localOnly">Local only</strong><span data-i18n="settings.sync.localOnlyDesc">This device only.</span></div>
             </label>
             <label class="hub-mode-option">
               <input type="radio" name="hubMode" value="client" />
-              <div class="hub-mode-text"><strong>Connect to a hub</strong><span>Send this device's usage to a hub elsewhere.</span></div>
+              <div class="hub-mode-text"><strong data-i18n="settings.sync.connectHub">Connect to a hub</strong><span data-i18n="settings.sync.connectHubDesc">Send this device's usage to a hub elsewhere.</span></div>
             </label>
             <label class="hub-mode-option">
               <input type="radio" name="hubMode" value="host" />
-              <div class="hub-mode-text"><strong>Host hub on this device</strong><span>Open a hub here so other devices can connect.</span></div>
+              <div class="hub-mode-text"><strong data-i18n="settings.sync.hostHub">Host hub on this device</strong><span data-i18n="settings.sync.hostHubDesc">Open a hub here so other devices can connect.</span></div>
             </label>
           </div>
           <div id="hubClientFields" class="hub-mode-fields hidden">
-            <label>Hub URL<input id="hubUrlInput" type="text" spellcheck="false" placeholder="http://hub-host:17321" /></label>
-            <label>Secret<input id="secretInput" type="password" spellcheck="false" placeholder="optional shared secret" /></label>
+            <label><span data-i18n="settings.sync.hubUrl">Hub URL</span><input id="hubUrlInput" type="text" spellcheck="false" placeholder="http://hub-host:17321" /></label>
+            <label><span data-i18n="settings.sync.secret">Secret</span><input id="secretInput" type="password" spellcheck="false" placeholder="optional shared secret" data-i18n-placeholder="settings.sync.secretPlaceholder" /></label>
           </div>
           <div id="hubHostFields" class="hub-mode-fields hidden">
-            <label>Port<input id="hubPortInput" type="number" min="1" max="65535" spellcheck="false" /></label>
-            <label>Shared Secret
+            <label><span data-i18n="settings.sync.port">Port</span><input id="hubPortInput" type="number" min="1" max="65535" spellcheck="false" /></label>
+            <label><span data-i18n="settings.sync.sharedSecret">Shared Secret</span>
               <div class="hub-secret-row">
                 <input id="hubSecretInput" type="text" spellcheck="false" readonly />
-                <button id="hubSecretCopyButton" type="button" class="icon-button" title="Copy secret">⧉</button>
-                <button id="hubSecretRegenButton" type="button" class="icon-button" title="Regenerate">↺</button>
+                <button id="hubSecretCopyButton" type="button" class="icon-button" title="Copy secret" data-i18n-title="settings.sync.copySecret">⧉</button>
+                <button id="hubSecretRegenButton" type="button" class="icon-button" title="Regenerate" data-i18n-title="settings.sync.regenerateSecret">↺</button>
               </div>
             </label>
             <div id="hubStatusRow" class="hub-status"></div>
             <div id="hubAddressList" class="hub-address-list"></div>
-            <p class="settings-note">Other devices connect using one of the URLs above with the shared secret. macOS / Windows may prompt to allow incoming connections the first time. For cross-network use, run Tailscale or ZeroTier on both sides — the virtual IP works the same.</p>
-            <p class="settings-note hub-warning">The hub runs while Token Monitor is running. Quitting (not just closing the window) stops the hub for all connected devices.</p>
+            <p class="settings-note" data-i18n="settings.sync.hostNote">Other devices connect using one of the URLs above with the shared secret. macOS / Windows may prompt to allow incoming connections the first time. For cross-network use, run Tailscale or ZeroTier on both sides - the virtual IP works the same.</p>
+            <p class="settings-note hub-warning" data-i18n="settings.sync.hostWarning">The hub runs while Token Monitor is running. Quitting (not just closing the window) stops the hub for all connected devices.</p>
           </div>
-          <label>Device ID<input id="deviceIdInput" type="text" spellcheck="false" placeholder="auto (hostname)" /></label>
+          <label><span data-i18n="settings.sync.deviceId">Device ID</span><input id="deviceIdInput" type="text" spellcheck="false" placeholder="auto (hostname)" data-i18n-placeholder="settings.sync.deviceIdPlaceholder" /></label>
           <div class="settings-actions">
-            <button id="saveSettingsButton">Save</button>
+            <button id="saveSettingsButton" data-i18n="settings.common.save">Save</button>
           </div>
         </div>
         <div class="settings-group">
-          <div class="settings-group-header"><span>Tracked Tools</span></div>
-          <p class="settings-note">Disable unused tools to reduce file watching and parse cost.</p>
+          <div class="settings-group-header"><span data-i18n="settings.tools.title">Tracked Tools</span></div>
+          <p class="settings-note" data-i18n="settings.tools.note">Disable unused tools to reduce file watching and parse cost.</p>
           <div id="clientCheckboxes" class="client-checkboxes"></div>
         </div>
         <div class="settings-group">
-          <div class="settings-group-header"><span>Cursor Account</span></div>
-          <div id="cursorAccountStatus" class="settings-note">Checking…</div>
+          <div class="settings-group-header"><span data-i18n="settings.cursor.title">Cursor Account</span></div>
+          <div id="cursorAccountStatus" class="settings-note" data-i18n="settings.common.checking">Checking...</div>
           <div class="settings-actions">
-            <button id="cursorLoginButton">Open cursor.com in browser</button>
-            <button id="cursorLogoutButton" class="hidden">Logout</button>
-            <button id="cursorRefreshButton" class="hidden">Refresh</button>
+            <button id="cursorLoginButton" data-i18n="settings.cursor.openBrowser">Open cursor.com in browser</button>
+            <button id="cursorLogoutButton" class="hidden" data-i18n="settings.common.logout">Logout</button>
+            <button id="cursorRefreshButton" class="hidden" data-i18n="settings.common.refresh">Refresh</button>
           </div>
           <div id="cursorManualPanel">
             <p class="settings-note">
-              <strong>1.</strong> Open <code>cursor.com/settings</code> in your browser (button above).<br>
-              <strong>2.</strong> Open DevTools (F12 or Cmd+Opt+I) → Application/Storage → Cookies → cursor.com.<br>
-              <strong>3.</strong> Copy the <code>WorkosCursorSessionToken</code> value.<br>
-              <strong>4.</strong> Paste it below and click Save.
+              <strong>1.</strong> <span data-i18n="settings.cursor.step1Before">Open</span> <code>cursor.com/settings</code> <span data-i18n="settings.cursor.step1After">in your browser (button above).</span><br>
+              <strong>2.</strong> <span data-i18n="settings.cursor.step2Before">Open DevTools (F12 or Cmd+Opt+I) -> Application/Storage -> Cookies -></span> cursor.com.<br>
+              <strong>3.</strong> <span data-i18n="settings.cursor.step3Before">Copy the</span> <code>WorkosCursorSessionToken</code> <span data-i18n="settings.cursor.step3After">value.</span><br>
+              <strong>4.</strong> <span data-i18n="settings.cursor.step4">Paste it below and click Save.</span>
             </p>
-            <textarea id="cursorManualInput" rows="3" spellcheck="false" placeholder="WorkosCursorSessionToken=..."></textarea>
+            <textarea id="cursorManualInput" rows="3" spellcheck="false" placeholder="WorkosCursorSessionToken=..." data-i18n-placeholder="settings.cursor.manualPlaceholder"></textarea>
             <div class="settings-actions">
-              <button id="cursorManualSubmit">Save token</button>
+              <button id="cursorManualSubmit" data-i18n="settings.cursor.saveToken">Save token</button>
             </div>
           </div>
           <div id="cursorErrorMessage" class="settings-note error hidden"></div>
         </div>
         <div class="settings-group">
-          <div class="settings-group-header"><span>AI Tool Limits</span></div>
+          <div class="settings-group-header"><span data-i18n="settings.limits.title">AI Tool Limits</span></div>
           <div id="limitProviderCheckboxes" class="client-checkboxes limit-provider-list"></div>
-          <label>Refresh
+          <label><span data-i18n="settings.limits.refresh">Refresh</span>
             <select id="limitsRefreshInput">
               <option value="60000">1 min</option>
               <option value="120000">2 min</option>
@@ -108,78 +119,78 @@
               <option value="1800000">30 min</option>
             </select>
           </label>
-          <label class="checkbox-label"><input id="showLimitSourceInput" type="checkbox" />Show Source</label>
+          <label class="checkbox-label"><input id="showLimitSourceInput" type="checkbox" /><span data-i18n="settings.limits.showSource">Show Source</span></label>
         </div>
         <div class="settings-group">
-          <div class="settings-group-header"><span>Display Mode</span></div>
-          <label class="checkbox-label"><input id="trayModeInput" type="checkbox" />Tray Mode</label>
-          <p class="settings-note">Hide the floating window; show a popover from the macOS menu bar or Windows system tray.</p>
-          <label>Tray text
+          <div class="settings-group-header"><span data-i18n="settings.display.title">Display Mode</span></div>
+          <label class="checkbox-label"><input id="trayModeInput" type="checkbox" /><span data-i18n="settings.display.trayMode">Tray Mode</span></label>
+          <p class="settings-note" data-i18n="settings.display.trayNote">Hide the floating window; show a popover from the macOS menu bar or Windows system tray.</p>
+          <label><span data-i18n="settings.display.trayText">Tray text</span>
             <select id="trayContentInput">
-              <option value="tokens">Tokens Today (1.2M)</option>
-              <option value="cost">Cost Today ($1.23)</option>
-              <option value="both">Tokens + Cost Today (1.2M · $1.23)</option>
-              <option value="tokensAll">Tokens Total (1.36B)</option>
-              <option value="costAll">Cost Total ($8.28)</option>
-              <option value="bothAll">Tokens + Cost Total (1.36B · $8.28)</option>
-              <option value="barsSession">Limit bars (worst session)</option>
-              <option value="barsWeekly">Limit bars (worst weekly)</option>
-              <option value="barsAllSessions">Limit bars (all sessions)</option>
-              <option value="bars">Limit bars (worst window)</option>
-              <option value="icon">Icon only</option>
+              <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
+              <option value="cost" data-i18n="settings.tray.costToday">Cost Today ($1.23)</option>
+              <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today (1.2M - $1.23)</option>
+              <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
+              <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
+              <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
+              <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
+              <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
+              <option value="barsAllSessions" data-i18n="settings.tray.barsAllSessions">Limit bars: first two session limits</option>
+              <option value="bars" data-i18n="settings.tray.barsWindow">Limit bars: lowest remaining limit</option>
+              <option value="icon" data-i18n="settings.tray.iconOnly">Icon only</option>
             </select>
           </label>
         </div>
         <div id="startupGroup" class="settings-group">
-          <div class="settings-group-header"><span>Startup</span></div>
-          <label class="checkbox-label"><input id="startAtLoginInput" type="checkbox" />Start at login</label>
-          <p id="startupNote" class="settings-note">Available in packaged macOS and Windows builds.</p>
+          <div class="settings-group-header"><span data-i18n="settings.startup.title">Startup</span></div>
+          <label class="checkbox-label"><input id="startAtLoginInput" type="checkbox" /><span data-i18n="settings.startup.startAtLogin">Start at login</span></label>
+          <p id="startupNote" class="settings-note" data-i18n="settings.startup.available">Available in packaged macOS and Windows builds.</p>
         </div>
         <div class="settings-group">
-          <div class="settings-group-header"><span>Appearance</span></div>
-          <label class="checkbox-label"><input id="systemGlassInput" type="checkbox" />System Glass</label>
-          <label class="checkbox-label"><input id="liveDotInput" type="checkbox" />Live Indicator</label>
-          <label class="checkbox-label"><input id="toolIconsInput" type="checkbox" />Tool Icons</label>
-          <label><span class="slider-label">Glass<button id="resetGlassButton" type="button" class="reset-appearance-button reset-inline" title="Reset glass">↺</button></span><input id="glassInput" type="range" min="0" max="100" step="1" /></label>
-          <label><span class="slider-label">Depth<button id="resetDepthButton" type="button" class="reset-appearance-button reset-inline" title="Reset depth">↺</button></span><input id="blurInput" type="range" min="0" max="100" step="1" /></label>
-          <label><span class="slider-label">Zoom<button id="resetZoomButton" type="button" class="reset-appearance-button reset-inline" title="Reset zoom">↺</button></span><input id="zoomInput" type="range" min="70" max="160" step="5" /></label>
+          <div class="settings-group-header"><span data-i18n="settings.appearance.title">Appearance</span></div>
+          <label class="checkbox-label"><input id="systemGlassInput" type="checkbox" /><span data-i18n="settings.appearance.systemGlass">System Glass</span></label>
+          <label class="checkbox-label"><input id="liveDotInput" type="checkbox" /><span data-i18n="settings.appearance.liveIndicator">Live Indicator</span></label>
+          <label class="checkbox-label"><input id="toolIconsInput" type="checkbox" /><span data-i18n="settings.appearance.toolIcons">Tool Icons</span></label>
+          <label><span class="slider-label"><span data-i18n="settings.appearance.glass">Glass</span><button id="resetGlassButton" type="button" class="reset-appearance-button reset-inline" title="Reset glass" data-i18n-title="settings.appearance.resetGlass">↺</button></span><input id="glassInput" type="range" min="0" max="100" step="1" /></label>
+          <label><span class="slider-label"><span data-i18n="settings.appearance.depth">Depth</span><button id="resetDepthButton" type="button" class="reset-appearance-button reset-inline" title="Reset depth" data-i18n-title="settings.appearance.resetDepth">↺</button></span><input id="blurInput" type="range" min="0" max="100" step="1" /></label>
+          <label><span class="slider-label"><span data-i18n="settings.appearance.zoom">Zoom</span><button id="resetZoomButton" type="button" class="reset-appearance-button reset-inline" title="Reset zoom" data-i18n-title="settings.appearance.resetZoom">↺</button></span><input id="zoomInput" type="range" min="70" max="160" step="5" /></label>
         </div>
         <div class="settings-group">
-          <div class="settings-group-header"><span>Integrations</span></div>
-          <label class="checkbox-label"><input id="discordRpcInput" type="checkbox" />Discord Rich Presence</label>
+          <div class="settings-group-header"><span data-i18n="settings.integrations.title">Integrations</span></div>
+          <label class="checkbox-label"><input id="discordRpcInput" type="checkbox" /><span data-i18n="settings.integrations.discord">Discord Rich Presence</span></label>
         </div>
         <div class="settings-group">
-          <div class="settings-group-header"><span>App Updates</span><span>GitHub releases</span></div>
+          <div class="settings-group-header"><span data-i18n="settings.appUpdate.title">App Updates</span><span data-i18n="settings.appUpdate.source">GitHub releases</span></div>
           <div class="tokscale-lines">
-            <div><span>Installed</span><strong id="appUpdateInstalled">—</strong></div>
-            <div><span>Latest</span><strong id="appUpdateLatest">Not checked</strong></div>
+            <div><span data-i18n="settings.appUpdate.installed">Installed</span><strong id="appUpdateInstalled">—</strong></div>
+            <div><span data-i18n="settings.appUpdate.latest">Latest</span><strong id="appUpdateLatest" data-i18n="settings.common.notChecked">Not checked</strong></div>
           </div>
           <div class="settings-actions">
-            <button id="appUpdateCheckButton" type="button">Check for updates</button>
-            <button id="appUpdateViewReleaseButton" type="button" class="hidden">View release</button>
+            <button id="appUpdateCheckButton" type="button" data-i18n="settings.appUpdate.check">Check for updates</button>
+            <button id="appUpdateViewReleaseButton" type="button" class="hidden" data-i18n="settings.appUpdate.viewRelease">View release</button>
           </div>
           <div id="appUpdateMessage" class="tokscale-message"></div>
         </div>
         <div id="tokscaleGroup" class="settings-group">
-          <div class="settings-group-header"><span>Tokscale</span><span>CLI dependency from npm</span></div>
+          <div class="settings-group-header"><span>Tokscale</span><span data-i18n="settings.tokscale.source">CLI dependency from npm</span></div>
           <div class="tokscale-lines">
-            <div><span>Installed</span><strong id="tokscaleInstalled">Checking…</strong></div>
-            <div id="tokscaleBundledLine"><span>Bundled</span><strong id="tokscaleBundled">—</strong></div>
-            <div><span>On npm <small>(latest tag)</small></span><strong id="tokscaleNpm">Not checked</strong></div>
+            <div><span data-i18n="settings.tokscale.installed">Installed</span><strong id="tokscaleInstalled" data-i18n="settings.common.checking">Checking...</strong></div>
+            <div id="tokscaleBundledLine"><span data-i18n="settings.tokscale.bundled">Bundled</span><strong id="tokscaleBundled">—</strong></div>
+            <div><span><span data-i18n="settings.tokscale.npm">On npm</span> <small data-i18n="settings.tokscale.latestTag">(latest tag)</small></span><strong id="tokscaleNpm" data-i18n="settings.common.notChecked">Not checked</strong></div>
           </div>
-          <p class="settings-note">Token Monitor uses tokscale (MIT, open-source) to read token data. <button id="openTokscaleLinkButton" type="button" class="inline-link">Learn more</button></p>
+          <p class="settings-note"><span data-i18n="settings.tokscale.noteBefore">Token Monitor uses tokscale (MIT, open-source) to read token data.</span> <button id="openTokscaleLinkButton" type="button" class="inline-link" data-i18n="settings.tokscale.learnMore">Learn more</button></p>
           <div id="tokscaleMessage" class="tokscale-message"></div>
           <div class="settings-actions">
-            <button id="checkTokscaleButton" type="button">Check npm</button>
-            <button id="downloadTokscaleButton" type="button" class="hidden">Download from npm</button>
-            <button id="resetTokscaleButton" type="button" class="hidden">Reset to bundled</button>
+            <button id="checkTokscaleButton" type="button" data-i18n="settings.tokscale.checkNpm">Check npm</button>
+            <button id="downloadTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.downloadNpm">Download from npm</button>
+            <button id="resetTokscaleButton" type="button" class="hidden" data-i18n="settings.tokscale.resetBundled">Reset to bundled</button>
           </div>
         </div>
         <div class="settings-group">
-          <div class="settings-group-header"><span>Advanced</span></div>
-          <p class="settings-note">Additional options are available in <code>settings.json</code>.</p>
+          <div class="settings-group-header"><span data-i18n="settings.advanced.title">Advanced</span></div>
+          <p class="settings-note"><span data-i18n="settings.advanced.note">Additional options are available in</span> <code>settings.json</code>.</p>
           <div class="settings-actions">
-            <button id="openConfigButton">Open Config</button>
+            <button id="openConfigButton" data-i18n="settings.advanced.openConfig">Open Config</button>
           </div>
         </div>
       </section>
@@ -205,6 +216,7 @@
     </main>
     <script src="trayBars.js"></script>
     <script src="limitProviderOrder.js"></script>
+    <script src="i18n.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

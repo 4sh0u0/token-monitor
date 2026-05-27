@@ -69,16 +69,17 @@ const LIMIT_PROVIDERS = [
 ];
 const DEFAULT_LIMIT_PROVIDER_ORDER = LIMIT_PROVIDERS.map((provider) => provider.id).join(',');
 const limitProviderOrderApi = window.TokenMonitorLimitProviderOrder;
+const i18n = window.TokenMonitorI18n;
 const LIMIT_REFRESH_OPTIONS = [60000, 120000, 300000, 900000, 1800000];
 const LIMIT_SOURCE_LABELS = { oauth: 'OAuth', cli: 'CLI', web: 'Web', rpc: 'CLI' };
 const deviceAccent = '#73bdf5';
 const deviceStaleColor = '#8c97a7';
 const fallbackModelColors = ['#6ab4f0', '#cc7c5e', '#a57df0', '#49a3b0', '#f0d66a', '#f06a7b'];
 const baseBreakdownOrder = ['tool', 'device', 'model'];
-const state = { period: 'today', appUpdate: null, breakdown: 'tool', settings: null, stats: null, refreshTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null };
+const state = { period: 'today', appUpdate: null, breakdown: 'tool', settings: null, stats: null, refreshTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' } };
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true };
 const els = {
-  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), cost: document.getElementById('cost'), breakdown: document.getElementById('breakdown'), limitsPanel: document.getElementById('limitsPanel'), breakdownToggle: document.getElementById('breakdownToggle'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), discordRpcInput: document.getElementById('discordRpcInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientCheckboxes: document.getElementById('clientCheckboxes'), openConfigButton: document.getElementById('openConfigButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton')
+  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), cost: document.getElementById('cost'), breakdown: document.getElementById('breakdown'), limitsPanel: document.getElementById('limitsPanel'), breakdownToggle: document.getElementById('breakdownToggle'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), discordRpcInput: document.getElementById('discordRpcInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientCheckboxes: document.getElementById('clientCheckboxes'), openConfigButton: document.getElementById('openConfigButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton')
 };
 Object.assign(els, {
   hubModeOptions: document.getElementById('hubModeOptions'),
@@ -113,6 +114,27 @@ Object.assign(els, {
   appUpdateViewReleaseButton: document.getElementById('appUpdateViewReleaseButton'),
   appUpdateMessage: document.getElementById('appUpdateMessage')
 });
+
+function preferredLanguages() {
+  return navigator.languages?.length ? navigator.languages : [navigator.language || 'en'];
+}
+
+function currentLanguage() {
+  return i18n.normalizeLanguage(state.settings?.language || 'auto');
+}
+
+function currentLocale() {
+  return i18n.resolveLocale(currentLanguage(), preferredLanguages());
+}
+
+function t(key, params) {
+  return i18n.translate(currentLocale(), key, params);
+}
+
+function applySettingsTranslations() {
+  if (els.languageInput) els.languageInput.value = currentLanguage();
+  i18n.applyTranslations(document, currentLocale());
+}
 
 function formatNumber(value) { return Math.round(Number(value || 0)).toLocaleString('en-US'); }
 function formatCost(value) { const amount = Number(value || 0); return `$${amount.toFixed(amount >= 10 ? 2 : 4)}`; }
@@ -167,9 +189,9 @@ function renderSettingsAppUpdateRow() {
   const s = state.appUpdate;
   if (!s) {
     els.appUpdateInstalled.textContent = '—';
-    els.appUpdateLatest.textContent = 'Not checked';
+    els.appUpdateLatest.textContent = t('settings.common.notChecked');
     els.appUpdateCheckButton.disabled = false;
-    els.appUpdateCheckButton.textContent = 'Check for updates';
+    els.appUpdateCheckButton.textContent = t('settings.appUpdate.check');
     els.appUpdateViewReleaseButton.classList.add('hidden');
     els.appUpdateMessage.textContent = '';
     els.appUpdateMessage.classList.remove('error');
@@ -177,17 +199,18 @@ function renderSettingsAppUpdateRow() {
   }
   els.appUpdateInstalled.textContent = `v${s.currentVersion}`;
   if (s.latest) {
-    const tail = s.hasUpdate ? '' : (semverLikeEqual(s.latest.version, s.currentVersion) ? ' (up to date)' : '');
-    els.appUpdateLatest.textContent = `v${s.latest.version}${tail}`;
+    els.appUpdateLatest.textContent = !s.hasUpdate && semverLikeEqual(s.latest.version, s.currentVersion)
+      ? t('settings.appUpdate.latestWithStatus', { version: s.latest.version, status: t('settings.appUpdate.upToDateShort') })
+      : `v${s.latest.version}`;
     els.appUpdateViewReleaseButton.classList.toggle('hidden', !s.hasUpdate);
   } else {
-    els.appUpdateLatest.textContent = s.lastCheckedAt ? 'Up to date' : 'Not checked';
+    els.appUpdateLatest.textContent = s.lastCheckedAt ? t('settings.appUpdate.upToDate') : t('settings.common.notChecked');
     els.appUpdateViewReleaseButton.classList.add('hidden');
   }
   els.appUpdateCheckButton.disabled = Boolean(s.checking);
-  els.appUpdateCheckButton.textContent = s.checking ? 'Checking…' : 'Check for updates';
+  els.appUpdateCheckButton.textContent = s.checking ? t('settings.appUpdate.checking') : t('settings.appUpdate.check');
   if (s.lastError) {
-    els.appUpdateMessage.textContent = "Couldn't reach GitHub";
+    els.appUpdateMessage.textContent = t('settings.appUpdate.githubError');
     els.appUpdateMessage.classList.add('error');
   } else {
     els.appUpdateMessage.textContent = '';
@@ -199,8 +222,15 @@ function semverLikeEqual(a, b) {
   return typeof a === 'string' && typeof b === 'string' && a === b;
 }
 function compactAge(value) {
-  const label = formatUpdatedAge(value);
-  return label === 'Update unknown' ? '' : label.replace('Updated ', '');
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '';
+  const diffMs = Math.max(0, Date.now() - date.getTime());
+  if (diffMs < 45_000) return t('settings.age.justNow');
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 60) return t('settings.age.minutesAgo', { minutes });
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return t('settings.age.hoursAgo', { hours });
+  return t('settings.age.daysAgo', { days: Math.round(hours / 24) });
 }
 function colorWithAlpha(hex, alpha) {
   const raw = String(hex || '').replace('#', '');
@@ -253,15 +283,19 @@ function renderTokscaleStatus() {
   els.tokscaleGroup.classList.remove('hidden');
   const current = status?.current;
   const source = current?.source === 'downloaded'
-    ? `downloaded from npm${current.installedAt ? `, ${compactAge(current.installedAt)}` : ''}`
-    : 'bundled with this app';
-  els.tokscaleInstalled.textContent = current ? `${versionText(current.version)} (${source})` : 'Not found';
+    ? (current.installedAt
+      ? t('settings.tokscale.downloadedSourceWithAge', { age: compactAge(current.installedAt) })
+      : t('settings.tokscale.downloadedSource'))
+    : t('settings.tokscale.bundledSource');
+  els.tokscaleInstalled.textContent = current ? `${versionText(current.version)} (${source})` : t('settings.common.notFound');
   els.tokscaleBundledLine.classList.toggle('hidden', !status?.downloaded || !status?.bundled);
   els.tokscaleBundled.textContent = status?.bundled ? versionText(status.bundled.version) : '—';
   if (state.tokscaleCheck?.npm?.version) {
-    els.tokscaleNpm.textContent = `${versionText(state.tokscaleCheck.npm.version)}${state.tokscaleCheck.newer ? '' : ' (current)'}`;
+    els.tokscaleNpm.textContent = state.tokscaleCheck.newer
+      ? versionText(state.tokscaleCheck.npm.version)
+      : t('settings.appUpdate.latestWithStatus', { version: state.tokscaleCheck.npm.version, status: t('settings.tokscale.currentSuffix') });
   } else {
-    els.tokscaleNpm.textContent = 'Not checked';
+    els.tokscaleNpm.textContent = t('settings.common.notChecked');
   }
   els.checkTokscaleButton.disabled = state.tokscaleBusy;
   els.downloadTokscaleButton.disabled = state.tokscaleBusy;
@@ -282,14 +316,14 @@ async function refreshTokscaleStatus() {
 
 async function checkTokscaleNpm() {
   state.tokscaleBusy = true;
-  setTokscaleMessage('Checking npm…');
+  setTokscaleMessage(t('settings.tokscale.checkingNpm'));
   renderTokscaleStatus();
   try {
     const result = await window.tokenMonitor.checkTokscaleNpm();
     if (result?.error) throw new Error(result.error);
     mergeTokscalePayload(result);
     if (state.tokscaleStatus?.supported === false) return;
-    setTokscaleMessage(state.tokscaleCheck?.newer ? 'Newer tokscale is on npm.' : 'Bundled tokscale is current.');
+    setTokscaleMessage(state.tokscaleCheck?.newer ? t('settings.tokscale.newerOnNpm') : t('settings.tokscale.bundledCurrent'));
   } catch (error) {
     setTokscaleMessage(error.message, 'error');
   } finally {
@@ -300,13 +334,13 @@ async function checkTokscaleNpm() {
 
 async function downloadTokscaleFromNpm() {
   state.tokscaleBusy = true;
-  setTokscaleMessage('Downloading from npm…');
+  setTokscaleMessage(t('settings.tokscale.downloading'));
   renderTokscaleStatus();
   try {
     const result = await window.tokenMonitor.downloadTokscaleFromNpm();
     if (result?.error) throw new Error(result.error);
     mergeTokscalePayload(result);
-    setTokscaleMessage(`Downloaded ${versionText(result.version)} from npm.`, 'success');
+    setTokscaleMessage(t('settings.tokscale.downloaded', { version: versionText(result.version) }), 'success');
   } catch (error) {
     setTokscaleMessage(error.message, 'error');
   } finally {
@@ -317,12 +351,12 @@ async function downloadTokscaleFromNpm() {
 
 async function resetTokscaleToBundled() {
   state.tokscaleBusy = true;
-  setTokscaleMessage('Resetting…');
+  setTokscaleMessage(t('settings.tokscale.resetting'));
   renderTokscaleStatus();
   try {
     state.tokscaleStatus = await window.tokenMonitor.resetTokscaleToBundled();
     state.tokscaleCheck = null;
-    setTokscaleMessage('Using bundled tokscale.', 'success');
+    setTokscaleMessage(t('settings.tokscale.usingBundled'), 'success');
   } catch (error) {
     setTokscaleMessage(error.message, 'error');
   } finally {
@@ -814,25 +848,25 @@ function renderHubStatus() {
   const info = state.hubInfo;
   const port = Number(state.settings.hubHostPort || 17321);
   if (!info) {
-    els.hubStatusRow.textContent = 'Starting…';
+    els.hubStatusRow.textContent = t('settings.sync.starting');
     els.hubStatusRow.className = 'hub-status';
     els.hubAddressList.replaceChildren();
     return;
   }
   if (info.error) {
-    const code = info.error.code === 'EADDRINUSE' ? `Port ${port} already in use` : info.error.code || 'Error';
+    const code = info.error.code === 'EADDRINUSE' ? t('settings.sync.portInUse', { port }) : info.error.code || t('settings.common.error');
     els.hubStatusRow.textContent = `${code} — ${info.error.message}`;
     els.hubStatusRow.className = 'hub-status error';
     els.hubAddressList.replaceChildren();
     return;
   }
   if (!info.listening) {
-    els.hubStatusRow.textContent = 'Hub stopped';
+    els.hubStatusRow.textContent = t('settings.sync.hubStopped');
     els.hubStatusRow.className = 'hub-status';
     els.hubAddressList.replaceChildren();
     return;
   }
-  els.hubStatusRow.textContent = `Listening on port ${info.listeningPort}`;
+  els.hubStatusRow.textContent = t('settings.sync.listening', { port: info.listeningPort });
   els.hubStatusRow.className = 'hub-status ok';
   renderHubAddresses(info.lanAddresses || [], info.listeningPort);
 }
@@ -842,13 +876,13 @@ function renderHubAddresses(addresses, port) {
   if (addresses.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'hub-address-empty';
-    empty.textContent = 'No LAN address detected. Other devices on this machine can use http://127.0.0.1:' + port + '.';
+    empty.textContent = t('settings.sync.noLanAddress', { port });
     els.hubAddressList.appendChild(empty);
     return;
   }
   const header = document.createElement('div');
   header.className = 'hub-address-header';
-  header.textContent = 'Other devices connect with:';
+  header.textContent = t('settings.sync.connectWith');
   els.hubAddressList.appendChild(header);
   for (const addr of addresses) {
     const url = `http://${addr.address}:${port}`;
@@ -862,7 +896,7 @@ function renderHubAddresses(addresses, port) {
     const copy = document.createElement('button');
     copy.type = 'button';
     copy.className = 'icon-button';
-    copy.title = `Copy ${url}`;
+    copy.title = t('settings.sync.copyUrl', { url });
     copy.textContent = '⧉';
     copy.addEventListener('click', () => copyToClipboard(url, copy));
     row.append(code, ifaceLabel, copy);
@@ -890,7 +924,9 @@ async function refreshHubInfo() {
 }
 
 function syncSettingsForm() {
+  applySettingsTranslations();
   syncHubModeUi();
+  if (els.languageInput) els.languageInput.value = currentLanguage();
   els.hubUrlInput.value = state.settings.hubUrl || '';
   els.secretInput.value = state.settings.secret || '';
   els.deviceIdInput.value = state.settings.deviceId || '';
@@ -906,8 +942,8 @@ function syncSettingsForm() {
   if (els.startAtLoginInput) els.startAtLoginInput.checked = Boolean(state.settings.startAtLogin && state.appInfo?.loginItemSupported);
   if (els.startupNote) {
     els.startupNote.textContent = state.appInfo?.loginItemSupported
-      ? 'Launch Token Monitor when you sign in.'
-      : 'Available in packaged macOS and Windows builds.';
+      ? t('settings.startup.launchAtSignIn')
+      : t('settings.startup.available');
   }
   els.glassInput.value = String(state.settings.glassOpacity ?? 68);
   els.blurInput.value = String(state.settings.glassBlur ?? 32);
@@ -917,6 +953,8 @@ function syncSettingsForm() {
   renderLimitProviderCheckboxes();
   applyAppearanceSettings(state.settings);
   renderTokscaleStatus();
+  renderSettingsAppUpdateRow();
+  renderCursorStatus();
   if (state.breakdown === 'limits') renderLimits();
   else render();
 }
@@ -977,7 +1015,7 @@ function renderLimitProviderCheckboxes() {
     up.type = 'button';
     up.className = 'limit-provider-order-button';
     up.textContent = '↑';
-    up.title = `Move ${settingsLabel || label} up`;
+    up.title = t('settings.limits.moveUp', { name: settingsLabel || label });
     up.setAttribute('aria-label', up.title);
     up.disabled = index === 0;
     up.addEventListener('click', () => onLimitProviderMove(id, 'up'));
@@ -985,7 +1023,7 @@ function renderLimitProviderCheckboxes() {
     down.type = 'button';
     down.className = 'limit-provider-order-button';
     down.textContent = '↓';
-    down.title = `Move ${settingsLabel || label} down`;
+    down.title = t('settings.limits.moveDown', { name: settingsLabel || label });
     down.setAttribute('aria-label', down.title);
     down.disabled = index === providers.length - 1;
     down.addEventListener('click', () => onLimitProviderMove(id, 'down'));
@@ -1116,6 +1154,10 @@ els.hubModeOptions.addEventListener('change', async (event) => {
   await saveSettings({ hubMode: target.value });
   await refreshHubInfo();
   await refreshStats();
+});
+
+els.languageInput?.addEventListener('change', async () => {
+  await saveSettings({ language: els.languageInput.value });
 });
 
 els.hubSecretCopyButton?.addEventListener('click', () => {
@@ -1426,61 +1468,80 @@ async function deliverTrayProviderIcons() {
   maybeUpdateBarsIcon();
 }
 
-async function refreshCursorStatus() {
+function renderCursorStatus() {
   const statusEl = document.getElementById('cursorAccountStatus');
   const loginBtn = document.getElementById('cursorLoginButton');
   const logoutBtn = document.getElementById('cursorLogoutButton');
   const refreshBtn = document.getElementById('cursorRefreshButton');
   const manualPanel = document.getElementById('cursorManualPanel');
   const errorEl = document.getElementById('cursorErrorMessage');
+  if (!statusEl || !loginBtn || !logoutBtn || !refreshBtn || !manualPanel || !errorEl) return;
 
   errorEl.classList.add('hidden');
   errorEl.textContent = '';
 
-  try {
-    const status = await window.tokenMonitor.cursor.status();
-    if (!status.loggedIn) {
-      statusEl.textContent = 'Not logged in';
-      loginBtn.classList.remove('hidden');
-      logoutBtn.classList.add('hidden');
-      refreshBtn.classList.add('hidden');
-      manualPanel.classList.remove('hidden');
-      setCursorCheckboxesEnabled(false);
-      return;
-    }
-    if (status.expired) {
-      statusEl.textContent = 'Session expired — please log in again';
-      loginBtn.classList.remove('hidden');
-      logoutBtn.classList.remove('hidden');
-      refreshBtn.classList.remove('hidden');
-      manualPanel.classList.remove('hidden');
-      setCursorCheckboxesEnabled(false);
-      return;
-    }
-    const parts = [];
-    if (status.email) parts.push(status.email);
-    if (status.membershipType) parts.push(`Cursor ${status.membershipType}`);
-    if (status.billingCycleEnd) {
-      const d = new Date(status.billingCycleEnd);
-      parts.push(`Billing resets ${d.toLocaleDateString()}`);
-    }
-    statusEl.textContent = `✓ ${parts.join(' · ')}`;
-    loginBtn.classList.add('hidden');
+  if (state.cursorAccount.error) {
+    errorEl.textContent = t('settings.cursor.statusCheckFailed', { message: state.cursorAccount.error });
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  const status = state.cursorAccount.status;
+  if (!status) {
+    statusEl.textContent = t('settings.common.checking');
+    return;
+  }
+
+  if (!status.loggedIn) {
+    statusEl.textContent = t('settings.cursor.notLoggedIn');
+    loginBtn.classList.remove('hidden');
+    logoutBtn.classList.add('hidden');
+    refreshBtn.classList.add('hidden');
+    manualPanel.classList.remove('hidden');
+    setCursorCheckboxesEnabled(false);
+    return;
+  }
+  if (status.expired) {
+    statusEl.textContent = t('settings.cursor.expired');
+    loginBtn.classList.remove('hidden');
     logoutBtn.classList.remove('hidden');
     refreshBtn.classList.remove('hidden');
-    manualPanel.classList.add('hidden');
-    setCursorCheckboxesEnabled(true);
-  } catch (err) {
-    errorEl.textContent = `Status check failed: ${err.message}`;
-    errorEl.classList.remove('hidden');
+    manualPanel.classList.remove('hidden');
+    setCursorCheckboxesEnabled(false);
+    return;
   }
+  const parts = [];
+  if (status.email) parts.push(status.email);
+  if (status.membershipType) parts.push(`Cursor ${status.membershipType}`);
+  if (status.billingCycleEnd) {
+    const d = new Date(status.billingCycleEnd);
+    parts.push(t('settings.cursor.billingResets', { date: d.toLocaleDateString(currentLocale()) }));
+  }
+  statusEl.textContent = `✓ ${parts.join(' · ')}`;
+  loginBtn.classList.add('hidden');
+  logoutBtn.classList.remove('hidden');
+  refreshBtn.classList.remove('hidden');
+  manualPanel.classList.add('hidden');
+  setCursorCheckboxesEnabled(true);
+}
+
+async function refreshCursorStatus() {
+  state.cursorAccount = { status: null, error: '' };
+  renderCursorStatus();
+  try {
+    const status = await window.tokenMonitor.cursor.status();
+    state.cursorAccount = { status, error: '' };
+  } catch (err) {
+    state.cursorAccount = { status: null, error: err.message };
+  }
+  renderCursorStatus();
 }
 
 function setCursorCheckboxesEnabled(enabled) {
   document.querySelectorAll('#clientCheckboxes [data-client="cursor"]').forEach((el) => {
     if (enabled) el.classList.remove('disabled');
     else el.classList.add('disabled');
-    el.title = enabled ? '' : 'Login required to enable Cursor';
+    el.title = enabled ? '' : t('settings.cursor.loginRequired');
   });
 }
 
@@ -1505,7 +1566,7 @@ function setupCursorAccountUI() {
     errorEl.classList.add('hidden');
     const result = await window.tokenMonitor.cursor.loginManual(input.value);
     if (!result.ok) {
-      errorEl.textContent = `Login failed: ${result.error}`;
+      errorEl.textContent = t('settings.cursor.loginFailed', { message: result.error });
       errorEl.classList.remove('hidden');
       return;
     }

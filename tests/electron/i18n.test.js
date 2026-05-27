@@ -1,0 +1,92 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+const {
+  applyTranslations,
+  MESSAGES,
+  normalizeLanguage,
+  resolveLocale,
+  translate
+} = require('../../src/electron/renderer/i18n');
+
+function fakeElement(dataset = {}) {
+  const attributes = {};
+  return {
+    dataset,
+    textContent: '',
+    title: '',
+    placeholder: '',
+    attributes,
+    setAttribute(name, value) {
+      attributes[name] = value;
+    },
+    getAttribute(name) {
+      return attributes[name];
+    }
+  };
+}
+
+test('normalizeLanguage keeps supported choices and falls back to auto', () => {
+  assert.equal(normalizeLanguage('zh-tw'), 'zh-TW');
+  assert.equal(normalizeLanguage('zh_cn'), 'zh-CN');
+  assert.equal(normalizeLanguage('en'), 'en');
+  assert.equal(normalizeLanguage('fr'), 'auto');
+  assert.equal(normalizeLanguage(''), 'auto');
+});
+
+test('resolveLocale maps auto to Chinese variants from browser languages', () => {
+  assert.equal(resolveLocale('auto', ['zh-HK', 'en-US']), 'zh-TW');
+  assert.equal(resolveLocale('auto', ['zh-Hans-CN', 'en-US']), 'zh-CN');
+  assert.equal(resolveLocale('auto', ['en-US']), 'en');
+  assert.equal(resolveLocale('zh-CN', ['zh-TW']), 'zh-CN');
+});
+
+test('translate falls back to English and interpolates values', () => {
+  assert.equal(translate('zh-TW', 'settings.sync.title'), '多裝置同步');
+  assert.equal(translate('zh-CN', 'settings.appUpdate.latestWithStatus', { version: '0.2.1', status: '已是最新' }), 'v0.2.1（已是最新）');
+  assert.equal(translate('zh-TW', 'missing.key'), 'missing.key');
+});
+
+test('Chinese dictionaries cover every English settings key', () => {
+  const englishKeys = Object.keys(MESSAGES.en).sort();
+  for (const locale of ['zh-TW', 'zh-CN']) {
+    const missing = englishKeys.filter((key) => MESSAGES[locale][key] === undefined);
+    assert.deepEqual(missing, [], `${locale} should not rely on English fallback`);
+  }
+});
+
+test('tray limit labels describe remaining quota instead of ambiguous worst windows', () => {
+  assert.equal(translate('zh-TW', 'settings.tray.barsSession'), '額度條：單次剩餘最少');
+  assert.equal(translate('zh-TW', 'settings.tray.barsAllSessions'), '額度條：前兩個工具的單次額度');
+  assert.equal(translate('zh-CN', 'settings.tray.barsWindow'), '额度条：任一额度剩余最少');
+});
+
+test('applyTranslations updates text, title, aria-label, placeholders, and document lang', () => {
+  const title = fakeElement({ i18n: 'settings.sync.title' });
+  const button = fakeElement({ i18nTitle: 'settings.sync.copySecret' });
+  const dismiss = fakeElement({ i18nAriaLabel: 'settings.appUpdate.dismiss' });
+  const input = fakeElement({ i18nPlaceholder: 'settings.sync.secretPlaceholder' });
+  const langOption = fakeElement({ i18n: 'settings.language.zhTW' });
+  const documentElement = fakeElement();
+  const root = {
+    documentElement,
+    querySelectorAll(selector) {
+      if (selector === '[data-i18n]') return [title, langOption];
+      if (selector === '[data-i18n-title]') return [button];
+      if (selector === '[data-i18n-aria-label]') return [dismiss];
+      if (selector === '[data-i18n-placeholder]') return [input];
+      return [];
+    }
+  };
+
+  applyTranslations(root, 'zh-TW');
+
+  assert.equal(title.textContent, '多裝置同步');
+  assert.equal(button.title, '複製密鑰');
+  assert.equal(dismiss.getAttribute('aria-label'), '忽略此版本');
+  assert.equal(input.placeholder, '選填的共享密鑰');
+  assert.equal(langOption.textContent, '繁體中文');
+  assert.equal(documentElement.getAttribute('lang'), 'zh-TW');
+});
