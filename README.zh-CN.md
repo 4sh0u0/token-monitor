@@ -38,18 +38,18 @@
 
 ## 功能特性
 
-- Claude Code、Codex、Hermes、OpenCode、OpenClaw、Cursor、Antigravity 的实时 Token 追踪（每轮对话后 UI 在数秒内刷新）
-- 通过 Server-Sent Events 实时同步多设备 Token
-- 按工具、设备、模型或账户用量上限分组的统计视图
-- Token 数量旁附带成本分项
-- Claude Code、Codex、Cursor 与 Antigravity 的用量上限检测，涵盖 session、每周、账单与 credits 窗口
-- 外观控制：玻璃透明度、模糊度、完全透明窗口
-- 菜单栏（macOS）与系统托盘（Windows）弹出窗口，图标旁可显示成本、token 数，或 Claude／Codex／Cursor／Antigravity 最接近用完的用量上限百分比
-- 本地优先：单设备使用完全无需服务器
-- 自托管同步后端（小部件内 hub、Node CLI hub 或 Cloudflare Worker）
-- 通过 Worker hub 支持 iOS 小部件（Widgy、Scriptable）
-- Discord Rich Presence：将今日 Token、花费与主要工具广播到你的 Discord 个人资料（需手动开启）
-- 隐私优先：只有汇总数字会离开你的机器
+- **实时 Token 追踪**：覆盖 Claude Code、Codex、Hermes、OpenCode、OpenClaw、Cursor、Antigravity（每轮对话后 UI 在数秒内刷新）
+- **多设备实时同步**：通过 Server-Sent Events 推送
+- **分组统计视图**：可按工具、设备、模型或账户用量上限分组
+- **成本分项**：Token 数量旁附带成本统计
+- **AI 工具用量上限检测**：支持 Claude Code、Codex、Cursor 与 Antigravity，涵盖 session、每周、账单与 credits 窗口
+- **外观控制**：玻璃透明度、模糊度、完全透明窗口
+- **菜单栏（macOS）与系统托盘（Windows）弹出窗口**：图标旁可显示成本、token 数，或 Claude／Codex／Cursor／Antigravity 最接近用完的用量上限百分比
+- **本地优先**：单设备使用完全无需服务器
+- **自托管同步后端**：小部件内 hub、Node CLI hub 或 Cloudflare Worker
+- **iOS 小部件支持**：通过 Worker hub 搭配 Widgy、Scriptable
+- **Discord Rich Presence**：将今日 Token、花费与主要工具广播到你的 Discord 个人资料（需手动开启）
+- **隐私优先**：只有汇总数字会离开你的机器
 
 | 用量上限视图 | 设备视图 | 模型视图 |
 |:---:|:---:|:---:|

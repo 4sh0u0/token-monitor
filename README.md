@@ -38,18 +38,18 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 
 ## Features
 
-- Live token tracking for Claude Code, Codex, Hermes, OpenCode, OpenClaw, Cursor, and Antigravity (UI updates within seconds of each turn)
-- Real-time multi-device token sync over Server-Sent Events
-- Breakdown views grouped by tool, device, model, or account limits
-- Cost breakdown alongside token counts
-- Claude Code, Codex, Cursor, and Antigravity limit detection with session, weekly, billing, and credits windows
-- Appearance controls for glass opacity, blur, and transparent window mode
-- Menu bar (macOS) and system tray (Windows) popover with live cost, tokens, or closest Claude/Codex/Cursor/Antigravity limit % next to the icon
-- Local-first: no servers needed for single-device use
-- Self-hosted sync backend (in-widget hub, Node CLI hub, or Cloudflare Worker)
-- iOS widget support via Widgy and Scriptable through the Worker hub
-- Discord Rich Presence to broadcast today's tokens, cost, and top client (opt-in)
-- Privacy-first: only summary numbers ever leave your machine
+- **Live token tracking** for Claude Code, Codex, Hermes, OpenCode, OpenClaw, Cursor, and Antigravity (UI updates within seconds of each turn)
+- **Real-time multi-device sync** over Server-Sent Events
+- **Breakdown views** grouped by tool, device, model, or account limits
+- **Cost breakdown** alongside token counts
+- **AI Tool Limits detection** for Claude Code, Codex, Cursor, and Antigravity with session, weekly, billing, and credits windows
+- **Appearance controls** for glass opacity, blur, and transparent window mode
+- **Menu bar (macOS) and system tray (Windows) popover** with live cost, tokens, or closest Claude/Codex/Cursor/Antigravity limit % next to the icon
+- **Local-first:** no servers needed for single-device use
+- **Self-hosted sync backend** (in-widget hub, Node CLI hub, or Cloudflare Worker)
+- **iOS widget support** via Widgy and Scriptable through the Worker hub
+- **Discord Rich Presence** to broadcast today's tokens, cost, and top client (opt-in)
+- **Privacy-first:** only summary numbers ever leave your machine
 
 | Limits View | Devices View | Models View |
 |:---:|:---:|:---:|
