@@ -856,6 +856,22 @@ function applyFloatingBubbleState(payload = {}) {
 
 let floatingBubbleDrag = null;
 
+function floatingBubblePointerOffset(event) {
+  const rect = els.floatingBubbleTab?.getBoundingClientRect?.();
+  const width = rect?.width || els.floatingBubbleTab?.offsetWidth || 18;
+  const height = rect?.height || els.floatingBubbleTab?.offsetHeight || 34;
+  const rawX = rect ? event.clientX - rect.left : width / 2;
+  const rawY = rect ? event.clientY - rect.top : height / 2;
+  const offsetX = Number.isFinite(rawX) ? Math.max(0, Math.min(width, rawX)) : width / 2;
+  const offsetY = Number.isFinite(rawY) ? Math.max(0, Math.min(height, rawY)) : height / 2;
+  return {
+    offsetX: Math.round(offsetX),
+    offsetY: Math.round(offsetY),
+    offsetRatioX: width > 0 ? offsetX / width : 0.5,
+    offsetRatioY: height > 0 ? offsetY / height : 0.5
+  };
+}
+
 function finishFloatingBubbleDrag(pointerId) {
   if (!floatingBubbleDrag || floatingBubbleDrag.pointerId !== pointerId) return null;
   const drag = floatingBubbleDrag;
@@ -871,8 +887,7 @@ function handleFloatingBubblePointerDown(event) {
     pointerId: event.pointerId,
     startX: event.screenX,
     startY: event.screenY,
-    lastX: event.screenX,
-    lastY: event.screenY,
+    ...floatingBubblePointerOffset(event),
     moved: false
   };
   els.floatingBubbleTab?.setPointerCapture?.(event.pointerId);
@@ -885,16 +900,15 @@ function handleFloatingBubblePointerMove(event) {
   const totalDx = event.screenX - drag.startX;
   const totalDy = event.screenY - drag.startY;
   if (!drag.moved && Math.hypot(totalDx, totalDy) < 4) return;
-  const dx = Math.round(event.screenX - drag.lastX);
-  const dy = Math.round(event.screenY - drag.lastY);
   drag.moved = true;
-  drag.lastX = event.screenX;
-  drag.lastY = event.screenY;
   els.floatingBubbleTab?.classList.add('dragging');
-  if (dx || dy) {
-    const move = window.tokenMonitor.moveFloatingBubble?.({ dx, dy });
-    move?.catch?.(() => {});
-  }
+  const move = window.tokenMonitor.moveFloatingBubble?.({
+    offsetX: drag.offsetX,
+    offsetY: drag.offsetY,
+    offsetRatioX: drag.offsetRatioX,
+    offsetRatioY: drag.offsetRatioY
+  });
+  move?.catch?.(() => {});
   event.preventDefault();
 }
 
@@ -902,6 +916,15 @@ function handleFloatingBubblePointerUp(event) {
   const drag = finishFloatingBubbleDrag(event.pointerId);
   if (!drag) return;
   if (!drag.moved) window.tokenMonitor.expandFloatingBubble?.();
+  else {
+    const move = window.tokenMonitor.moveFloatingBubble?.({
+      offsetX: drag.offsetX,
+      offsetY: drag.offsetY,
+      offsetRatioX: drag.offsetRatioX,
+      offsetRatioY: drag.offsetRatioY
+    });
+    move?.catch?.(() => {});
+  }
   event.preventDefault();
 }
 

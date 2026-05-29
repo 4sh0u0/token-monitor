@@ -8,13 +8,21 @@ const test = require('node:test');
 const {
   canUseFloatingBubble,
   collapsedFloatingBubbleBounds,
+  dragFloatingBubbleBounds,
   expandedFloatingBubbleBounds,
+  floatingBubbleCollapsedArea,
+  floatingBubbleCollapsedMargin,
   floatingBubbleCollapsePlan,
   floatingBubbleNativeGlassEnabled,
+  floatingBubbleWindowChrome,
   moveFloatingBubbleBounds
 } = require('../../src/electron/floatingBubble');
 
 const workArea = { x: 0, y: 24, width: 1440, height: 876 };
+const windowsDisplay = {
+  bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+  workArea: { x: 0, y: 0, width: 1840, height: 1040 }
+};
 const stylesPath = path.join(__dirname, '..', '..', 'src', 'electron', 'renderer', 'styles.css');
 
 function cssBlock(css, selectorPattern) {
@@ -34,6 +42,32 @@ test('floating bubble disables native system glass while collapsed', () => {
   assert.equal(floatingBubbleNativeGlassEnabled({ systemGlass: true }, { collapsed: false }), true);
   assert.equal(floatingBubbleNativeGlassEnabled({ systemGlass: true }, { collapsed: true }), false);
   assert.equal(floatingBubbleNativeGlassEnabled({ systemGlass: false }, { collapsed: false }), false);
+  assert.equal(
+    floatingBubbleNativeGlassEnabled({ systemGlass: true, floatingBubbleEnabled: true }, { collapsed: false }, 'win32'),
+    false
+  );
+  assert.equal(
+    floatingBubbleNativeGlassEnabled({ systemGlass: true, floatingBubbleEnabled: true }, { collapsed: false }, 'darwin'),
+    true
+  );
+});
+
+test('floatingBubbleCollapsedArea uses physical display bounds on Windows', () => {
+  assert.equal(floatingBubbleCollapsedArea(windowsDisplay, 'win32'), windowsDisplay.bounds);
+  assert.equal(floatingBubbleCollapsedArea(windowsDisplay, 'darwin'), windowsDisplay.workArea);
+  assert.equal(floatingBubbleCollapsedArea(windowsDisplay, 'linux'), windowsDisplay.workArea);
+  assert.deepEqual(floatingBubbleCollapsedMargin('win32'), { x: 0, y: 0 });
+  assert.deepEqual(floatingBubbleCollapsedMargin('darwin'), { x: 0, y: 8 });
+});
+
+test('floatingBubbleWindowChrome removes Windows native frame only for collapsed mini-window', () => {
+  assert.deepEqual(floatingBubbleWindowChrome('win32', true), {
+    hasShadow: false,
+    roundedCorners: false,
+    thickFrame: false
+  });
+  assert.deepEqual(floatingBubbleWindowChrome('win32', false), {});
+  assert.deepEqual(floatingBubbleWindowChrome('darwin', true), {});
 });
 
 test('collapsedFloatingBubbleBounds keeps the current narrow mini-window shape without requiring an edge', () => {
@@ -118,6 +152,26 @@ test('floatingBubbleCollapsePlan reuses the last dragged mini-window position', 
   );
 });
 
+test('floatingBubbleCollapsePlan can clamp the mini-window against Windows physical edges', () => {
+  assert.deepEqual(
+    floatingBubbleCollapsePlan(
+      { x: 120, y: 120, width: 360, height: 520 },
+      windowsDisplay.workArea,
+      { floatingBubbleEnabled: true, windowBehavior: 'normal' },
+      {
+        collapsedArea: windowsDisplay.bounds,
+        collapsedMargin: floatingBubbleCollapsedMargin('win32'),
+        collapsedBounds: { x: 1902, y: 1060, width: 18, height: 34 }
+      }
+    ),
+    {
+      side: 'right',
+      expandedBounds: { x: 120, y: 120, width: 360, height: 520 },
+      collapsedBounds: { x: 1902, y: 1046, width: 18, height: 34 }
+    }
+  );
+});
+
 test('expandedFloatingBubbleBounds opens near the mini-window and stays inside the work area', () => {
   assert.deepEqual(expandedFloatingBubbleBounds({ x: 1100, y: 500, width: 18, height: 34 }, workArea, { width: 360, height: 520 }), {
     x: 758,
@@ -158,6 +212,51 @@ test('moveFloatingBubbleBounds drags the mini-window while clamping it inside th
     width: 18,
     height: 34
   });
+});
+
+test('dragFloatingBubbleBounds anchors the mini-window to the OS cursor point', () => {
+  assert.deepEqual(
+    dragFloatingBubbleBounds(
+      { x: 640, y: 220, width: 18, height: 34 },
+      workArea,
+      { x: 700, y: 250 },
+      { offsetX: 6, offsetY: 12 }
+    ),
+    {
+      x: 694,
+      y: 238,
+      width: 18,
+      height: 34
+    }
+  );
+  assert.deepEqual(
+    dragFloatingBubbleBounds(
+      { x: 640, y: 220, width: 18, height: 34 },
+      workArea,
+      { x: 5000, y: -200 },
+      { offsetX: 9, offsetY: 17 }
+    ),
+    {
+      x: 1422,
+      y: 32,
+      width: 18,
+      height: 34
+    }
+  );
+  assert.deepEqual(
+    dragFloatingBubbleBounds(
+      { x: 640, y: 220, width: 18, height: 34 },
+      workArea,
+      { x: 700, y: 250 },
+      { offsetX: 3, offsetY: 5, offsetRatioX: 0.5, offsetRatioY: 0.25 }
+    ),
+    {
+      x: 691,
+      y: 242,
+      width: 18,
+      height: 34
+    }
+  );
 });
 
 test('floating bubble collapsed styles fill the mini window with app glass styling', () => {

@@ -4,6 +4,7 @@ const FLOATING_BUBBLE_HANDLE_WIDTH = 18;
 const FLOATING_BUBBLE_HANDLE_HEIGHT = 34;
 const FLOATING_BUBBLE_MARGIN = 8;
 const FLOATING_BUBBLE_COLLAPSED_MARGIN = { x: 0, y: FLOATING_BUBBLE_MARGIN };
+const FLOATING_BUBBLE_WINDOWS_COLLAPSED_MARGIN = { x: 0, y: 0 };
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, Number(value)));
@@ -15,8 +16,27 @@ function canUseFloatingBubble(settings = {}) {
     settings.windowBehavior !== 'desktop';
 }
 
-function floatingBubbleNativeGlassEnabled(settings = {}, state = {}) {
+function floatingBubbleNativeGlassEnabled(settings = {}, state = {}, platform = process.platform) {
+  if (platform === 'win32' && settings?.floatingBubbleEnabled === true) return false;
   return settings?.systemGlass !== false && state?.collapsed !== true;
+}
+
+function floatingBubbleCollapsedArea(display, platform = process.platform) {
+  if (!display) return null;
+  return platform === 'win32' ? display.bounds : display.workArea;
+}
+
+function floatingBubbleCollapsedMargin(platform = process.platform) {
+  return platform === 'win32' ? FLOATING_BUBBLE_WINDOWS_COLLAPSED_MARGIN : FLOATING_BUBBLE_COLLAPSED_MARGIN;
+}
+
+function floatingBubbleWindowChrome(platform = process.platform, collapsed = false) {
+  if (platform !== 'win32' || collapsed !== true) return {};
+  return {
+    hasShadow: false,
+    roundedCorners: false,
+    thickFrame: false
+  };
 }
 
 function normalizeHandleSize(width = FLOATING_BUBBLE_HANDLE_WIDTH, height = FLOATING_BUBBLE_HANDLE_HEIGHT) {
@@ -64,8 +84,9 @@ function clampBounds(bounds, workArea, margin = FLOATING_BUBBLE_MARGIN) {
 function collapsedFloatingBubbleBounds(bounds, workArea, options = {}) {
   if (!bounds || !workArea) return null;
   const { width, height } = normalizeHandleSize(options.handleWidth, options.handleHeight);
+  const margin = options.margin || FLOATING_BUBBLE_COLLAPSED_MARGIN;
   if (options.collapsedBounds) {
-    const previous = clampBounds({ ...options.collapsedBounds, width, height }, workArea, FLOATING_BUBBLE_COLLAPSED_MARGIN);
+    const previous = clampBounds({ ...options.collapsedBounds, width, height }, workArea, margin);
     if (previous) return previous;
   }
   const side = options.side || floatingBubbleSide(bounds, workArea);
@@ -73,7 +94,7 @@ function collapsedFloatingBubbleBounds(bounds, workArea, options = {}) {
   const x = side === 'left'
     ? Number(bounds.x)
     : Number(bounds.x) + Number(bounds.width) - width;
-  return clampBounds({ x, y, width, height }, workArea, FLOATING_BUBBLE_COLLAPSED_MARGIN);
+  return clampBounds({ x, y, width, height }, workArea, margin);
 }
 
 function expandedFloatingBubbleBounds(collapsedBounds, workArea, previousExpandedBounds, margin = FLOATING_BUBBLE_MARGIN) {
@@ -92,20 +113,46 @@ function expandedFloatingBubbleBounds(collapsedBounds, workArea, previousExpande
 function floatingBubbleCollapsePlan(bounds, workArea, settings = {}, options = {}) {
   if (options.suppressNextCollapse || options.collapsed || !canUseFloatingBubble(settings)) return null;
   const expandedBounds = clampBounds(bounds, workArea);
-  const collapsedBounds = collapsedFloatingBubbleBounds(expandedBounds || bounds, workArea, {
+  const collapsedArea = options.collapsedArea || workArea;
+  const collapsedBounds = collapsedFloatingBubbleBounds(expandedBounds || bounds, collapsedArea, {
+    margin: options.collapsedMargin,
     collapsedBounds: options.collapsedBounds
   });
   if (!expandedBounds || !collapsedBounds) return null;
-  return { side: floatingBubbleSide(collapsedBounds, workArea), expandedBounds, collapsedBounds };
+  return { side: floatingBubbleSide(collapsedBounds, collapsedArea), expandedBounds, collapsedBounds };
 }
 
-function moveFloatingBubbleBounds(bounds, workArea, delta = {}) {
+function moveFloatingBubbleBounds(bounds, workArea, delta = {}, margin = FLOATING_BUBBLE_COLLAPSED_MARGIN) {
   if (!bounds || !workArea) return null;
   return clampBounds({
     ...bounds,
     x: Number(bounds.x) + Number(delta.dx || 0),
     y: Number(bounds.y) + Number(delta.dy || 0)
-  }, workArea, FLOATING_BUBBLE_COLLAPSED_MARGIN);
+  }, workArea, margin);
+}
+
+function normalizedDragOffset(value, ratio, fallback, max) {
+  const ratioNumber = Number(ratio);
+  if (Number.isFinite(ratioNumber)) return clamp(ratioNumber * max, 0, max);
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return clamp(number, 0, max);
+}
+
+function dragFloatingBubbleBounds(bounds, workArea, cursor = {}, offset = {}, margin = FLOATING_BUBBLE_COLLAPSED_MARGIN) {
+  if (!bounds || !workArea || !cursor) return null;
+  const { width, height } = normalizeHandleSize(bounds.width, bounds.height);
+  const cursorX = Number(cursor.x);
+  const cursorY = Number(cursor.y);
+  if (!Number.isFinite(cursorX) || !Number.isFinite(cursorY)) return null;
+  const offsetX = normalizedDragOffset(offset.offsetX ?? offset.x, offset.offsetRatioX, width / 2, width);
+  const offsetY = normalizedDragOffset(offset.offsetY ?? offset.y, offset.offsetRatioY, height / 2, height);
+  return clampBounds({
+    x: cursorX - offsetX,
+    y: cursorY - offsetY,
+    width,
+    height
+  }, workArea, margin);
 }
 
 module.exports = {
@@ -114,9 +161,13 @@ module.exports = {
   FLOATING_BUBBLE_MARGIN,
   canUseFloatingBubble,
   collapsedFloatingBubbleBounds,
+  dragFloatingBubbleBounds,
   expandedFloatingBubbleBounds,
+  floatingBubbleCollapsedArea,
+  floatingBubbleCollapsedMargin,
   floatingBubbleCollapsePlan,
   floatingBubbleNativeGlassEnabled,
   floatingBubbleSide,
+  floatingBubbleWindowChrome,
   moveFloatingBubbleBounds
 };

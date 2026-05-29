@@ -27,10 +27,14 @@ const {
   FLOATING_BUBBLE_HANDLE_HEIGHT,
   FLOATING_BUBBLE_HANDLE_WIDTH,
   canUseFloatingBubble,
+  dragFloatingBubbleBounds,
   expandedFloatingBubbleBounds,
+  floatingBubbleCollapsedArea,
+  floatingBubbleCollapsedMargin,
   floatingBubbleCollapsePlan,
   floatingBubbleNativeGlassEnabled,
   floatingBubbleSide,
+  floatingBubbleWindowChrome,
   moveFloatingBubbleBounds
 } = require('./floatingBubble');
 
@@ -194,6 +198,7 @@ function restoredBounds() {
 let persistBoundsTimer = null;
 let floatingBubbleAutoCollapseTimer = null;
 const floatingBubbleState = { collapsed: false, side: null, collapsedBounds: null, expandedBounds: null, suppressNextCollapse: false };
+let mainWindowChrome = { collapsedFloatingBubble: false };
 
 function stopPersistBoundsTimer() {
   if (persistBoundsTimer) clearTimeout(persistBoundsTimer);
@@ -233,7 +238,12 @@ function applyCollapsedFloatingBubbleLimits(bounds) {
   if (typeof mainWindow.setMinimumSize === 'function') {
     mainWindow.setMinimumSize(bounds?.width || FLOATING_BUBBLE_HANDLE_WIDTH, bounds?.height || FLOATING_BUBBLE_HANDLE_HEIGHT);
   }
+  if (typeof mainWindow.setMaximumSize === 'function') {
+    mainWindow.setMaximumSize(bounds?.width || FLOATING_BUBBLE_HANDLE_WIDTH, bounds?.height || FLOATING_BUBBLE_HANDLE_HEIGHT);
+  }
   if (typeof mainWindow.setResizable === 'function') mainWindow.setResizable(false);
+  mainWindow.setAlwaysOnTop(true, process.platform === 'win32' ? 'screen-saver' : 'floating');
+  if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(true);
 }
 
 function displayForBounds(bounds) {
@@ -248,6 +258,23 @@ function displayForBounds(bounds) {
   } catch (_) {
     return null;
   }
+}
+
+function displayForPoint(point) {
+  if (!point || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) return null;
+  try {
+    return screen.getDisplayNearestPoint({ x: Number(point.x), y: Number(point.y) });
+  } catch (_) {
+    return null;
+  }
+}
+
+function collapsedAreaForDisplay(display) {
+  return floatingBubbleCollapsedArea(display, process.platform) || display?.workArea || display?.bounds || null;
+}
+
+function collapsedMargin() {
+  return floatingBubbleCollapsedMargin(process.platform);
 }
 
 function persistWindowBounds(next) {
@@ -269,6 +296,12 @@ function collapseFloatingBubble(plan) {
   floatingBubbleState.expandedBounds = expandedBounds;
   settings.floatingBubbleBounds = collapsedBounds;
   applyNativeMaterial();
+  if (process.platform === 'win32') {
+    persistWindowBounds(expandedBounds);
+    replaceMainWindow(collapsedBounds, { collapsedFloatingBubble: true, focus: false });
+    sendFloatingBubbleState();
+    return true;
+  }
   applyCollapsedFloatingBubbleLimits(collapsedBounds);
   mainWindow.setBounds(collapsedBounds);
   persistWindowBounds(expandedBounds);
@@ -279,9 +312,12 @@ function collapseFloatingBubble(plan) {
 function maybeCollapseFloatingBubble(bounds) {
   const display = displayForBounds(bounds);
   if (!display) return false;
+  const collapsedArea = collapsedAreaForDisplay(display);
   const plan = floatingBubbleCollapsePlan(bounds, display.workArea, settings, {
     collapsed: floatingBubbleState.collapsed,
     suppressNextCollapse: floatingBubbleState.suppressNextCollapse,
+    collapsedArea,
+    collapsedMargin: collapsedMargin(),
     collapsedBounds: settings?.floatingBubbleBounds || floatingBubbleState.collapsedBounds
   });
   floatingBubbleState.suppressNextCollapse = false;
@@ -304,6 +340,13 @@ function expandFloatingBubble(options = {}) {
   applyNativeMaterial();
   if (target) {
     floatingBubbleState.suppressNextCollapse = true;
+    if (process.platform === 'win32' && mainWindowChrome.collapsedFloatingBubble) {
+      persistWindowBounds(target);
+      replaceMainWindow(target, { collapsedFloatingBubble: false, focus: options.focus !== false });
+      setTimeout(() => { floatingBubbleState.suppressNextCollapse = false; }, 300);
+      sendFloatingBubbleState();
+      return true;
+    }
     restoreWindowSizeLimits();
     mainWindow.setBounds(target);
     persistWindowBounds(target);
@@ -361,7 +404,7 @@ function persistBoundsSoon() {
     } else if (floatingBubbleState.collapsed && floatingBubbleState.expandedBounds) {
       floatingBubbleState.collapsedBounds = next;
       const display = displayForBounds(next);
-      const nextSide = display ? floatingBubbleSide(next, display.workArea) : floatingBubbleState.side;
+      const nextSide = display ? floatingBubbleSide(next, collapsedAreaForDisplay(display)) : floatingBubbleState.side;
       if (nextSide !== floatingBubbleState.side) {
         floatingBubbleState.side = nextSide;
         sendFloatingBubbleState();
@@ -471,6 +514,10 @@ function applyMacActivationPolicy() {
 
 function applyWindowSettings() {
   if (!mainWindow) return;
+  if (floatingBubbleState.collapsed) {
+    applyCollapsedFloatingBubbleLimits(mainWindow.getBounds());
+    return;
+  }
   const behavior = describeWindowBehavior(settings);
   mainWindow.setAlwaysOnTop(behavior.alwaysOnTop, 'floating');
   if (typeof mainWindow.setMovable === 'function') mainWindow.setMovable(behavior.draggable);
@@ -479,11 +526,12 @@ function applyWindowSettings() {
     mainWindow.setIgnoreMouseEvents(behavior.mousePassthrough);
   }
   if (typeof mainWindow.setFocusable === 'function') mainWindow.setFocusable(behavior.focusable);
+  if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(Boolean(settings?.trayMode));
   if (!behavior.focusable && typeof mainWindow.blur === 'function') mainWindow.blur();
 }
 
 function nativeBlurEnabled(source = settings) {
-  return floatingBubbleNativeGlassEnabled(source, floatingBubbleState);
+  return floatingBubbleNativeGlassEnabled(source, floatingBubbleState, process.platform);
 }
 
 function keepNativeBlurActive() {
@@ -1140,6 +1188,10 @@ function isAllowedExternalUrl(value) {
 
 function revealWindow(target = mainWindow) {
   if (!target || target.isDestroyed() || target.isVisible()) return;
+  if (target === mainWindow && floatingBubbleState.collapsed && typeof target.showInactive === 'function') {
+    target.showInactive();
+    return;
+  }
   target.show();
 }
 
@@ -1170,21 +1222,31 @@ function loadWindowFile(target) {
   });
 }
 
-function createWindow(boundsOverride) {
+function createWindow(boundsOverride, options = {}) {
   if (!settings) settings = readSettings();
+  const collapsedFloatingBubble = options.collapsedFloatingBubble === true;
   const glass = nativeBlurEnabled();
   const bounds = boundsOverride || restoredBounds() || DEFAULT_WINDOW;
+  const collapsedSizeLimits = {
+    minWidth: bounds.width,
+    minHeight: bounds.height,
+    maxWidth: bounds.width,
+    maxHeight: bounds.height
+  };
   const win = new BrowserWindow({
     width: bounds.width,
     height: bounds.height,
     ...(typeof bounds.x === 'number' ? { x: bounds.x, y: bounds.y } : {}),
-    ...WINDOW_LIMITS,
+    ...(collapsedFloatingBubble ? collapsedSizeLimits : WINDOW_LIMITS),
     frame: false,
     transparent: true,
-    resizable: true,
+    resizable: !collapsedFloatingBubble,
     show: false,
     backgroundColor: '#00000000',
     icon: APP_ICON_PATH,
+    skipTaskbar: collapsedFloatingBubble || Boolean(settings?.trayMode),
+    ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
+    ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
     ...(process.platform === 'win32' && glass ? { backgroundMaterial: 'acrylic' } : {}),
     webPreferences: {
@@ -1194,6 +1256,7 @@ function createWindow(boundsOverride) {
     }
   });
   mainWindow = win;
+  mainWindowChrome = { collapsedFloatingBubble };
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -1202,7 +1265,6 @@ function createWindow(boundsOverride) {
     event.preventDefault();
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
   });
-  if (settings.trayMode && typeof win.setSkipTaskbar === 'function') win.setSkipTaskbar(true);
   applyWindowSettings();
   applyNativeMaterial();
   keepNativeBlurActive();
@@ -1240,6 +1302,22 @@ function handleZoomShortcut(event, input) {
   if (key === '=' || key === '+') { event.preventDefault(); adjustZoom(ZOOM_LIMITS.step); }
   else if (key === '-' || key === '_') { event.preventDefault(); adjustZoom(-ZOOM_LIMITS.step); }
   else if (key === '0') { event.preventDefault(); setZoomFactor(1); }
+}
+
+function replaceMainWindow(bounds, options = {}) {
+  const old = mainWindow;
+  const wasFocused = old && !old.isDestroyed() ? old.isFocused() : false;
+  if (old && !old.isDestroyed()) old.removeAllListeners('close');
+  // Build the new window first so total window count never drops to 0
+  // (otherwise window-all-closed fires and quits the app on Windows).
+  createWindow(bounds, { collapsedFloatingBubble: options.collapsedFloatingBubble === true });
+  const next = mainWindow;
+  next.once('show', () => {
+    if (old && !old.isDestroyed()) old.destroy();
+    if ((options.focus === true || (options.focus !== false && wasFocused)) && !next.isDestroyed()) {
+      next.focus();
+    }
+  });
 }
 
 let cursorStatusCache = { value: null, at: 0 };
@@ -1301,7 +1379,7 @@ app.whenReady().then(() => {
   setTimeout(() => { checkTokscaleNpm({ silent: true }); }, 2000);
   ipcMain.handle('settings:get', () => settings);
   ipcMain.handle('settings:update', (_event, patch) => {
-    const previousSystemGlass = settings.systemGlass;
+    const previousNativeMaterial = nativeBlurEnabled();
     const previousHubMode = settings.hubMode;
     const previousHubHostPort = settings.hubHostPort;
     const previousHubHostSecret = settings.hubHostSecret;
@@ -1362,7 +1440,8 @@ app.whenReady().then(() => {
     else if (settings.discordRpcEnabled && settings.currency !== previousCurrency && latestStats) updateDiscordRpc(latestStats, settings.currency);
     applyWindowSettings();
     syncFloatingBubbleAvailability();
-    if (process.platform === 'win32' && previousSystemGlass !== settings.systemGlass) {
+    const nextNativeMaterial = nativeBlurEnabled();
+    if (process.platform === 'win32' && previousNativeMaterial !== nextNativeMaterial) {
       rebuildWindow();
     } else {
       applyNativeMaterial();
@@ -1400,15 +1479,31 @@ app.whenReady().then(() => {
   ipcMain.handle('floatingBubble:move', (_event, delta) => {
     if (!mainWindow || mainWindow.isDestroyed() || !floatingBubbleState.collapsed) return false;
     const current = mainWindow.getBounds();
-    const display = displayForBounds(current);
+    const hasDragOffset = delta && (
+      Object.hasOwn(delta, 'offsetX') ||
+      Object.hasOwn(delta, 'offsetY') ||
+      Object.hasOwn(delta, 'offsetRatioX') ||
+      Object.hasOwn(delta, 'offsetRatioY')
+    );
+    const cursor = hasDragOffset && typeof screen.getCursorScreenPoint === 'function'
+      ? screen.getCursorScreenPoint()
+      : null;
+    const display = (cursor && displayForPoint(cursor)) || displayForBounds(current);
     if (!display) return false;
-    const target = moveFloatingBubbleBounds(current, display.workArea, delta);
+    const collapsedArea = collapsedAreaForDisplay(display);
+    const margin = collapsedMargin();
+    const target = cursor
+      ? dragFloatingBubbleBounds(current, collapsedArea, cursor, delta, margin)
+      : moveFloatingBubbleBounds(current, collapsedArea, delta, margin);
     if (!target) return false;
     floatingBubbleState.collapsedBounds = target;
-    floatingBubbleState.side = floatingBubbleSide(target, display.workArea);
-    settings.floatingBubbleBounds = target;
-    mainWindow.setBounds(target);
-    saveSettings();
+    floatingBubbleState.side = floatingBubbleSide(target, collapsedArea);
+    if (target.width === current.width && target.height === current.height && typeof mainWindow.setPosition === 'function') {
+      mainWindow.setPosition(target.x, target.y, false);
+    } else {
+      mainWindow.setBounds(target);
+    }
+    persistBoundsSoon();
     sendFloatingBubbleState();
     return true;
   });
