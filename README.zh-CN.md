@@ -57,23 +57,23 @@
 |:---:|:---:|:---:|
 | ![用量上限视图](.github/assets/limits-view.png) | ![设备视图](.github/assets/devices-view.png) | ![模型视图](.github/assets/models-view.png) |
 
-| Discord Rich Presence | 菜单栏模式 | iOS 小部件 |
+| Session 视图 | Session 明细 | Discord Rich Presence |
 |:---:|:---:|:---:|
-| ![Discord Rich Presence](.github/assets/discord-rpc.png) | ![菜单栏模式](.github/assets/menu-bar.png) | ![iOS 小部件](.github/assets/ios-widget.png) |
+| ![Session 视图](.github/assets/sessions-view.png) | ![Session 明细](.github/assets/session-details.png) | ![Discord Rich Presence](.github/assets/discord-rpc.png) |
 
 ## 支持的工具
 
-Token Monitor 对「Token 用量」和「账户用量上限」分别支持：
+Token Monitor 对「Token 用量」「账户用量上限」和「session 明细」分别支持：
 
-| Logo | 工具 | 数据路径 | Token 用量 | AI 工具用量上限 |
-|:---:|------|-----------|:---:|:---:|
-| <img src=".github/assets/tools-icon/claude.png" width="28" alt="Claude Code" /> | Claude Code | `~/.claude/projects/`、`~/.claude/transcripts/` | ✅ | ✅ |
-| <img src=".github/assets/tools-icon/codex.png" width="28" alt="Codex" /> | Codex | `~/.codex/sessions/` | ✅ | ✅ |
-| <img src=".github/assets/tools-icon/opencode.png" width="28" alt="OpenCode" /> | OpenCode | `~/.local/share/opencode/` | ✅ | — |
-| <img src=".github/assets/tools-icon/hermes-agent.png" width="28" alt="Hermes" /> | Hermes | `$HERMES_HOME` 或 `~/.hermes/` | ✅ | — |
-| <img src=".github/assets/tools-icon/openclaw.png" width="28" alt="OpenClaw" /> | OpenClaw | `~/.openclaw/agents/` | ✅ | — |
-| <img src=".github/assets/tools-icon/cursor.png" width="28" alt="Cursor" /> | Cursor | `~/.config/tokscale/cursor-cache/`（由 Cursor 同步保持更新） | ✅ | ✅ |
-| <img src="assets/icons/antigravity.svg" width="28" alt="Antigravity" /> | Antigravity | `~/.config/tokscale/antigravity-cache/`（由 Antigravity 同步保持更新） | ✅ | ✅ |
+| Logo | 工具 | 数据路径 | Token 用量 | AI 工具用量上限 | session 明细 |
+|:---:|------|-----------|:---:|:---:|:---:|
+| <img src=".github/assets/tools-icon/claude.png" width="28" alt="Claude Code" /> | Claude Code | `~/.claude/projects/`、`~/.claude/transcripts/` | ✅ | ✅ | ✅ |
+| <img src=".github/assets/tools-icon/codex.png" width="28" alt="Codex" /> | Codex | `~/.codex/sessions/` | ✅ | ✅ | ✅ |
+| <img src=".github/assets/tools-icon/opencode.png" width="28" alt="OpenCode" /> | OpenCode | `~/.local/share/opencode/` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/hermes-agent.png" width="28" alt="Hermes" /> | Hermes | `$HERMES_HOME` 或 `~/.hermes/` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/openclaw.png" width="28" alt="OpenClaw" /> | OpenClaw | `~/.openclaw/agents/` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/cursor.png" width="28" alt="Cursor" /> | Cursor | `~/.config/tokscale/cursor-cache/`（由 Cursor 同步保持更新） | ✅ | ✅ | — |
+| <img src="assets/icons/antigravity.svg" width="28" alt="Antigravity" /> | Antigravity | `~/.config/tokscale/antigravity-cache/`（由 Antigravity 同步保持更新） | ✅ | ✅ | — |
 
 ## 安装
 
