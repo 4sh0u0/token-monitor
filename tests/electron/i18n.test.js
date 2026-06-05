@@ -63,6 +63,17 @@ test('tray limit labels describe remaining quota instead of ambiguous worst wind
   assert.equal(translate('zh-CN', 'settings.tray.barsWindow'), '额度条：任一额度剩余最少');
 });
 
+test('AI limit capability labels stay compact in Chinese', () => {
+  assert.equal(translate('zh-TW', 'settings.limits.capability.appMustBeOpen'), '需開啟 App');
+  assert.equal(translate('zh-TW', 'settings.limits.capability.manualLogin'), '手動登入');
+  assert.equal(translate('zh-TW', 'settings.limits.status.openApp'), '請開啟 App');
+  assert.equal(translate('zh-TW', 'settings.limits.status.linked'), '已連結');
+  assert.equal(translate('zh-TW', 'settings.limits.capability.web'), 'Web');
+  assert.equal(translate('zh-CN', 'settings.limits.capability.appMustBeOpen'), '需打开 App');
+  assert.equal(translate('zh-CN', 'settings.limits.capability.manualLogin'), '手动登录');
+  assert.equal(translate('zh-CN', 'settings.limits.status.noSyncedData'), '暂无同步数据');
+});
+
 test('applyTranslations updates text, title, aria-label, placeholders, and document lang', () => {
   const title = fakeElement({ i18n: 'settings.sync.title' });
   const button = fakeElement({ i18nTitle: 'settings.sync.copySecret' });

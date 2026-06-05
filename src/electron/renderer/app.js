@@ -75,6 +75,7 @@ const LIMIT_PROVIDERS = [
 ];
 const DEFAULT_LIMIT_PROVIDER_ORDER = LIMIT_PROVIDERS.map((provider) => provider.id).join(',');
 const limitProviderOrderApi = window.TokenMonitorLimitProviderOrder;
+const limitProviderPresentationApi = window.TokenMonitorLimitProviderPresentation;
 const clientDisplayPreferencesApi = window.TokenMonitorClientDisplayPreferences;
 const preferenceDragSortApi = window.TokenMonitorPreferenceDragSort;
 const i18n = window.TokenMonitorI18n;
@@ -85,6 +86,29 @@ const LIMIT_REFRESH_OPTIONS = [60000, 120000, 300000, 900000, 1800000];
 const WINDOW_BEHAVIOR_VALUES = ['floating', 'normal', 'desktop'];
 const WINDOW_BEHAVIOR_ICONS = { floating: '⇧', normal: '○', desktop: '⇩' };
 const LIMIT_SOURCE_LABELS = { oauth: 'OAuth', cli: 'CLI', web: 'Web', rpc: 'CLI', local: 'Local' };
+const LIMIT_CAPABILITY_TAG_KEYS = {
+  Auto: 'settings.limits.capability.auto',
+  'OAuth/CLI': 'settings.limits.capability.oauthCli',
+  'CLI RPC': 'settings.limits.capability.cliRpc',
+  'Manual login': 'settings.limits.capability.manualLogin',
+  Web: 'settings.limits.capability.web',
+  'App must be open': 'settings.limits.capability.appMustBeOpen',
+  RPC: 'settings.limits.capability.rpc',
+  'Local/Zen': 'settings.limits.capability.localZen',
+  Live: 'settings.limits.status.live',
+  Linked: 'settings.limits.status.linked',
+  'Sign in': 'settings.limits.status.signIn',
+  'Open app': 'settings.limits.status.openApp',
+  'No synced data': 'settings.limits.status.noSyncedData',
+  Stale: 'settings.limits.status.stale',
+  Disabled: 'settings.limits.status.disabled',
+  'Sign in again': 'settings.limits.status.signInAgain',
+  Limited: 'settings.limits.status.limited',
+  'Usage API limited': 'settings.limits.status.usageApiLimited',
+  Unavailable: 'settings.limits.status.unavailable',
+  'Not set up': 'settings.limits.status.notSetUp',
+  Error: 'settings.limits.status.error'
+};
 const deviceAccent = '#73bdf5';
 const deviceStaleColor = '#8c97a7';
 const fallbackModelColors = ['#6ab4f0', '#cc7c5e', '#a57df0', '#49a3b0', '#f0d66a', '#f06a7b'];
@@ -158,6 +182,11 @@ function currentLocale() {
 
 function t(key, params) {
   return i18n.translate(currentLocale(), key, params);
+}
+
+function translatedLimitCapabilityTag(label) {
+  const key = LIMIT_CAPABILITY_TAG_KEYS[label];
+  return key ? t(key) : label;
 }
 
 function applySettingsTranslations() {
@@ -591,6 +620,7 @@ function limitStatusLabel(status, stale) {
   if (status === 'unavailable') return 'Unavailable';
   return 'Error';
 }
+
 function limitProviderMeta(provider) {
   if (provider.stale) return `Stale · ${formatUpdatedAge(provider.updatedAt).replace('Updated ', '')}`;
   if (provider.status === 'ok') {
@@ -1001,6 +1031,7 @@ async function refreshStats(options = {}) {
     state.stats = await window.tokenMonitor.getStats(options);
     setStatus(statusTextFor(state.mode, state.streamConnected));
     render();
+    renderLimitProviderCheckboxes();
     maybeUpdateBarsIcon();
   } catch (error) {
     setStatus(error.message, true);
@@ -1639,9 +1670,13 @@ function renderToolPreferences() {
 function renderLimitProviderCheckboxes() {
   if (!els.limitProviderCheckboxes) return;
   const enabled = enabledLimitProviderSet();
+  const collected = new Map((state.stats?.limits?.providers || []).map((provider) => [provider.provider, provider]));
   const providers = limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, state.settings?.limitProviderOrder);
   els.limitProviderCheckboxes.replaceChildren();
   for (const [index, { id, label, settingsLabel }] of providers.entries()) {
+    const provider = enabled.has(id)
+      ? (collected.get(id) || { provider: id, ...(state.stats ? { status: missingLimitProviderStatus() } : {}), windows: [] })
+      : { provider: id, status: 'disabled', windows: [] };
     const row = document.createElement('div');
     row.className = 'limit-provider-row';
     row.dataset.provider = id;
@@ -1652,9 +1687,22 @@ function renderLimitProviderCheckboxes() {
     cb.dataset.provider = id;
     cb.checked = enabled.has(id);
     cb.addEventListener('change', onLimitProviderToggle);
+    const copy = document.createElement('span');
+    copy.className = 'limit-provider-copy';
     const text = document.createElement('span');
+    text.className = 'limit-provider-name';
     text.textContent = settingsLabel || label;
-    wrap.append(cb, text);
+    const tags = document.createElement('span');
+    tags.className = 'limit-provider-tags';
+    for (const tagInfo of limitProviderPresentationApi.limitProviderSettingsTags(provider)) {
+      const tag = document.createElement('span');
+      tag.className = `limit-provider-tag limit-provider-tag-${tagInfo.kind}`;
+      if (tagInfo.tone) tag.classList.add(`limit-provider-tag-${tagInfo.tone}`);
+      tag.textContent = translatedLimitCapabilityTag(tagInfo.label);
+      tags.append(tag);
+    }
+    copy.append(text, tags);
+    wrap.append(cb, copy);
     const handle = createPreferenceOrderHandle({
       kind: 'provider',
       id,
@@ -2042,6 +2090,7 @@ window.tokenMonitor.onStatsPush?.((payload) => {
   setStatus(statusTextFor(state.mode, state.streamConnected));
   if (payload.data?.stats) {
     render();
+    renderLimitProviderCheckboxes();
     maybeUpdateBarsIcon();
   }
   restartTimer();
