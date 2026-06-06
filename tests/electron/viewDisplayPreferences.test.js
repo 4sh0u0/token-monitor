@@ -1,0 +1,99 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+const {
+  hasViewDisplayPreferences,
+  moveViewDisplayOrder,
+  normalizeHiddenViews,
+  normalizeViewDisplayOrder,
+  orderedViews,
+  reorderViewDisplayOrder,
+  visibleViewOrder
+} = require('../../src/electron/renderer/viewDisplayPreferences');
+
+const views = [
+  { id: 'tool', label: 'Tools' },
+  { id: 'device', label: 'Devices' },
+  { id: 'model', label: 'Models' },
+  { id: 'session', label: 'Sessions' },
+  { id: 'limits', label: 'Limits' }
+];
+
+test('normalizeViewDisplayOrder drops invalid entries and appends missing views', () => {
+  assert.deepEqual(
+    normalizeViewDisplayOrder('model,unknown,model,tool', views),
+    ['model', 'tool', 'device', 'session', 'limits']
+  );
+});
+
+test('normalizeHiddenViews keeps known hidden views but never hides every view', () => {
+  assert.equal(normalizeHiddenViews('model,unknown,model,session', views), 'model,session');
+  assert.equal(normalizeHiddenViews('tool,device,model,session,limits', views), '');
+});
+
+test('orderedViews returns view objects in saved display order', () => {
+  assert.deepEqual(
+    orderedViews(views, 'session,tool').map((view) => view.id),
+    ['session', 'tool', 'device', 'model', 'limits']
+  );
+});
+
+test('moveViewDisplayOrder swaps a view with its neighbor only when possible', () => {
+  assert.equal(
+    moveViewDisplayOrder('tool,device,model,session,limits', views, 'model', 'up'),
+    'tool,model,device,session,limits'
+  );
+  assert.equal(
+    moveViewDisplayOrder('tool,device,model,session,limits', views, 'tool', 'up'),
+    'tool,device,model,session,limits'
+  );
+});
+
+test('reorderViewDisplayOrder moves a view to a target index', () => {
+  assert.equal(
+    reorderViewDisplayOrder('tool,device,model,session,limits', views, 'session', 0),
+    'session,tool,device,model,limits'
+  );
+  assert.equal(
+    reorderViewDisplayOrder('tool,device,model,session,limits', views, 'tool', 99),
+    'device,model,session,limits,tool'
+  );
+  assert.equal(
+    reorderViewDisplayOrder('tool,device,model,session,limits', views, 'unknown', 1),
+    'tool,device,model,session,limits'
+  );
+});
+
+test('visibleViewOrder applies order, hidden views, and runtime availability', () => {
+  assert.deepEqual(
+    visibleViewOrder({
+      views,
+      orderValue: 'session,limits,tool,device,model',
+      hiddenValue: 'device',
+      availableIds: ['tool', 'device', 'model', 'session']
+    }),
+    ['session', 'tool', 'model']
+  );
+});
+
+test('visibleViewOrder falls back to the first available view when preferences hide every available view', () => {
+  assert.deepEqual(
+    visibleViewOrder({
+      views,
+      orderValue: 'limits,tool,device,model,session',
+      hiddenValue: 'tool,device,model,session',
+      availableIds: ['tool', 'device', 'model', 'session']
+    }),
+    ['tool']
+  );
+});
+
+test('hasViewDisplayPreferences detects custom order or hidden views', () => {
+  assert.equal(hasViewDisplayPreferences('', '', views), false);
+  assert.equal(hasViewDisplayPreferences('unknown', '', views), false);
+  assert.equal(hasViewDisplayPreferences('', 'unknown', views), false);
+  assert.equal(hasViewDisplayPreferences('session,tool', '', views), true);
+  assert.equal(hasViewDisplayPreferences('', 'model', views), true);
+});

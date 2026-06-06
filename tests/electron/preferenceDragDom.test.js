@@ -30,6 +30,7 @@ test('preference drag only selects sortable rows, not nested controls', () => {
   const body = functionBody(readRendererFile('app.js'), 'preferenceRows', 'preferenceOrder');
   assert.match(body, /\.tool-preference-row\[data-client\]/);
   assert.match(body, /\.limit-provider-row\[data-provider\]/);
+  assert.match(body, /\.view-preference-row\[data-view\]/);
   assert.doesNotMatch(body, /querySelectorAll\(`\\\[data-\$\{attr\}\\\]`\)/);
 });
 
@@ -39,6 +40,7 @@ test('preference drag does not animate row transforms during pointer movement', 
   assert.doesNotMatch(app, /animatePreferenceOrderChange/);
   assert.doesNotMatch(app, /translateY\(/);
   assert.doesNotMatch(cssRule(css, '.tool-preference-row'), /transform/);
+  assert.doesNotMatch(cssRule(css, '.view-preference-row'), /transform/);
   assert.doesNotMatch(cssRule(css, '.settings-panel .limit-provider-row'), /transform/);
   assert.doesNotMatch(cssRule(css, '.preference-order-handle'), /transition:\s*transform/);
 });
@@ -66,4 +68,20 @@ test('tool preference rows include compact per-tool pin controls', () => {
   assert.match(body, /settings\.tools\.pinClient/);
   assert.match(body, /settings\.tools\.unpinClient/);
   assert.match(body, /onClientPinnedToggle/);
+});
+
+test('view preferences use compact visibility and order controls', () => {
+  const html = readRendererFile('index.html');
+  const group = html.match(/<div class="settings-group">\s*<div class="settings-group-header settings-views-header">[\s\S]*?<div id="viewDisplayList"/)?.[0] || '';
+  assert.match(group, /<div class="settings-group-header settings-views-header">/);
+  assert.match(group, /<div class="tool-header-actions">/);
+  assert.match(group, /id="resetViewDisplayOrderButton"/);
+  assert.match(group, /id="showAllViewsButton"/);
+  assert.doesNotMatch(group, /class="view-preference-head"/);
+
+  const body = functionBody(readRendererFile('app.js'), 'renderViewPreferences', 'renderToolPreferences');
+  assert.match(body, /view-preference-row/);
+  assert.match(body, /settings\.views\.hideView/);
+  assert.match(body, /settings\.views\.showView/);
+  assert.match(body, /createPreferenceOrderHandle\(\{ kind: 'view'/);
 });

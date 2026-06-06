@@ -77,6 +77,7 @@ const DEFAULT_LIMIT_PROVIDER_ORDER = LIMIT_PROVIDERS.map((provider) => provider.
 const limitProviderOrderApi = window.TokenMonitorLimitProviderOrder;
 const limitProviderPresentationApi = window.TokenMonitorLimitProviderPresentation;
 const clientDisplayPreferencesApi = window.TokenMonitorClientDisplayPreferences;
+const viewDisplayPreferencesApi = window.TokenMonitorViewDisplayPreferences;
 const preferenceDragSortApi = window.TokenMonitorPreferenceDragSort;
 const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
@@ -114,6 +115,13 @@ const deviceAccent = '#73bdf5';
 const deviceStaleColor = '#8c97a7';
 const fallbackModelColors = ['#6ab4f0', '#cc7c5e', '#a57df0', '#49a3b0', '#f0d66a', '#f06a7b'];
 const baseBreakdownOrder = ['tool', 'device', 'model', 'session'];
+const VIEW_DISPLAY_OPTIONS = [
+  { id: 'tool', labelKey: 'views.tool' },
+  { id: 'device', labelKey: 'views.device' },
+  { id: 'model', labelKey: 'views.model' },
+  { id: 'session', labelKey: 'views.session' },
+  { id: 'limits', labelKey: 'views.limits' }
+];
 const viewPeriodValues = new Set(['today', 'month', 'allTime']);
 const viewBreakdownValues = new Set([...baseBreakdownOrder, 'limits']);
 const initialFloatingBubble = window.__TOKEN_MONITOR_INITIAL_FLOATING_BUBBLE__ || { collapsed: false, side: null };
@@ -165,6 +173,9 @@ Object.assign(els, {
   titleIconInput: document.getElementById('titleIconInput'),
   resetClientDisplayOrderButton: document.getElementById('resetClientDisplayOrderButton'),
   showAllClientsButton: document.getElementById('showAllClientsButton'),
+  resetViewDisplayOrderButton: document.getElementById('resetViewDisplayOrderButton'),
+  showAllViewsButton: document.getElementById('showAllViewsButton'),
+  viewDisplayList: document.getElementById('viewDisplayList'),
   sessionDetail: document.getElementById('session-detail'),
   sessionDetailHead: document.getElementById('session-detail-head')
 });
@@ -615,6 +626,24 @@ function limitViewAvailable() {
   return enabledLimitProviderSet().size > 0;
 }
 
+function availableBreakdownIds() {
+  return limitViewAvailable() ? [...baseBreakdownOrder, 'limits'] : baseBreakdownOrder;
+}
+
+function visibleBreakdownOrder() {
+  return viewDisplayPreferencesApi.visibleViewOrder({
+    views: VIEW_DISPLAY_OPTIONS,
+    orderValue: state.settings?.viewDisplayOrder,
+    hiddenValue: state.settings?.hiddenViews,
+    availableIds: availableBreakdownIds()
+  });
+}
+
+function ensureBreakdownVisible() {
+  const order = visibleBreakdownOrder();
+  if (!order.includes(state.breakdown)) setBreakdown(order[0] || 'tool');
+}
+
 function limitStatusLabel(status, stale) {
   if (status === 'ok') return 'Live';
   if (status === 'disabled') return 'Disabled';
@@ -853,9 +882,9 @@ function renderLimits() {
 }
 
 function nextBreakdown(value) {
-  const order = limitViewAvailable() ? [...baseBreakdownOrder, 'limits'] : baseBreakdownOrder;
+  const order = visibleBreakdownOrder();
   const index = order.indexOf(value);
-  return order[(index + 1) % order.length];
+  return order[(index + 1) % order.length] || order[0] || 'tool';
 }
 
 function breakdownLabel(deviceText) {
@@ -990,9 +1019,7 @@ let contentReadySignaled = false;
 
 function render() {
   if (!state.stats) return;
-  if (state.breakdown === 'limits' && !limitViewAvailable()) {
-    setBreakdown('tool');
-  }
+  ensureBreakdownVisible();
   if (state.openSession && state.breakdown !== 'session') { state.openSession = null; els.sessionDetail.classList.add('hidden'); els.sessionDetail.replaceChildren(); els.sessionDetailHead.classList.add('hidden'); els.sessionDetailHead.replaceChildren(); }
   if (state.openSession) { els.sessionDetail.classList.remove('hidden'); els.sessionDetailHead.classList.remove('hidden'); } else { els.sessionDetail.classList.add('hidden'); els.sessionDetailHead.classList.add('hidden'); }
   const period = state.stats.periods?.[state.period] || { totalTokens: 0, costUsd: 0, clients: {} };
@@ -1574,6 +1601,7 @@ function syncSettingsForm() {
   els.glassInput.value = String(state.settings.glassOpacity ?? 68);
   els.blurInput.value = String(state.settings.glassBlur ?? 32);
   els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
+  renderViewPreferences();
   renderToolPreferences();
   renderLimitProviderCheckboxes();
   renderOpencodeStatus();
@@ -1592,6 +1620,14 @@ function enabledClientSet() {
 
 function hiddenClientSet() {
   return new Set(clientDisplayPreferencesApi.normalizeHiddenClients(state.settings?.hiddenClients, KNOWN_CLIENTS).split(',').filter(Boolean));
+}
+
+function hiddenViewSet() {
+  return new Set(viewDisplayPreferencesApi.normalizeHiddenViews(state.settings?.hiddenViews, VIEW_DISPLAY_OPTIONS).split(',').filter(Boolean));
+}
+
+function viewLabel(view) {
+  return t(view.labelKey || `views.${view.id}`);
 }
 
 function pinnedClientSet() {
@@ -1628,16 +1664,24 @@ function pinIcon() {
 }
 
 function preferenceListForKind(kind) {
-  return kind === 'client' ? els.clientDisplayList : els.limitProviderCheckboxes;
+  if (kind === 'client') return els.clientDisplayList;
+  if (kind === 'view') return els.viewDisplayList;
+  return els.limitProviderCheckboxes;
 }
 
 function preferenceItemAttribute(kind) {
-  return kind === 'client' ? 'client' : 'provider';
+  if (kind === 'client') return 'client';
+  if (kind === 'view') return 'view';
+  return 'provider';
 }
 
 function preferenceRows(kind) {
   const list = preferenceListForKind(kind);
-  const selector = kind === 'client' ? '.tool-preference-row[data-client]' : '.limit-provider-row[data-provider]';
+  const selector = kind === 'client'
+    ? '.tool-preference-row[data-client]'
+    : kind === 'view'
+      ? '.view-preference-row[data-view]'
+      : '.limit-provider-row[data-provider]';
   return Array.from(list?.querySelectorAll(selector) || []);
 }
 
@@ -1689,7 +1733,7 @@ function startPreferenceDrag(event, kind, id) {
   const order = preferenceOrder(kind);
   preferenceDrag = { kind, id, pointerId: event.pointerId, originalOrder: order, order, changed: false, handle: event.currentTarget };
   event.currentTarget.setPointerCapture?.(event.pointerId);
-  event.currentTarget.closest('[data-client], [data-provider]')?.classList.add('is-dragging');
+  event.currentTarget.closest('[data-client], [data-provider], [data-view]')?.classList.add('is-dragging');
   setPreferencePointerListeners(true);
   applyPreferenceLiveOrder(kind, event.clientY);
 }
@@ -1737,13 +1781,57 @@ function createPreferenceOrderHandle({ kind, id, label, count }) {
   handle.type = 'button';
   handle.className = 'preference-order-handle';
   handle.dataset.preferenceOrderHandle = kind;
-  handle.title = t(kind === 'client' ? 'settings.tools.reorderClient' : 'settings.limits.reorderProvider', { name: label });
+  handle.title = t(kind === 'client'
+    ? 'settings.tools.reorderClient'
+    : kind === 'view'
+      ? 'settings.views.reorderView'
+      : 'settings.limits.reorderProvider', { name: label });
   handle.setAttribute('aria-label', handle.title);
   handle.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
   handle.disabled = count <= 1;
   handle.addEventListener('pointerdown', (event) => startPreferenceDrag(event, kind, id));
   handle.addEventListener('keydown', (event) => onPreferenceOrderKeydown(event, kind, id));
   return handle;
+}
+
+function renderViewPreferences() {
+  if (!els.viewDisplayList) return;
+  const hidden = hiddenViewSet();
+  const views = viewDisplayPreferencesApi.orderedViews(VIEW_DISPLAY_OPTIONS, state.settings?.viewDisplayOrder);
+  const hasCustomOrder = viewDisplayPreferencesApi.hasCustomViewDisplayOrder(state.settings?.viewDisplayOrder);
+  const hasHiddenViews = hidden.size > 0;
+  if (els.resetViewDisplayOrderButton) els.resetViewDisplayOrderButton.disabled = !hasCustomOrder;
+  if (els.showAllViewsButton) els.showAllViewsButton.disabled = !hasHiddenViews;
+  els.viewDisplayList.replaceChildren();
+  const visibleCount = views.filter((view) => !hidden.has(view.id)).length;
+  for (const view of views) {
+    const id = view.id;
+    const label = viewLabel(view);
+    const isHidden = hidden.has(id);
+    const row = document.createElement('div');
+    row.className = 'view-preference-row';
+    row.dataset.view = id;
+    row.classList.toggle('is-hidden', isHidden);
+    const name = document.createElement('div');
+    name.className = 'tool-preference-name';
+    name.textContent = label;
+    const visibility = document.createElement('button');
+    visibility.type = 'button';
+    visibility.className = `tool-visibility-button${isHidden ? ' is-hidden' : ''}`;
+    visibility.dataset.view = id;
+    visibility.title = t(isHidden ? 'settings.views.showView' : 'settings.views.hideView', { name: label });
+    visibility.setAttribute('aria-label', visibility.title);
+    visibility.setAttribute('aria-pressed', String(!isHidden));
+    visibility.disabled = !isHidden && visibleCount <= 1;
+    visibility.append(visibilityIcon(isHidden));
+    visibility.addEventListener('click', () => onViewVisibilityToggle(id));
+    const handle = createPreferenceOrderHandle({ kind: 'view', id, label, count: views.length });
+    const actions = document.createElement('div');
+    actions.className = 'tool-preference-actions';
+    actions.append(visibility, handle);
+    row.append(name, actions);
+    els.viewDisplayList.appendChild(row);
+  }
 }
 
 function renderToolPreferences() {
@@ -1874,6 +1962,13 @@ async function onClientPinnedToggle(clientId) {
   await saveSettings({ pinnedClients: next, clientDisplayOrder: '' });
 }
 
+async function onViewVisibilityToggle(viewId) {
+  const hidden = hiddenViewSet();
+  if (hidden.has(viewId)) hidden.delete(viewId);
+  else hidden.add(viewId);
+  await saveSettings({ hiddenViews: Array.from(hidden).join(',') });
+}
+
 async function onLimitProviderToggle() {
   const checked = Array.from(els.limitProviderCheckboxes.querySelectorAll('input[type=checkbox]'))
     .filter((cb) => cb.checked)
@@ -1924,8 +2019,21 @@ async function onClientDisplayReorder(clientId, targetIndex) {
   await saveSettings({ clientDisplayOrder: next, pinnedClients: '' });
 }
 
+async function onViewDisplayMove(viewId, direction) {
+  const next = viewDisplayPreferencesApi.moveViewDisplayOrder(state.settings?.viewDisplayOrder, VIEW_DISPLAY_OPTIONS, viewId, direction);
+  await saveSettings({ viewDisplayOrder: next });
+}
+
+async function onViewDisplayReorder(viewId, targetIndex) {
+  const current = viewDisplayPreferencesApi.normalizeViewDisplayOrder(state.settings?.viewDisplayOrder, VIEW_DISPLAY_OPTIONS).join(',');
+  const next = viewDisplayPreferencesApi.reorderViewDisplayOrder(state.settings?.viewDisplayOrder, VIEW_DISPLAY_OPTIONS, viewId, targetIndex);
+  if (next === current) return;
+  await saveSettings({ viewDisplayOrder: next });
+}
+
 async function onPreferenceReorder(kind, id, targetIndex) {
   if (kind === 'client') await onClientDisplayReorder(id, targetIndex);
+  else if (kind === 'view') await onViewDisplayReorder(id, targetIndex);
   else await onLimitProviderReorder(id, targetIndex);
 }
 
@@ -1947,6 +2055,11 @@ async function onPreferenceOrderCommit(kind, order, id) {
     if (value !== current || pinned.length > 0) await saveSettings({ clientDisplayOrder: value, pinnedClients: '' });
     return;
   }
+  if (kind === 'view') {
+    const current = viewDisplayPreferencesApi.normalizeViewDisplayOrder(state.settings?.viewDisplayOrder, VIEW_DISPLAY_OPTIONS).join(',');
+    if (value !== current) await saveSettings({ viewDisplayOrder: value });
+    return;
+  }
   const current = limitProviderOrderApi.normalizeLimitProviderOrder(state.settings?.limitProviderOrder, LIMIT_PROVIDERS).join(',');
   if (value !== current) await saveSettings({ limitProviderOrder: value });
 }
@@ -1956,6 +2069,7 @@ function onPreferenceOrderKeydown(event, kind, id) {
   if (moves[event.key]) {
     event.preventDefault();
     if (kind === 'client') void onClientDisplayMove(id, moves[event.key]);
+    else if (kind === 'view') void onViewDisplayMove(id, moves[event.key]);
     else void onLimitProviderMove(id, moves[event.key]);
     return;
   }
@@ -1972,6 +2086,14 @@ async function resetClientDisplayOrder() {
 
 async function showAllClients() {
   await saveSettings({ hiddenClients: '' });
+}
+
+async function resetViewDisplayOrder() {
+  await saveSettings({ viewDisplayOrder: '' });
+}
+
+async function showAllViews() {
+  await saveSettings({ hiddenViews: '' });
 }
 
 async function saveSettings(patch) {
@@ -2129,6 +2251,8 @@ els.showLimitSourceInput.addEventListener('change', async () => {
 });
 els.resetClientDisplayOrderButton?.addEventListener('click', resetClientDisplayOrder);
 els.showAllClientsButton?.addEventListener('click', showAllClients);
+els.resetViewDisplayOrderButton?.addEventListener('click', resetViewDisplayOrder);
+els.showAllViewsButton?.addEventListener('click', showAllViews);
 els.resetGlassButton.addEventListener('click', async () => {
   els.glassInput.value = String(defaultAppearance.glassOpacity);
   applyAppearanceFromControls();

@@ -16,6 +16,10 @@ const {
   normalizePinnedClients
 } = require('./renderer/clientDisplayPreferences');
 const {
+  normalizeHiddenViews,
+  normalizeViewDisplayOrder
+} = require('./renderer/viewDisplayPreferences');
+const {
   checkNpmForNewer,
   cleanupStaleStaging,
   downloadFromNpm,
@@ -87,6 +91,7 @@ const HUB_MODE_VALUES = new Set(['local', 'client', 'host']);
 const LANGUAGE_VALUES = new Set(['auto', 'en', 'zh-TW', 'zh-CN']);
 const HUB_DEFAULT_PORT = 17321;
 const DEFAULT_CLIENT_LIST = DEFAULT_CLIENTS.split(',').map((id) => ({ id }));
+const DEFAULT_VIEW_LIST = ['tool', 'device', 'model', 'session', 'limits'].map((id) => ({ id }));
 
 let mainWindow = null;
 let settingsPath = null;
@@ -132,6 +137,8 @@ function defaultSettings() {
     clientDisplayOrder: '',
     hiddenClients: '',
     pinnedClients: '',
+    viewDisplayOrder: '',
+    hiddenViews: '',
     archivedClientUsage: { version: 1, clients: {} },
     allTimeSince: process.env.TOKEN_MONITOR_ALL_TIME_SINCE || '2024-01-01',
     limitsEnabled: parseBoolean(process.env.TOKEN_MONITOR_LIMITS_ENABLED, true),
@@ -181,6 +188,13 @@ function migrateClientDisplayOrder(value) {
   const raw = Array.isArray(value) ? value : String(value || '').split(',');
   const hasKnownClient = raw.some((item) => known.has(String(item || '').trim().toLowerCase()));
   return hasKnownClient ? normalizeClientDisplayOrder(value, DEFAULT_CLIENT_LIST).join(',') : '';
+}
+
+function migrateViewDisplayOrder(value) {
+  const known = new Set(DEFAULT_VIEW_LIST.map((view) => view.id));
+  const raw = Array.isArray(value) ? value : String(value || '').split(',');
+  const hasKnownView = raw.some((item) => known.has(String(item || '').trim().toLowerCase()));
+  return hasKnownView ? normalizeViewDisplayOrder(value, DEFAULT_VIEW_LIST).join(',') : '';
 }
 
 function normalizeTrayContent(value, fallback = 'tokens') {
@@ -528,6 +542,12 @@ function readSettings() {
     }
     if (saved.pinnedClients !== undefined) {
       merged.pinnedClients = normalizePinnedClients(saved.pinnedClients, DEFAULT_CLIENT_LIST);
+    }
+    if (saved.viewDisplayOrder !== undefined) {
+      merged.viewDisplayOrder = migrateViewDisplayOrder(saved.viewDisplayOrder);
+    }
+    if (saved.hiddenViews !== undefined) {
+      merged.hiddenViews = normalizeHiddenViews(saved.hiddenViews, DEFAULT_VIEW_LIST);
     }
     if (saved.windowBehavior === undefined && saved.alwaysOnTop !== undefined) {
       merged.windowBehavior = saved.alwaysOnTop ? 'floating' : 'normal';
@@ -1650,6 +1670,8 @@ app.whenReady().then(() => {
       clientDisplayOrder: patch.clientDisplayOrder !== undefined ? migrateClientDisplayOrder(patch.clientDisplayOrder) : (settings.clientDisplayOrder || ''),
       hiddenClients: patch.hiddenClients !== undefined ? normalizeHiddenClients(patch.hiddenClients, DEFAULT_CLIENT_LIST) : normalizeHiddenClients(settings.hiddenClients, DEFAULT_CLIENT_LIST),
       pinnedClients: patch.pinnedClients !== undefined ? normalizePinnedClients(patch.pinnedClients, DEFAULT_CLIENT_LIST) : normalizePinnedClients(settings.pinnedClients, DEFAULT_CLIENT_LIST),
+      viewDisplayOrder: patch.viewDisplayOrder !== undefined ? migrateViewDisplayOrder(patch.viewDisplayOrder) : (settings.viewDisplayOrder || ''),
+      hiddenViews: patch.hiddenViews !== undefined ? normalizeHiddenViews(patch.hiddenViews, DEFAULT_VIEW_LIST) : normalizeHiddenViews(settings.hiddenViews, DEFAULT_VIEW_LIST),
       limitsRefreshMs: normalizeLimitsRefreshMs(patch.limitsRefreshMs ?? settings.limitsRefreshMs),
       showLimitSource: parseBoolean(patch.showLimitSource ?? settings.showLimitSource, false),
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),
