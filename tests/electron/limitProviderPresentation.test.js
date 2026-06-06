@@ -90,7 +90,8 @@ test('remote synced provider tags show the selected source device and local avai
     ['Live', 'CLI RPC', 'settings.limits.device.from', 'settings.limits.device.localAlso']
   );
   assert.equal(provenance.selectedDeviceLabel, 'work-mac');
-  assert.equal(limitProviderMainDeviceLabel(provenance), 'work-mac');
+  assert.equal(limitProviderMainDeviceLabel(provenance, { showSource: false }), '');
+  assert.equal(limitProviderMainDeviceLabel(provenance, { showSource: true }), 'work-mac');
 });
 
 test('local provider tags show when synced devices also have provider data', () => {
@@ -142,11 +143,13 @@ test('capability tags are settings-only and do not alter the main Limits panel',
   const app = readRendererFile('app.js');
   const styles = readRendererFile('styles.css');
   const renderLimits = functionBody(app, 'renderLimits', 'nextBreakdown');
+  const renderMeta = functionBody(app, 'limitProviderMeta', 'limitProviderPlan');
   const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'onToolTrackingToggle');
 
   assert.doesNotMatch(renderLimits, /limitProviderCapabilityTags|limit-status|limitProviderStatus/);
   assert.match(renderLimits, /const provenance = limitProviderProvenance\(provider\);/);
   assert.match(renderLimits, /limitProviderMeta\(provider, provenance\)/);
+  assert.match(renderMeta, /limitProviderMainDeviceLabel\(provenance, \{ showSource: Boolean\(state\.settings\?\.showLimitSource\) \}\)/);
   assert.doesNotMatch(renderLimits, /limitProviderSettingsTags/);
   assert.match(renderLimits, /head\.append\(titleBlock, plan\);/);
   assert.match(renderSettings, /limitProviderSettingsTags\(provider, provenance/);

@@ -157,8 +157,8 @@
     return [];
   }
 
-  function limitProviderMainDeviceLabel(provenance) {
-    if (!provenance?.syncActive || !provenance.selectedIsRemote) return '';
+  function limitProviderMainDeviceLabel(provenance, options = {}) {
+    if (!options.showSource || !provenance?.syncActive || !provenance.selectedIsRemote) return '';
     return provenance.selectedDeviceLabel || '';
   }
 

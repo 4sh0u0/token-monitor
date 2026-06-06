@@ -640,7 +640,7 @@ function limitProviderProvenance(provider) {
 }
 
 function limitProviderMeta(provider, provenance = null) {
-  const sourceDevice = limitProviderPresentationApi.limitProviderMainDeviceLabel(provenance);
+  const sourceDevice = limitProviderPresentationApi.limitProviderMainDeviceLabel(provenance, { showSource: Boolean(state.settings?.showLimitSource) });
   if (provider.stale) {
     const parts = ['Stale', formatUpdatedAge(provider.updatedAt).replace('Updated ', '')];
     if (sourceDevice) parts.push(sourceDevice);
