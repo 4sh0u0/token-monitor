@@ -37,7 +37,7 @@ test('fetchOpenCodeLimits merges Go(local) windows with Zen(web) balance', async
   const fakeZen = { status: 'ok', workspaceId: 'wrk_1', windows: [{ kind: 'weekly', used: null, limit: null, usedPercent: 20, resetsAt: new Date(now).toISOString(), windowMinutes: 10080 }], balanceUsd: 5 };
   const summary = await collectLimitsOnce(
     { limitProviders: 'opencode', limitsEnabled: true, opencodeCookie: 'sess=1' },
-    { now: () => now, opencodeCollectGo: () => fakeGo, opencodeFetchZen: async () => fakeZen }
+    { now: () => now, opencodeCollectGo: () => fakeGo, opencodeFetchGoWeb: async () => ({ status: 'notConfigured', windows: [], workspaceId: '' }), opencodeFetchZen: async () => fakeZen }
   );
   const p = summary.providers.find((x) => x.provider === 'opencode');
   assert.strictEqual(p.status, 'ok');
@@ -51,7 +51,7 @@ test('fetchOpenCodeLimits surfaces Zen balance even with no usage windows', asyn
   const fakeZen = { status: 'ok', workspaceId: 'wrk_1', windows: [], balanceUsd: 4.5 };
   const summary = await collectLimitsOnce(
     { limitProviders: 'opencode', limitsEnabled: true, opencodeCookie: 'sess=1' },
-    { now: () => now, opencodeCollectGo: () => ({ status: 'notConfigured', windows: [] }), opencodeFetchZen: async () => fakeZen }
+    { now: () => now, opencodeCollectGo: () => ({ status: 'notConfigured', windows: [] }), opencodeFetchGoWeb: async () => ({ status: 'notConfigured', windows: [], workspaceId: '' }), opencodeFetchZen: async () => fakeZen }
   );
   const p = summary.providers.find((x) => x.provider === 'opencode');
   assert.strictEqual(p.status, 'ok');
@@ -64,7 +64,7 @@ test('opencode balanceUsd stays null when Zen returns a null balance (not coerce
   const fakeZen = { status: 'ok', workspaceId: 'wrk_1', windows: [], balanceUsd: null };
   const summary = await collectLimitsOnce(
     { limitProviders: 'opencode', limitsEnabled: true, opencodeCookie: 'sess=1' },
-    { now: () => now, opencodeCollectGo: () => ({ status: 'notConfigured', windows: [] }), opencodeFetchZen: async () => fakeZen }
+    { now: () => now, opencodeCollectGo: () => ({ status: 'notConfigured', windows: [] }), opencodeFetchGoWeb: async () => ({ status: 'notConfigured', windows: [], workspaceId: '' }), opencodeFetchZen: async () => fakeZen }
   );
   const p = summary.providers.find((x) => x.provider === 'opencode');
   assert.strictEqual(p.status, 'ok');
@@ -76,7 +76,7 @@ test('opencode surfaces a genuine zero balance ($0.00) as 0, not null', async ()
   const fakeZen = { status: 'ok', workspaceId: 'wrk_1', windows: [], balanceUsd: 0 };
   const summary = await collectLimitsOnce(
     { limitProviders: 'opencode', limitsEnabled: true, opencodeCookie: 'sess=1' },
-    { now: () => now, opencodeCollectGo: () => ({ status: 'notConfigured', windows: [] }), opencodeFetchZen: async () => fakeZen }
+    { now: () => now, opencodeCollectGo: () => ({ status: 'notConfigured', windows: [] }), opencodeFetchGoWeb: async () => ({ status: 'notConfigured', windows: [], workspaceId: '' }), opencodeFetchZen: async () => fakeZen }
   );
   const p = summary.providers.find((x) => x.provider === 'opencode');
   assert.strictEqual(p.balanceUsd, 0);
@@ -91,4 +91,76 @@ test('opencode provider balanceUsd is null when Zen reports no balance', async (
   );
   const p = summary.providers.find((x) => x.provider === 'opencode');
   assert.strictEqual(p.balanceUsd, null);
+});
+
+test('fetchOpenCodeLimits: Go web windows win over the local estimate', async () => {
+  const now = Date.UTC(2026, 5, 4, 12, 0, 0);
+  const fakeLocal = { status: 'ok', identity: 'go:/x', windows: [{ kind: 'session', used: 1, limit: 12, usedPercent: 8, resetsAt: new Date(now).toISOString(), windowMinutes: 300 }] };
+  const fakeGoWeb = { status: 'ok', workspaceId: 'wrk_1', windows: [
+    { kind: 'session', used: null, limit: null, usedPercent: 40, resetsAt: new Date(now).toISOString(), windowMinutes: 300 },
+    { kind: 'weekly', used: null, limit: null, usedPercent: 50, resetsAt: new Date(now).toISOString(), windowMinutes: 10080 },
+    { kind: 'monthly', used: null, limit: null, usedPercent: 60, resetsAt: new Date(now).toISOString(), windowMinutes: 43200 }
+  ] };
+  const summary = await collectLimitsOnce(
+    { limitProviders: 'opencode', limitsEnabled: true, opencodeCookie: 'sess=1' },
+    { now: () => now, opencodeCollectGo: () => fakeLocal, opencodeFetchGoWeb: async () => fakeGoWeb, opencodeFetchZen: async () => ({ status: 'notConfigured', windows: [], balanceUsd: null }) }
+  );
+  const p = summary.providers.find((x) => x.provider === 'opencode');
+  assert.strictEqual(p.status, 'ok');
+  assert.strictEqual(p.source, 'web');
+  assert.strictEqual(p.windows.find((w) => w.kind === 'session').usedPercent, 40); // web, not local 8
+  assert.ok(p.windows.find((w) => w.kind === 'billing'), 'monthly normalizes to billing');
+});
+
+test('fetchOpenCodeLimits: falls back to local estimate when Go web fails', async () => {
+  const now = Date.UTC(2026, 5, 4, 12, 0, 0);
+  const fakeLocal = { status: 'ok', identity: 'go:/x', windows: [{ kind: 'session', used: 1, limit: 12, usedPercent: 8, resetsAt: new Date(now).toISOString(), windowMinutes: 300 }] };
+  const summary = await collectLimitsOnce(
+    { limitProviders: 'opencode', limitsEnabled: true, opencodeCookie: 'sess=1' },
+    { now: () => now, opencodeCollectGo: () => fakeLocal, opencodeFetchGoWeb: async () => ({ status: 'unavailable', windows: [], workspaceId: '' }), opencodeFetchZen: async () => ({ status: 'notConfigured', windows: [], balanceUsd: null }) }
+  );
+  const p = summary.providers.find((x) => x.provider === 'opencode');
+  assert.strictEqual(p.status, 'ok');
+  assert.strictEqual(p.source, 'local');
+  assert.strictEqual(p.windows.find((w) => w.kind === 'session').usedPercent, 8);
+});
+
+test('fetchOpenCodeLimits: no cookie means no web calls (local only)', async () => {
+  const now = Date.UTC(2026, 5, 4, 12, 0, 0);
+  let webCalled = false;
+  const fakeLocal = { status: 'ok', identity: 'go:/x', windows: [{ kind: 'session', used: 1, limit: 12, usedPercent: 8, resetsAt: new Date(now).toISOString(), windowMinutes: 300 }] };
+  const summary = await collectLimitsOnce(
+    { limitProviders: 'opencode', limitsEnabled: true },
+    { now: () => now, opencodeCollectGo: () => fakeLocal,
+      opencodeFetchGoWeb: async () => { webCalled = true; return { status: 'ok', windows: [], workspaceId: '' }; },
+      opencodeFetchZen: async () => { webCalled = true; return { status: 'ok', windows: [], balanceUsd: null }; } }
+  );
+  const p = summary.providers.find((x) => x.provider === 'opencode');
+  assert.strictEqual(p.source, 'local');
+  assert.strictEqual(webCalled, false);
+});
+
+test('fetchOpenCodeLimits: Go web ok + Zen ok shows Go windows and Zen balance', async () => {
+  const now = Date.UTC(2026, 5, 4, 12, 0, 0);
+  const fakeGoWeb = { status: 'ok', workspaceId: 'wrk_1', windows: [{ kind: 'session', used: null, limit: null, usedPercent: 40, resetsAt: new Date(now).toISOString(), windowMinutes: 300 }] };
+  const fakeZen = { status: 'ok', workspaceId: 'wrk_1', windows: [], balanceUsd: 9.5 };
+  const summary = await collectLimitsOnce(
+    { limitProviders: 'opencode', limitsEnabled: true, opencodeCookie: 'sess=1' },
+    { now: () => now, opencodeCollectGo: () => ({ status: 'notConfigured', windows: [] }), opencodeFetchGoWeb: async () => fakeGoWeb, opencodeFetchZen: async () => fakeZen }
+  );
+  const p = summary.providers.find((x) => x.provider === 'opencode');
+  assert.strictEqual(p.source, 'web');
+  assert.strictEqual(p.windows.find((w) => w.kind === 'session').usedPercent, 40);
+  assert.strictEqual(p.balanceUsd, 9.5);
+});
+
+test('fetchOpenCodeLimits: surfaces unauthorized when no source has data', async () => {
+  const now = Date.UTC(2026, 5, 4, 12, 0, 0);
+  const summary = await collectLimitsOnce(
+    { limitProviders: 'opencode', limitsEnabled: true, opencodeCookie: 'sess=1' },
+    { now: () => now, opencodeCollectGo: () => ({ status: 'notConfigured', windows: [] }), opencodeFetchGoWeb: async () => ({ status: 'unauthorized', windows: [], workspaceId: '' }), opencodeFetchZen: async () => ({ status: 'unauthorized', windows: [], balanceUsd: null }) }
+  );
+  const p = summary.providers.find((x) => x.provider === 'opencode');
+  assert.strictEqual(p.status, 'unauthorized');
+  assert.strictEqual(p.source, 'web');
 });

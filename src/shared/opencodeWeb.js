@@ -191,6 +191,25 @@ async function fetchServerText(req, cookieHeader, deps) {
   return { status: res.status, text };
 }
 
+// Resolves the active workspace id from the opencode.ai session. Expects an
+// already-sanitized, non-empty cookie header. Honors a deps.workspaceId / env
+// override. Returns { status: 'ok' | 'unauthorized' | 'unavailable', workspaceId }.
+// Network errors are left to throw — callers wrap in try/catch.
+async function resolveWorkspaceId(cookie, deps = {}) {
+  const override = normalizeWorkspaceId(deps.workspaceId || (deps.env || process.env).TOKEN_MONITOR_OPENCODE_WORKSPACE_ID);
+  if (override) return { status: 'ok', workspaceId: override };
+  let wsText = await fetchServerText({ serverId: WORKSPACES_SERVER_ID, args: null, method: 'GET', referer: BASE_URL }, cookie, deps);
+  if (wsText.status === 401 || wsText.status === 403 || looksSignedOut(wsText.text)) return { status: 'unauthorized', workspaceId: '' };
+  let ids = parseWorkspaceIds(wsText.text);
+  if (ids.length === 0) {
+    wsText = await fetchServerText({ serverId: WORKSPACES_SERVER_ID, args: [], method: 'POST', referer: BASE_URL }, cookie, deps);
+    if (looksSignedOut(wsText.text)) return { status: 'unauthorized', workspaceId: '' };
+    ids = parseWorkspaceIds(wsText.text);
+  }
+  if (ids.length === 0) return { status: 'unavailable', workspaceId: '' };
+  return { status: 'ok', workspaceId: ids[0] };
+}
+
 async function fetchZen(cookieRaw, deps = {}) {
   const nowMs = (deps.now || Date.now)();
   const cookie = sanitizeCookieHeader(cookieRaw);
@@ -198,19 +217,9 @@ async function fetchZen(cookieRaw, deps = {}) {
 
   const fail = (status) => ({ status, windows: [], balanceUsd: null });
   try {
-    let workspaceId = normalizeWorkspaceId(deps.workspaceId || (deps.env || process.env).TOKEN_MONITOR_OPENCODE_WORKSPACE_ID);
-    if (!workspaceId) {
-      let wsText = await fetchServerText({ serverId: WORKSPACES_SERVER_ID, args: null, method: 'GET', referer: BASE_URL }, cookie, deps);
-      if (wsText.status === 401 || wsText.status === 403 || looksSignedOut(wsText.text)) return fail('unauthorized');
-      let ids = parseWorkspaceIds(wsText.text);
-      if (ids.length === 0) {
-        wsText = await fetchServerText({ serverId: WORKSPACES_SERVER_ID, args: [], method: 'POST', referer: BASE_URL }, cookie, deps);
-        if (looksSignedOut(wsText.text)) return fail('unauthorized');
-        ids = parseWorkspaceIds(wsText.text);
-      }
-      if (ids.length === 0) return fail('unavailable');
-      workspaceId = ids[0];
-    }
+    const ws = await resolveWorkspaceId(cookie, deps);
+    if (ws.status !== 'ok') return fail(ws.status);
+    const workspaceId = ws.workspaceId;
 
     const referer = `${BASE_URL}/workspace/${workspaceId}/billing`;
     const badSubStatus = (r) => {
@@ -238,8 +247,98 @@ async function fetchZen(cookieRaw, deps = {}) {
   }
 }
 
+// --- OpenCode Go usage page (real server-side limits) -----------------------
+// CodexBar reference: docs/opencode.md + OpenCodeGoUsageFetcher.swift.
+// The /workspace/<id>/go page embeds rollingUsage/weeklyUsage/monthlyUsage,
+// each { usagePercent, resetInSec }. Try JSON first, then regex (the page is
+// often text/javascript with unquoted keys).
+
+const GO_WINDOW_MINUTES = { session: 300, weekly: 10080, monthly: 43200 };
+
+function extractGoWindow(text, key, kind, nowMs) {
+  const pm = new RegExp(key + '[^}]*?usagePercent\\s*[:=]\\s*([0-9]+(?:\\.[0-9]+)?)').exec(text);
+  if (!pm) return null;
+  const rm = new RegExp(key + '[^}]*?resetInSec\\s*[:=]\\s*([0-9]+)').exec(text);
+  const resetSec = rm ? Math.max(0, parseInt(rm[1], 10)) : 0;
+  return {
+    kind,
+    usedPercent: round1(clampPct(Number(pm[1]))),
+    used: null,
+    limit: null,
+    resetsAt: new Date(nowMs + resetSec * 1000).toISOString(),
+    windowMinutes: GO_WINDOW_MINUTES[kind]
+  };
+}
+
+function parseGoUsageJson(text, nowMs) {
+  let root;
+  try { root = JSON.parse(text); } catch (_) { return []; }
+  if (!root || typeof root !== 'object') return [];
+  const rolling = parseWindowObj(findByKeyword(root, 'rolling'), 'session', GO_WINDOW_MINUTES.session, nowMs);
+  const weekly = parseWindowObj(findByKeyword(root, 'weekly') || findByKeyword(root, 'week'), 'weekly', GO_WINDOW_MINUTES.weekly, nowMs);
+  const monthly = parseWindowObj(findByKeyword(root, 'monthly') || findByKeyword(root, 'month'), 'monthly', GO_WINDOW_MINUTES.monthly, nowMs);
+  if (!rolling || !weekly) return [];
+  const windows = [rolling, weekly];
+  if (monthly) windows.push(monthly);
+  return windows;
+}
+
+// Parses session/weekly(/monthly) windows from the go page. session+weekly are
+// required; monthly is optional. Returns [] when the required windows are absent.
+function parseGoUsage(text, nowMs) {
+  const fromJson = parseGoUsageJson(text, nowMs);
+  if (fromJson.length > 0) return fromJson;
+  const rolling = extractGoWindow(text, 'rollingUsage', 'session', nowMs);
+  const weekly = extractGoWindow(text, 'weeklyUsage', 'weekly', nowMs);
+  if (!rolling || !weekly) return [];
+  const monthly = extractGoWindow(text, 'monthlyUsage', 'monthly', nowMs);
+  const windows = [rolling, weekly];
+  if (monthly) windows.push(monthly);
+  return windows;
+}
+
+async function fetchGoPageText(workspaceId, cookieHeader, deps) {
+  const doFetch = deps.fetch || globalThis.fetch;
+  const url = `${BASE_URL}/workspace/${workspaceId}/go`;
+  const res = await doFetch(url, {
+    method: 'GET',
+    headers: {
+      Cookie: cookieHeader,
+      'User-Agent': USER_AGENT,
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    }
+  });
+  const text = await res.text();
+  return { status: res.status, text };
+}
+
+// Fetches the real OpenCode Go limits from the dashboard page. Returns
+// { status, windows, workspaceId }. workspaceId is included even on a post-
+// resolution failure so the caller can reuse it for the Zen request.
+async function fetchGoWeb(cookieRaw, deps = {}) {
+  const nowMs = (deps.now || Date.now)();
+  const cookie = sanitizeCookieHeader(cookieRaw);
+  if (!cookie) return { status: 'notConfigured', windows: [], workspaceId: '' };
+  const fail = (status, workspaceId = '') => ({ status, windows: [], workspaceId });
+  try {
+    const ws = await resolveWorkspaceId(cookie, deps);
+    if (ws.status !== 'ok') return fail(ws.status);
+    const workspaceId = ws.workspaceId;
+    const page = await fetchGoPageText(workspaceId, cookie, deps);
+    if (page.status === 429) return fail('sourceRateLimited', workspaceId);
+    if (page.status === 401 || page.status === 403 || looksSignedOut(page.text)) return fail('unauthorized', workspaceId);
+    if (page.status !== 200) return fail('unavailable', workspaceId);
+    const windows = parseGoUsage(page.text, nowMs);
+    if (windows.length === 0) return fail('unavailable', workspaceId);
+    return { status: 'ok', windows, workspaceId };
+  } catch (_) {
+    return fail('unavailable');
+  }
+}
+
 module.exports = {
   BASE_URL, SERVER_URL, WORKSPACES_SERVER_ID, SUBSCRIPTION_SERVER_ID,
   sanitizeCookieHeader, serverRequestUrl, buildHeaders,
-  parseWorkspaceIds, parseSubscription, fetchZen, normalizeWorkspaceId
+  parseWorkspaceIds, parseSubscription, fetchZen, normalizeWorkspaceId,
+  resolveWorkspaceId, fetchGoWeb, parseGoUsage
 };

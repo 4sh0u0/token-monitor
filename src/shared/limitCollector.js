@@ -1160,6 +1160,7 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
   const nowMs = (deps.now || Date.now)();
   const updatedAt = nowIso(nowMs);
   const collectGo = deps.opencodeCollectGo || ((d) => opencodeLimits.collectGo(d));
+  const fetchGoWeb = deps.opencodeFetchGoWeb || ((cookie, d) => opencodeWeb.fetchGoWeb(cookie, d));
   const fetchZen = deps.opencodeFetchZen || ((cookie, d) => opencodeWeb.fetchZen(cookie, d));
 
   const windows = [];
@@ -1169,26 +1170,44 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
   let accountKey = '';
   let balanceUsd = null;
 
-  const go = collectGo({ env: deps.env || process.env, now: () => nowMs });
-  if (go.status === 'ok') {
-    windows.push(...go.windows);
-    status = 'ok'; accountLabel = 'Go'; accountKey = hashKey('opencode', go.identity || 'go');
-  } else if (go.status === 'unavailable') {
+  const goLocal = collectGo({ env: deps.env || process.env, now: () => nowMs });
+
+  const cookie = options.opencodeCookie;
+  let goWeb = null;
+  let zen = null;
+  if (cookie) {
+    goWeb = await fetchGoWeb(cookie, { now: () => nowMs });
+    // Reuse the workspace goWeb already resolved so Zen doesn't resolve it twice.
+    zen = await fetchZen(cookie, { now: () => nowMs, workspaceId: (goWeb && goWeb.workspaceId) || '' });
+  }
+
+  // Go usage windows: web (real %) preferred, local estimate fallback. Source is
+  // chosen wholesale — never mix web + local — so all Go windows agree.
+  if (goWeb && goWeb.status === 'ok' && goWeb.windows.length > 0) {
+    windows.push(...goWeb.windows);
+    status = 'ok'; source = 'web'; accountLabel = 'Go';
+    accountKey = hashKey('opencode', `go:${goWeb.workspaceId || ''}`);
+  } else if (goLocal.status === 'ok') {
+    windows.push(...goLocal.windows);
+    status = 'ok'; accountLabel = 'Go';
+    accountKey = hashKey('opencode', goLocal.identity || 'go');
+  } else if (goLocal.status === 'unavailable') {
     status = 'unavailable';
   }
 
-  const cookie = options.opencodeCookie;
-  if (cookie) {
-    const zen = await fetchZen(cookie, { now: () => nowMs });
-    if (zen.status === 'ok') {
-      windows.push(...zen.windows);
-      status = 'ok'; source = 'web';
-      if (typeof zen.balanceUsd === 'number' && Number.isFinite(zen.balanceUsd)) balanceUsd = zen.balanceUsd;
-      if (!accountLabel) accountLabel = 'Zen';
-      if (!accountKey) accountKey = hashKey('opencode', `zen:${zen.workspaceId || ''}`);
-    } else if (status !== 'ok' && ['unauthorized', 'sourceRateLimited', 'unavailable'].includes(zen.status)) {
-      status = zen.status; source = 'web';
-    }
+  // Zen: prepaid balance always; its session/weekly fill any kinds Go lacked.
+  if (zen && zen.status === 'ok') {
+    windows.push(...zen.windows);
+    status = 'ok'; source = 'web';
+    if (typeof zen.balanceUsd === 'number' && Number.isFinite(zen.balanceUsd)) balanceUsd = zen.balanceUsd;
+    if (!accountLabel) accountLabel = 'Zen';
+    if (!accountKey) accountKey = hashKey('opencode', `zen:${zen.workspaceId || ''}`);
+  } else if (status !== 'ok') {
+    // No usable data anywhere — surface the most informative web failure.
+    const webFail = ['unauthorized', 'sourceRateLimited', 'unavailable'];
+    const surfaced = (goWeb && webFail.includes(goWeb.status) && goWeb.status)
+      || (zen && webFail.includes(zen.status) && zen.status);
+    if (surfaced) { status = surfaced; source = 'web'; }
   }
 
   return normalizeLimitProvider({ provider: 'opencode', accountKey, accountLabel, source, status, updatedAt, windows, balanceUsd });

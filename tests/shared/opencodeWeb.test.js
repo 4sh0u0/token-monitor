@@ -108,3 +108,111 @@ test('fetchZen maps a login page (HTTP 200) to unauthorized', async () => {
   const out = await web.fetchZen('sess=1', { fetch: transport, now: () => Date.now() });
   assert.strictEqual(out.status, 'unauthorized');
 });
+
+test('resolveWorkspaceId: GET resolves a wrk_ id', async () => {
+  const transport = async (url) => {
+    if (url.includes(web.WORKSPACES_SERVER_ID)) return { status: 200, text: async () => '{"id":"wrk_ABC"}' };
+    return { status: 404, text: async () => 'nope' };
+  };
+  const out = await web.resolveWorkspaceId('sess=1', { fetch: transport });
+  assert.strictEqual(out.status, 'ok');
+  assert.strictEqual(out.workspaceId, 'wrk_ABC');
+});
+
+test('resolveWorkspaceId: POST fallback when GET has no ids', async () => {
+  let posts = 0;
+  const transport = async (url, init) => {
+    if (init && init.method === 'POST') { posts += 1; return { status: 200, text: async () => '{"id":"wrk_POST"}' }; }
+    return { status: 200, text: async () => '{}' };
+  };
+  const out = await web.resolveWorkspaceId('sess=1', { fetch: transport });
+  assert.strictEqual(out.workspaceId, 'wrk_POST');
+  assert.strictEqual(posts, 1);
+});
+
+test('resolveWorkspaceId: 401 maps to unauthorized', async () => {
+  const transport = async () => ({ status: 401, text: async () => 'login' });
+  const out = await web.resolveWorkspaceId('sess=1', { fetch: transport });
+  assert.strictEqual(out.status, 'unauthorized');
+});
+
+test('resolveWorkspaceId: honors workspaceId override without any network call', async () => {
+  let called = false;
+  const transport = async () => { called = true; return { status: 200, text: async () => '{}' }; };
+  const out = await web.resolveWorkspaceId('sess=1', { fetch: transport, workspaceId: 'wrk_OVR' });
+  assert.strictEqual(out.workspaceId, 'wrk_OVR');
+  assert.strictEqual(called, false);
+});
+
+test('fetchGoWeb parses rolling/weekly/monthly from the go page (JSON)', async () => {
+  const now = Date.UTC(2026, 5, 4, 12, 0, 0);
+  const page = JSON.stringify({
+    rollingUsage: { usagePercent: 12, resetInSec: 3600 },
+    weeklyUsage: { usagePercent: 34, resetInSec: 86400 },
+    monthlyUsage: { usagePercent: 56, resetInSec: 2592000 }
+  });
+  const transport = async (url) => {
+    if (url.includes(web.WORKSPACES_SERVER_ID)) return { status: 200, text: async () => '{"id":"wrk_ABC"}' };
+    if (url.includes('/workspace/wrk_ABC/go')) return { status: 200, text: async () => page };
+    return { status: 404, text: async () => 'nope' };
+  };
+  const out = await web.fetchGoWeb('sess=1', { fetch: transport, now: () => now });
+  assert.strictEqual(out.status, 'ok');
+  assert.strictEqual(out.workspaceId, 'wrk_ABC');
+  assert.strictEqual(out.windows.find((w) => w.kind === 'session').usedPercent, 12);
+  assert.strictEqual(out.windows.find((w) => w.kind === 'weekly').usedPercent, 34);
+  assert.strictEqual(out.windows.find((w) => w.kind === 'monthly').usedPercent, 56);
+  assert.strictEqual(out.windows.find((w) => w.kind === 'session').resetsAt, new Date(now + 3600 * 1000).toISOString());
+});
+
+test('fetchGoWeb falls back to regex for a text/javascript page', async () => {
+  const now = Date.UTC(2026, 5, 4, 12, 0, 0);
+  const tjs = 'render({rollingUsage:{usagePercent:7,resetInSec:60},weeklyUsage:{usagePercent:8,resetInSec:600},monthlyUsage:{usagePercent:9,resetInSec:6000}})';
+  const transport = async (url) => {
+    if (url.includes(web.WORKSPACES_SERVER_ID)) return { status: 200, text: async () => '{"id":"wrk_ABC"}' };
+    if (url.includes('/go')) return { status: 200, text: async () => tjs };
+    return { status: 404, text: async () => 'x' };
+  };
+  const out = await web.fetchGoWeb('sess=1', { fetch: transport, now: () => now });
+  assert.strictEqual(out.status, 'ok');
+  assert.strictEqual(out.windows.find((w) => w.kind === 'session').usedPercent, 7);
+  assert.strictEqual(out.windows.find((w) => w.kind === 'monthly').usedPercent, 9);
+});
+
+test('fetchGoWeb omits monthly when the page lacks it', async () => {
+  const now = Date.UTC(2026, 5, 4, 12, 0, 0);
+  const page = JSON.stringify({ rollingUsage: { usagePercent: 1, resetInSec: 60 }, weeklyUsage: { usagePercent: 2, resetInSec: 600 } });
+  const transport = async (url) => {
+    if (url.includes(web.WORKSPACES_SERVER_ID)) return { status: 200, text: async () => '{"id":"wrk_ABC"}' };
+    if (url.includes('/go')) return { status: 200, text: async () => page };
+    return { status: 404, text: async () => 'x' };
+  };
+  const out = await web.fetchGoWeb('sess=1', { fetch: transport, now: () => now });
+  assert.strictEqual(out.status, 'ok');
+  assert.strictEqual(out.windows.length, 2);
+  assert.strictEqual(out.windows.find((w) => w.kind === 'monthly'), undefined);
+});
+
+test('fetchGoWeb maps a login page to unauthorized but keeps the resolved workspace', async () => {
+  const transport = async (url) => {
+    if (url.includes(web.WORKSPACES_SERVER_ID)) return { status: 200, text: async () => '{"id":"wrk_ABC"}' };
+    return { status: 200, text: async () => '<html>please sign in</html>' };
+  };
+  const out = await web.fetchGoWeb('sess=1', { fetch: transport, now: () => Date.now() });
+  assert.strictEqual(out.status, 'unauthorized');
+  assert.strictEqual(out.workspaceId, 'wrk_ABC');
+});
+
+test('fetchGoWeb maps 429 to sourceRateLimited', async () => {
+  const transport = async (url) => {
+    if (url.includes(web.WORKSPACES_SERVER_ID)) return { status: 200, text: async () => '{"id":"wrk_ABC"}' };
+    return { status: 429, text: async () => 'slow down' };
+  };
+  const out = await web.fetchGoWeb('sess=1', { fetch: transport, now: () => Date.now() });
+  assert.strictEqual(out.status, 'sourceRateLimited');
+});
+
+test('fetchGoWeb returns notConfigured without a cookie', async () => {
+  const out = await web.fetchGoWeb('', { now: () => Date.now() });
+  assert.strictEqual(out.status, 'notConfigured');
+});
