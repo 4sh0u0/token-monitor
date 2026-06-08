@@ -58,6 +58,7 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 - **Breakdown views** grouped by tool, device, model, session, or account limits
 - **Per-session detail** — open a Claude Code, Codex, or OpenCode session to see tokens per prompt, expandable to each reply's exact token split and tools used (read on-demand from local transcripts or databases, never synced)
 - **Cost breakdown** alongside token counts
+- **Usage Trends & Dashboard** (opt-in) — a dedicated dashboard window with a GitHub-style activity heatmap, streaks, and stacked per-tool/per-model usage history (bar and K-line views) across all your devices
 - **AI Tool Limits detection** for Claude Code, Codex, Cursor, Antigravity, and OpenCode with session, weekly, billing, and credits windows, plus DeepSeek prepaid balance and today/month spend
 - **Optional Status view** for Claude, OpenAI, Cursor, and DeepSeek status pages, with manual or interval re-checks
 - **Customizable tool list** to hide, pin, and reorder tools in the main dashboard without changing what gets tracked
@@ -78,6 +79,10 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 | Session View | Session Details | Discord Rich Presence |
 |:---:|:---:|:---:|
 | ![Session View](.github/assets/sessions-view.png) | ![Session Details](.github/assets/session-details.png) | ![Discord Rich Presence](.github/assets/discord-rpc.png) |
+
+| Usage Dashboard — Overview | Usage Dashboard — Trends |
+|:---:|:---:|
+| ![Usage Dashboard Overview](.github/assets/dashboard-overview.png) | ![Usage Dashboard Trends](.github/assets/dashboard-trends.png) |
 
 ## Installation
 
@@ -172,6 +177,7 @@ Click the `⚙` button in the widget header to open the Settings panel.
 - **Multi-device Sync** — three modes: **Local only** (this device, no hub), **Connect to a hub** (paste another machine's Hub URL + secret), or **Host hub on this device** (open a hub here so other devices can connect; LAN/Tailscale/ZeroTier addresses are listed for you).
 - **Tracked Tools** — choose which AI tools are collected, and independently hide, pin, or reorder tools in the main list.
 - **AI Tool Limits** — choose Claude Code, Codex, Cursor, Antigravity, OpenCode, and DeepSeek limit detection and refresh frequency.
+- **Trends** — opt-in usage history; turn it on to collect daily history and open the Usage Dashboard (activity heatmap, streaks, and stacked per-tool/per-model bar and K-line charts).
 - **Window behavior** — choose floating above apps, a normal window, or desktop pinned mode.
 - **Tray Mode** — switch to a menu bar (macOS) or system tray (Windows) popover and choose what shows next to the icon: cost, today's tokens, total tokens, cost + tokens, the closest Claude/Codex/Cursor/Antigravity/OpenCode limit % left, or icon-only.
 - **Floating Bubble** — collapse the widget into a draggable mini-window, reopen it by click or hover preview, and choose bubble content from icon, tokens, cost, or AI Tool Limit bars.
