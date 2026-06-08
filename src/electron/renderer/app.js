@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity' };
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
@@ -1539,6 +1539,11 @@ function applyAppearanceSettings(settings) {
   els.liveDot.style.display = (settings?.showLiveDot !== false) ? '' : 'none';
   els.shell.classList.toggle('desktop-mode', settings?.windowBehavior === 'desktop');
   els.shell.classList.toggle('title-icon-only', settings?.titleIconOnly === true);
+  const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+  document.documentElement.classList.remove('is-windows-glass'); // cleanup old class
+  document.body.classList.remove('is-windows-glass');
+  document.documentElement.classList.toggle('is-windows', isWindows);
+  document.body.classList.toggle('is-windows', isWindows);
   updateTitleFit();
 }
 
