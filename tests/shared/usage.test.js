@@ -375,7 +375,7 @@ test('aggregateDevices combines session usage across devices', () => {
   assert.equal(session.modelCosts['gpt-5'], 0.3);
 });
 
-const { normalizeDeviceRecord, aggregateHistory } = require('../../src/shared/usage');
+const { normalizeDeviceRecord, aggregateHistory, carryDeviceHistory } = require('../../src/shared/usage');
 
 test('normalizeDeviceRecord carries a history field when present', () => {
   const rec = normalizeDeviceRecord({
@@ -428,4 +428,47 @@ test('aggregateHistory merges non-stale devices and skips stale ones', () => {
 test('aggregateHistory tolerates devices without history', () => {
   const merged = aggregateHistory([{ deviceId: 'm1', receivedAt: new Date().toISOString() }], 10 * 60 * 1000);
   assert.deepEqual(merged.daily, []);
+});
+
+test('carryDeviceHistory carries prior history forward when the incoming snapshot omits it', () => {
+  const previous = {
+    deviceId: 'm1', receivedAt: '2026-06-08T00:00:00.000Z',
+    history: { daily: [{ date: '2026-06-07', tokens: 5 }], monthly: [], summary: { totalTokens: 5 } }
+  };
+  const incoming = { deviceId: 'm1', receivedAt: '2026-06-08T00:05:00.000Z', today: { totalTokens: 9 } };
+  const next = carryDeviceHistory(previous, incoming);
+  assert.equal(next.history.daily[0].tokens, 5);  // carried from the previous snapshot
+  assert.equal(next.today.totalTokens, 9);         // incoming fields untouched
+  assert.equal(next.receivedAt, '2026-06-08T00:05:00.000Z');
+});
+
+test('carryDeviceHistory keeps the incoming history when the tick brings its own', () => {
+  const previous = { history: { daily: [{ date: '2026-06-07', tokens: 5 }], monthly: [], summary: {} } };
+  const incoming = { history: { daily: [{ date: '2026-06-08', tokens: 7 }], monthly: [], summary: {} } };
+  assert.equal(carryDeviceHistory(previous, incoming).history.daily[0].tokens, 7);
+});
+
+test('carryDeviceHistory does not resurrect history when the tick clears it with null', () => {
+  const previous = { history: { daily: [{ date: '2026-06-07', tokens: 5 }], monthly: [], summary: {} } };
+  const incoming = { history: null };
+  assert.equal(carryDeviceHistory(previous, incoming).history, null);
+});
+
+test('carryDeviceHistory leaves the snapshot untouched when there is no prior history', () => {
+  assert.equal('history' in carryDeviceHistory(null, { deviceId: 'm1' }), false);
+});
+
+test('a history-less local tick keeps the trends dashboard populated', () => {
+  // Reproduces the local-mode regression: the collector attaches history only on
+  // interval-gated ticks, so a later history-less tick must not blank the snapshot
+  // (the hub gets this for free via mergeDeviceRecord; local mode replaces wholesale).
+  const first = {
+    deviceId: 'm1', receivedAt: '2026-06-08T00:00:00.000Z',
+    history: { daily: [{ date: '2026-06-07', tokens: 5, cost: 1, perClient: {}, perModel: {} }],
+      monthly: [{ month: '2026-06', tokens: 5, cost: 1, perClient: {}, perModel: {} }], summary: {} }
+  };
+  const second = carryDeviceHistory(first, { deviceId: 'm1', receivedAt: '2026-06-08T00:05:00.000Z' });
+  const agg = aggregateHistory([second], 0);
+  assert.equal(agg.daily.length, 1);
+  assert.equal(agg.daily[0].tokens, 5);
 });

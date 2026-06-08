@@ -507,6 +507,20 @@ function mergeDeviceRecord(existing, incoming) {
   return normalizedIncoming;
 }
 
+// History rides along only on interval-gated collector ticks, so a later
+// history-less tick would otherwise blank the local snapshot (and the trends
+// dashboard with it). Carry the prior snapshot's history forward when the
+// incoming one omits the field — the same preservation the hub gets from
+// mergeDeviceRecord, but without normalizing the snapshot's raw period shape.
+function carryDeviceHistory(previous, incoming) {
+  if (!incoming || typeof incoming !== 'object') return incoming;
+  if (hasOwn(incoming, 'history')) return incoming;
+  if (previous && typeof previous === 'object' && hasOwn(previous, 'history')) {
+    return { ...incoming, history: previous.history };
+  }
+  return incoming;
+}
+
 function aggregateHistory(devices, staleAfterMs, nowMs = Date.now()) {
   const histories = [];
   for (const record of devices) {
@@ -592,4 +606,4 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
   return aggregate;
 }
 
-module.exports = { PERIODS, aggregateDevices, aggregateHistory, emptyPeriod, extractUsageFromTokscale, mergeDeviceRecord, normalizeDeviceRecord, normalizePeriod };
+module.exports = { PERIODS, aggregateDevices, aggregateHistory, carryDeviceHistory, emptyPeriod, extractUsageFromTokscale, mergeDeviceRecord, normalizeDeviceRecord, normalizePeriod };

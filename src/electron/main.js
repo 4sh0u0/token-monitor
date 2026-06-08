@@ -39,7 +39,7 @@ const {
   normalizeArchivedClientUsage,
   pruneArchivedClientUsage
 } = require('../shared/clientUsageArchive');
-const { aggregateDevices, aggregateHistory } = require('../shared/usage');
+const { aggregateDevices, aggregateHistory, carryDeviceHistory } = require('../shared/usage');
 const { historyPreview } = require('../shared/history');
 const { readSessionDetail } = require('../shared/sessionDetail');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
@@ -981,7 +981,9 @@ function startLocalCollector() {
     deepseekApiKey: settings.deepseekApiKey || '',
     onUpdate: (summary, reason) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
-      localDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
+      // History only rides along on gated ticks; carry the last known history
+      // forward so the trends dashboard doesn't blank out between them.
+      localDevice = carryDeviceHistory(localDevice, { ...visibleSummary, receivedAt: new Date().toISOString() });
       lastCollectedDevice = localDevice;
       localStats = withHistoryPreview(aggregateDevices([localDevice], 0), [localDevice]);
       updateDiscordRpc(localStats, settings.currency);
@@ -1655,7 +1657,11 @@ function createDashboardWindow() {
 async function getDashboardHistory() {
   if (settings?.historyEnabled === false) return aggregateHistory([], 0);
   if (mode === 'local') {
-    if (localCollectorHandle) { try { await localCollectorHandle.tick('manual'); } catch (_) {} }
+    // The local collector keeps localDevice.history current (watch + interval
+    // ticks, with carry-forward), so read it directly — exactly as the hub
+    // branch reads /api/history. Forcing a full collection tick here made the
+    // fetch take seconds; on a quick close/reopen the response outlived the
+    // renderer and was dropped, stranding the dashboard on its empty state.
     return aggregateHistory(localDevice ? [localDevice] : [], 0);
   }
   const { url: hubUrl, secret } = effectiveHubConfig();

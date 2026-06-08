@@ -33,6 +33,16 @@ test('getDashboardHistory mirrors the local/sync split of fetchStats', () => {
   assert.match(main, /\/api\/history/);
 });
 
+test('getDashboardHistory reads local history directly without a blocking collection tick', () => {
+  const main = read('src', 'electron', 'main.js');
+  const fn = /async function getDashboardHistory\(\)\s*\{([\s\S]*?)\n\}/.exec(main);
+  assert.ok(fn, 'getDashboardHistory should be defined');
+  // Awaiting a full collection tick here delayed the fetch for seconds; on a
+  // quick close/reopen the response outlived the renderer and the dashboard
+  // stuck on the empty state. The local branch must read localDevice directly.
+  assert.doesNotMatch(fn[1], /localCollectorHandle\.tick/);
+});
+
 test('dashboard history is gated by the historyEnabled setting', () => {
   const main = read('src', 'electron', 'main.js');
   assert.match(main, /historyEnabled:\s*false/);
@@ -74,6 +84,9 @@ test('dashboard.css declares chart classes and a flat theme override', () => {
   assert.match(css, /\.candle-down/);
   assert.match(css, /\.heat\.lvl-4/);
   assert.match(css, /body\.flat/);
+  // The empty-state overlay spans the whole window (inset: 0); it must let clicks
+  // through so the header buttons still work when there is no history.
+  assert.match(css, /\.dash-empty\s*\{[^}]*pointer-events:\s*none/);
 });
 
 test('dashboard.js fetches history over IPC and renders both tabs', () => {
