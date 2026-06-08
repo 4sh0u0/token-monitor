@@ -4,15 +4,8 @@
 
 ## What's changed
 
-### Added
-- Added cross-device usage Trends and a new Usage Dashboard window. This feature is off by default: go to **Settings → Main Screen** and enable **Show Trends** to use it. Once enabled, click the chart in the middle of the Trends view to open the dashboard. The dashboard features a token activity heatmap and allows switching between bar charts and K-line charts to track usage across multiple machines.
-- Added a new toggle to opt-in to usage trend history collection.
-
-### Improved
-- Preserved the Settings panel scroll position when saving.
-
 ### Fixed
-- Fixed visual corner rendering artifacts on Windows (now using a unified 8px radius) and on older macOS versions with vibrancy effects.
+- Fixed an issue where the cross-device Trends dashboard would show a blank screen and block clicks when in "Local only" mode.
 
 ## Which file should I download?
 
@@ -46,15 +39,8 @@ open-source: https://github.com/junhoyeo/tokscale
 
 ## 更新内容
 
-### 新增
-- 新增跨设备「趋势」视图与全新「使用仪表板」窗口。此功能默认关闭：请前往 **设置 → 主界面**，开启 **显示 趋势** 即可使用。启用后，点击趋势视图中间的图表即可打开仪表板。仪表板内包含 Token 活动热力图，并支持在柱状图与 K 线图之间切换，以便追踪多台机器的活动。
-- 新增趋势历史记录采集的自愿开启（opt-in）开关。
-
-### 改进
-- 保存设置时，现在会保留设置面板的滚动位置。
-
 ### 修复
-- 修复 Windows（现统一为 8px 圆角）与开启 Vibrancy 效果的旧版 macOS 上，窗口角落的渲染瑕疵。
+- 修复了在「仅限本机」模式下，趋势仪表板会显示白屏并阻挡点击的问题。
 
 ## 应该下载哪个文件？
 
