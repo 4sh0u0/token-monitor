@@ -188,88 +188,15 @@ Object.assign(els, {
   sessionDetailHead: document.getElementById('session-detail-head')
 });
 
-const appTooltip = document.createElement('div');
-appTooltip.className = 'app-tooltip hidden';
-document.body.appendChild(appTooltip);
-
-function positionAppTooltip(e, content) {
-  appTooltip.innerHTML = content;
-  appTooltip.classList.remove('hidden');
-  appTooltip.classList.add('visible');
-  const rect = appTooltip.getBoundingClientRect();
-  let x = e.clientX + 16;
-  let y = e.clientY + 16;
-  if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 16;
-  if (y + rect.height > window.innerHeight) y = window.innerHeight - rect.height - 8;
-  appTooltip.style.left = `${Math.max(8, x)}px`;
-  appTooltip.style.top = `${Math.max(8, y)}px`;
-}
-
-function hideAppTooltip() {
-  appTooltip.classList.remove('visible');
-  appTooltip.classList.add('hidden');
-}
-
-document.addEventListener('mousemove', (e) => {
-  const target = e.target.closest('#totalTokens, .row');
-  if (!target || target.classList.contains('session-row') || target.classList.contains('local') || target.dataset.platform) {
-    if (appTooltip.classList.contains('visible')) hideAppTooltip();
-    return;
+document.addEventListener('click', (e) => {
+  const row = e.target.closest('.row.has-accordion');
+  if (row) {
+    const isExpanded = row.classList.contains('expanded');
+    document.querySelectorAll('.row.expanded').forEach(r => r.classList.remove('expanded'));
+    if (!isExpanded) {
+      row.classList.add('expanded');
+    }
   }
-  
-  const cacheRead = Number(target.dataset.cacheRead || 0);
-  const output = Number(target.dataset.outputTokens || 0);
-  const total = Number(target.dataset.totalTokens || 0);
-  const name = target.dataset.name || '';
-  
-  const key = target.dataset.key || '';
-  const platform = target.dataset.platform || '';
-  const client = target.dataset.client || '';
-  const iconInfo = iconKindFor({ key, platform, client }, state.breakdown);
-  const iconHtml = iconInfo && iconInfo.kind === 'icon' 
-    ? `<i class="app-tooltip-header-icon ${iconInfo.iconClass}"></i>` 
-    : '';
-  
-  if (total === 0 && cacheRead === 0) {
-    if (appTooltip.classList.contains('visible')) hideAppTooltip();
-    return;
-  }
-
-  const cacheMiss = Math.max(0, total - cacheRead - output);
-  const inputTokens = cacheRead + cacheMiss;
-  const hitPct = inputTokens > 0 ? Math.round((cacheRead / inputTokens) * 100) : 0;
-  const missPct = inputTokens > 0 ? 100 - hitPct : 0;
-  
-  const hitLabel = t('dashboard.tooltip.inputCacheHit');
-  const missLabel = t('dashboard.tooltip.inputCacheMiss');
-  const outLabel = t('dashboard.tooltip.output');
-  
-  const hitPctHtml = inputTokens > 0 ? `<span class="app-tooltip-pct">${hitPct}%</span>` : '';
-  const missPctHtml = inputTokens > 0 ? `<span class="app-tooltip-pct">${missPct}%</span>` : '';
-  
-  const html = `
-    <div class="app-tooltip-header">${iconHtml}${name}</div>
-    <div class="app-tooltip-row">
-      <div class="app-tooltip-dot hit"></div>
-      <div class="app-tooltip-label">${hitLabel} ${hitPctHtml}</div>
-      <div class="app-tooltip-value">${formatNumber(cacheRead)}</div>
-    </div>
-    <div class="app-tooltip-row">
-      <div class="app-tooltip-dot miss"></div>
-      <div class="app-tooltip-label">${missLabel} ${missPctHtml}</div>
-      <div class="app-tooltip-value">${formatNumber(cacheMiss)}</div>
-    </div>
-    <div class="app-tooltip-row">
-      <div class="app-tooltip-dot out"></div>
-      <div class="app-tooltip-label">${outLabel}</div>
-      <div class="app-tooltip-value">${formatNumber(output)}</div>
-    </div>
-  `;
-  positionAppTooltip(e, html);
-});
-
-document.addEventListener('mouseleave', () => {
-  hideAppTooltip();
 });
 
 function preferredLanguages() {
@@ -668,7 +595,7 @@ function rowTemplate(rowData) {
   if (platform) row.dataset.platform = platform;
   if (client) row.dataset.client = client;
   if (kind) row.dataset.kind = kind;
-  row.innerHTML = '<div class="row-head"><div class="row-name"><span class="row-mark"></span><div class="row-label"><span class="row-title"></span><span class="row-subtitle"></span><span class="row-detail"></span></div></div><div class="row-metrics"><div class="row-value"></div><div class="row-cost"></div></div></div><div class="bar"><div class="bar-fill"></div></div>';
+  row.innerHTML = '<div class="row-head"><div class="row-name"><span class="row-mark"></span><div class="row-label"><span class="row-title"></span><span class="row-subtitle"></span><span class="row-detail"></span></div></div><div class="row-metrics"><div class="row-value"></div><div class="row-cost"></div></div></div><div class="bar"><div class="bar-fill"></div></div><div class="row-accordion"><div class="row-accordion-inner"></div></div>';
   row.querySelector('.row-title').textContent = name;
   row.querySelector('.row-subtitle').textContent = subtitle || '';
   row.querySelector('.row-detail').textContent = detail || '';
@@ -677,6 +604,7 @@ function rowTemplate(rowData) {
 
 function updateRow(row, { name, subtitle, detail, value, cost, max, color, stale, platform, local, client, kind, title, cacheReadTokens, cacheWriteTokens, outputTokens }) {
   const width = rowWidth(value, max);
+  const isExpanded = row.classList.contains('expanded');
   row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}`;
   if (local) row.title = 'This device';
   
@@ -710,6 +638,38 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, stale
   const fill = row.querySelector('.bar-fill');
   fill.style.background = color;
   fill.style.width = `${width}%`;
+
+  const accordionInner = row.querySelector('.row-accordion-inner');
+  if ((cacheReadTokens !== undefined || outputTokens !== undefined) && value > 0 && kind !== 'session') {
+    const cacheRead = cacheReadTokens || 0;
+    const output = outputTokens || 0;
+    const totalTokens = value || 0;
+    const cacheMiss = Math.max(0, totalTokens - cacheRead - output);
+    const inputTokens = cacheRead + cacheMiss;
+    const hitPct = inputTokens > 0 ? Math.round((cacheRead / inputTokens) * 100) : 0;
+    const missPct = inputTokens > 0 ? 100 - hitPct : 0;
+    
+    accordionInner.innerHTML = `
+      <div class="accordion-row">
+        <div class="accordion-label">${t('dashboard.tooltip.inputCacheHit')} <span class="accordion-pct">${hitPct}%</span></div>
+        <div class="accordion-value">${formatNumber(cacheRead)}</div>
+      </div>
+      <div class="accordion-row">
+        <div class="accordion-label">${t('dashboard.tooltip.inputCacheMiss')} <span class="accordion-pct">${missPct}%</span></div>
+        <div class="accordion-value">${formatNumber(cacheMiss)}</div>
+      </div>
+      <div class="accordion-row">
+        <div class="accordion-label">${t('dashboard.tooltip.output')}</div>
+        <div class="accordion-value">${formatNumber(output)}</div>
+      </div>
+    `;
+    row.classList.add('has-accordion');
+    if (isExpanded) row.classList.add('expanded');
+  } else {
+    accordionInner.innerHTML = '';
+    row.classList.remove('has-accordion');
+    row.classList.remove('expanded');
+  }
 }
 
 function renderRows(rows) {
@@ -1540,10 +1500,6 @@ function render() {
     renderRows(rows);
   }
   
-  els.totalTokens.dataset.cacheRead = period.cacheReadTokens || 0;
-  els.totalTokens.dataset.outputTokens = period.outputTokens || 0;
-  els.totalTokens.dataset.totalTokens = period.totalTokens || 0;
-  els.totalTokens.dataset.name = state.period === 'today' ? 'DAY' : state.period === 'month' ? 'MONTH' : 'TOTAL';
   renderFloatingBubbleContent();
   // Tell main the window has painted real content (not the static "0" defaults),
   // so a recreated window can stay hidden until it's populated. See loadWindowFile.
