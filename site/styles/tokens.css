@@ -34,8 +34,8 @@
   --nav-control-bg: rgba(255,255,255,0.08);
   --nav-control-border: rgba(255,255,255,0.14);
   --nav-control-hover: rgba(255,255,255,0.14);
-  --widget-bg: rgba(48,52,56,0.72);
-  --widget-bg-strong: rgba(48,52,56,0.78);
+  --widget-bg: rgba(40,44,52,0.42);
+  --widget-bg-strong: rgba(40,44,52,0.5);
   --widget-border: rgba(232,238,244,0.24);
   --widget-muted: #bac2cd;
   --widget-text: #f3fbf7;
