@@ -59,7 +59,7 @@
   // listed here but present in clientColors are appended after these, then the
   // synthetic "default" fallback is shown last.
   const VENDOR_ORDER = [
-    'claude', 'codex', 'hermes', 'opencode', 'openclaw', 'cursor',
+    'claude', 'codex', 'hermes', 'opencode', 'openclaw', 'cline', 'cursor',
     'gemini', 'antigravity', 'deepseek', 'xai', 'meta', 'mistral',
     'qwen', 'moonshot', 'zai', 'cohere', 'xiaomi', 'minimax'
   ];
@@ -73,6 +73,7 @@
     hermes: 'Hermes',
     opencode: 'OpenCode',
     openclaw: 'OpenClaw',
+    cline: 'Cline',
     cursor: 'Cursor',
     gemini: 'Gemini',
     antigravity: 'Antigravity',

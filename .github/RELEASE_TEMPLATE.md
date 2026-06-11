@@ -5,15 +5,17 @@
 ## What's changed
 
 ### Added
-- Added Appearance theme controls with Default, Obsidian, and Porcelain presets, custom interface colours, and per-tool vendor colour overrides for charts and lists.
-- Added detection-status tags to the tracked tool list, so Settings can show whether each enabled tool is active, waiting for data, or missing local data.
-- Added main-view persistence, so the widget reopens on the last selected view instead of always returning to the default view.
+- Added Cline usage support, including collection, charts, tool labels, and Discord Rich Presence assets.
+- Added Antigravity CLI (`agy` / `antigravity-cli`) limit detection, merged with the existing Antigravity 2.0 detection.
 
 ### Improved
-- Runs the today, month, and all-time tokscale scans concurrently, reducing refresh wait time when local usage data is large.
-- Stops idle live-dot pulsing and skips no-op number animations, keeping the widget calmer when values have not changed.
-- Localized the remaining main-view names and the breakdown toggle button.
-- Updated bundled tokscale to 3.1.2.
+- Status cards now lead with the active incident title and show the affected-component count when a provider reports degraded service.
+- Moved Settings to the footer by default, with an Appearance option to place the Settings button back in the title bar.
+- Refined tray menu-bar behavior with a hover grace delay, steadier title-bar controls, and a configurable title-bar position.
+
+### Fixed
+- Fixed Windows frameless-window corners and removed the DWM system border around the widget.
+- Fixed Claude usage fallback on Windows when the Claude CLI usage command is available but the primary data path is missing.
 
 ## Which file should I download?
 
@@ -48,15 +50,17 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 ### 新增
-- 新增外观主题控制，可选择默认、黑曜、瓷白预设，自定义界面颜色，并为图表和列表里的各工具设置厂商色。
-- 新增已追踪工具的检测状态标签，可在设置中看到每个启用工具是正在检测、等待数据，还是缺少本地数据。
-- 新增主界面记忆功能，小组件重新打开时会回到上次选择的视图，不再总是回到默认视图。
+- 新增 Cline 用量支持，包含收集、图表、工具名称，以及 Discord Rich Presence 图标。
+- 新增 Antigravity CLI（`agy` / `antigravity-cli`）限制侦测，会和既有的 Antigravity 2.0 侦测合并呈现。
 
 ### 改进
-- today、month、all-time 三个 tokscale 扫描现在会并行执行，本地用量数据较多时刷新等待更短。
-- 停止空闲时的实时指示点脉冲，并跳过没有变化的数字动画，让小组件在数值不变时更安静。
-- 补齐剩余主界面名称和明细切换按钮的本地化。
-- 将内置 tokscale 更新到 3.1.2。
+- Status 卡片现在会优先显示进行中的事件标题，并在服务降级时显示受影响组件数量。
+- 设置按钮默认移到底部，也可以在外观设置中放回标题栏。
+- 改进托盘菜单栏行为，加入 hover 宽限时间，让标题栏控制更稳定，并可调整标题栏位置。
+
+### 修复
+- 修复 Windows 无边框窗口圆角，并移除小组件周围的 DWM 系统边框。
+- 修复 Windows 上 Claude 主要资料路径缺失时，无法回退读取 Claude CLI 用量的问题。
 
 ## 应该下载哪个文件？
 
