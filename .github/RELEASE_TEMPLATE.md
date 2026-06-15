@@ -5,13 +5,15 @@
 ## What's changed
 
 ### Added
-- Usage tracking for GitHub Copilot CLI, Kimi, Qwen, and Grok.
+- Codex Accounts in Settings -> Accounts can now add isolated managed Codex logins, so Token Monitor can track multiple Codex accounts without disturbing the live Codex CLI session.
+- AI Tool Limits now has a default-off Show active account option that marks the Codex account signed in on this device, including when synced account rows are visible.
 
 ### Improved
-- On Windows, Claude Code limits now read the OAuth token from Windows Credential Manager, so limits show up on more Windows setups.
+- The refresh button now shows in-progress, success, failure, and last-refreshed feedback.
+- Bundled tokscale was updated to 3.1.3.
 
 ### Fixed
-- Codex limits stay Live when a quota window is exhausted, instead of dropping out.
+- Hubs without a shared secret no longer serve private data beyond localhost. Worker hubs now require `TOKEN_MONITOR_SECRET` before private data routes respond.
 
 ## Which file should I download?
 
@@ -46,13 +48,15 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 ### 新增
-- 新增 GitHub Copilot CLI、Kimi、Qwen、Grok 用量追踪。
+- 设置 -> 账号 中新增 Codex 账号，可添加独立的受管 Codex 登录，让 Token Monitor 追踪多个 Codex 账号，同时不影响当前 Codex CLI 会话。
+- AI 工具限制新增默认关闭的“显示使用中账号”选项，可标记本机当前登录的 Codex 账号；同步账号行可见时也会正确显示。
 
 ### 改进
-- Windows 上的 Claude Code 限额现在会从 Windows 凭据管理器读取 OAuth token，更多 Windows 环境都能显示限额。
+- 刷新按钮现在会显示刷新中、成功、失败和上次刷新时间反馈。
+- 内置 tokscale 已更新到 3.1.3。
 
 ### 修复
-- Codex 限额在配额窗口耗尽后保持 Live 状态，不再消失。
+- 未设置共享密钥的 Hub 不再向 localhost 之外提供私有数据。Worker Hub 现在必须设置 `TOKEN_MONITOR_SECRET` 后，私有数据接口才会响应。
 
 ## 应该下载哪个文件？
 
