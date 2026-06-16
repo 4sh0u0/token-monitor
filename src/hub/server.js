@@ -44,18 +44,54 @@ function createHub({
     return stats;
   }
 
+  function getHistory() {
+    return aggregateHistory(Object.values(store.devices), staleAfterMs);
+  }
+
   const sseClients = new Set();
+  const statsListeners = new Set();
 
   function sseFormat(event, data) {
     return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   }
 
   function broadcastStats(reason = 'update') {
-    if (sseClients.size === 0) return;
-    const payload = sseFormat('stats', { type: 'stats', reason, stats: getStats(), at: new Date().toISOString() });
-    for (const res of sseClients) {
-      try { res.write(payload); } catch (_) { sseClients.delete(res); }
+    if (sseClients.size === 0 && statsListeners.size === 0) return;
+    const stats = getStats();
+    const at = new Date().toISOString();
+    if (sseClients.size > 0) {
+      const payload = sseFormat('stats', { type: 'stats', reason, stats, at });
+      for (const res of sseClients) {
+        try { res.write(payload); } catch (_) { sseClients.delete(res); }
+      }
     }
+    for (const listener of statsListeners) {
+      try { listener(stats, reason, at); } catch (_) { /* listener errors must not break ingest */ }
+    }
+  }
+
+  // Transport-agnostic core: both the HTTP POST handler and the same-process
+  // widget call these, so a host-mode widget never has to loopback to itself.
+  function ingest(payload) {
+    if (!payload || (!payload.deviceId && !payload.id)) {
+      throw new Error('deviceId_required');
+    }
+    const record = mergeDeviceRecord(store.devices[String(payload.deviceId || payload.id)], { ...payload, receivedAt: new Date().toISOString() });
+    store.devices[record.deviceId] = record;
+    persist();
+    broadcastStats('ingest');
+    return record;
+  }
+
+  function deleteDevice(deviceId) {
+    delete store.devices[deviceId];
+    persist();
+    broadcastStats('delete');
+  }
+
+  function onStats(listener) {
+    statsListeners.add(listener);
+    return () => statsListeners.delete(listener);
   }
 
   async function handleRequest(req, res) {
@@ -77,7 +113,7 @@ function createHub({
 
     if (req.method === 'GET' && url.pathname === '/api/stats') return sendJson(res, 200, getStats());
     if (req.method === 'GET' && url.pathname === '/api/devices') return sendJson(res, 200, { devices: Object.values(store.devices) });
-    if (req.method === 'GET' && url.pathname === '/api/history') return sendJson(res, 200, aggregateHistory(Object.values(store.devices), staleAfterMs));
+    if (req.method === 'GET' && url.pathname === '/api/history') return sendJson(res, 200, getHistory());
 
     if (req.method === 'GET' && url.pathname === '/api/stats/stream') {
       res.writeHead(200, {
@@ -98,23 +134,17 @@ function createHub({
     if (req.method === 'POST' && url.pathname === '/api/ingest') {
       try {
         const payload = await readJsonBody(req);
-        if (!payload.deviceId && !payload.id) return sendJson(res, 400, { error: 'deviceId_required' });
-        const deviceId = String(payload.deviceId || payload.id);
-        const record = mergeDeviceRecord(store.devices[deviceId], { ...payload, receivedAt: new Date().toISOString() });
-        store.devices[record.deviceId] = record;
-        persist();
-        broadcastStats('ingest');
+        const record = ingest(payload);
         return sendJson(res, 200, { ok: true, deviceId: record.deviceId, stats: getStats() });
       } catch (error) {
+        if (error.message === 'deviceId_required') return sendJson(res, 400, { error: 'deviceId_required' });
         return sendJson(res, 400, { error: 'bad_request', message: error.message });
       }
     }
 
     if (req.method === 'DELETE' && url.pathname.startsWith('/api/devices/')) {
       const deviceId = decodeURIComponent(url.pathname.slice('/api/devices/'.length));
-      delete store.devices[deviceId];
-      persist();
-      broadcastStats('delete');
+      deleteDevice(deviceId);
       return sendJson(res, 200, { ok: true, deviceId });
     }
 
@@ -146,7 +176,7 @@ function createHub({
     });
   }
 
-  return { start, stop, server, getStats, bindHost };
+  return { start, stop, server, getStats, getHistory, ingest, deleteDevice, onStats, bindHost };
 }
 
 if (require.main === module) {

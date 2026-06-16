@@ -954,6 +954,7 @@ function getDefaultTrayIcon() {
 const AGENT_PID_PATH = pidFilePath();
 let embeddedHub = null;
 let embeddedHubError = null;
+let embeddedHubUnsub = null;
 let modeQueue = Promise.resolve();
 
 function effectiveHubConfig() {
@@ -1112,6 +1113,76 @@ function startSyncCollector() {
     onError: (error, reason) => console.log(`[sync-collector] ${reason}: ${error.message}`),
     logger: (msg) => console.log(`[sync-collector] ${msg}`)
   });
+}
+
+// Host mode: this device's own usage goes straight into the embedded hub's store
+// in-process. No loopback HTTP, so a local firewall / proxy that blocks Token
+// Monitor's own outbound connections can't zero out the widget's own usage (#17).
+function startHostCollector() {
+  stopSyncCollector();
+  syncCollectorHandle = startCollector({
+    clients: clientsCsvForSetting(settings.clients),
+    allTimeSince: settings.allTimeSince || '2024-01-01',
+    commandTimeoutMs: 120 * 1000,
+    deviceId: settings.deviceId || defaultDeviceId(),
+    agentVersion: appVersion(),
+    agentRuntime: 'electron-widget',
+    intervalMs: 5 * 60 * 1000,
+    historyEnabled: settings.historyEnabled !== false,
+    historyIntervalMs: Number(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS || 15 * 60 * 1000),
+    watchEnabled: true,
+    watchDebounceMs: 1500,
+    limitsEnabled: settings.limitsEnabled !== false,
+    limitProviders: settings.limitProviders ?? defaultLimitProviders(),
+    limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
+    opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
+    deepseekApiKey: settings.deepseekApiKey || '',
+    codexManagedAccounts: codexManagedAccountsForCollector(),
+    onUpdate: (summary) => {
+      const visibleSummary = summaryWithArchivedClientUsage(summary);
+      lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
+      if (isExternalAgentActive()) return;
+      if (!embeddedHub) return;
+      try {
+        const stale = settings.lastPostedDeviceId;
+        if (stale && stale !== visibleSummary.deviceId) {
+          embeddedHub.hub.deleteDevice(stale);
+        }
+        embeddedHub.hub.ingest({ ...visibleSummary, limits: syncLimits(visibleSummary.limits) });
+        if (settings.lastPostedDeviceId !== visibleSummary.deviceId) {
+          settings.lastPostedDeviceId = visibleSummary.deviceId;
+          saveSettings();
+        }
+      } catch (error) {
+        console.log(`[host-ingest] failed: ${error.message}`);
+      }
+    },
+    onError: (error, reason) => console.log(`[host-collector] ${reason}: ${error.message}`),
+    logger: (msg) => console.log(`[host-collector] ${msg}`)
+  });
+}
+
+function stopHostStats() {
+  if (embeddedHubUnsub) { try { embeddedHubUnsub(); } catch (_) {} }
+  embeddedHubUnsub = null;
+}
+
+function startHostStats() {
+  stopHostStats();
+  if (!embeddedHub) return;
+  // Host mode presents the same multi-device hub aggregate as connecting to a
+  // remote hub, so it reuses the renderer's 'sync' status path (Live / synced
+  // data). The in-process vs loopback distinction is internal to fetchStats.
+  mode = 'sync';
+  sendStatus(true);
+  const emit = (stats, reason = 'hub') => {
+    updateDiscordRpc(stats, settings.currency);
+    sendPush({ event: 'stats', data: { type: 'stats', reason, stats, at: new Date().toISOString() } });
+  };
+  embeddedHubUnsub = embeddedHub.hub.onStats((stats, reason) => emit(stats, reason || 'hub'));
+  // Prime the renderer with the current snapshot so it isn't blank until the
+  // first collector tick lands.
+  emit(embeddedHub.hub.getStats(), 'snapshot');
 }
 
 function isHubConfigured() {
@@ -1463,6 +1534,7 @@ function startMode() {
   // async reconciliation below is queued.
   stopLocalCollector();
   stopStatsStream();
+  stopHostStats();
   stopSyncCollector();
   // Serialize the hub-side work so rapid UI events (mode change immediately
   // followed by a port edit or secret regenerate) reconcile in order rather
@@ -1483,8 +1555,8 @@ function startMode() {
         startLocalCollector();
         return;
       }
-      startStatsStream();
-      startSyncCollector();
+      startHostStats();
+      startHostCollector();
       return;
     }
     await stopEmbeddedHub();
@@ -1503,6 +1575,7 @@ function stopAll() {
   stopPersistBoundsTimer();
   stopLocalCollector();
   stopStatsStream();
+  stopHostStats();
   stopSyncCollector();
   void stopEmbeddedHub();
   stopDiscordRpc();
@@ -1526,6 +1599,12 @@ async function fetchStats(options = {}) {
     if (force && localCollectorHandle) await localCollectorHandle.tick('manual', tickOptions);
     if (localStats) return localStats;
     return withHistoryPreview(aggregateDevices(localDevice ? [localDevice] : [], 0), localDevice ? [localDevice] : []);
+  }
+  if (settings.hubMode === 'host' && embeddedHub) {
+    if (force && syncCollectorHandle && !isExternalAgentActive()) {
+      await syncCollectorHandle.tick('manual', tickOptions);
+    }
+    return injectLocalClientStatus(embeddedHub.hub.getStats());
   }
   if (force && syncCollectorHandle && !isExternalAgentActive()) {
     await syncCollectorHandle.tick('manual', tickOptions);
@@ -1933,6 +2012,11 @@ async function getDashboardHistory() {
     // fetch take seconds; on a quick close/reopen the response outlived the
     // renderer and was dropped, stranding the dashboard on its empty state.
     return aggregateHistory(localDevice ? [localDevice] : [], 0);
+  }
+  if (settings.hubMode === 'host' && embeddedHub) {
+    // Host mode reads its own hub store in-process, so the dashboard history
+    // doesn't depend on a loopback fetch the local firewall/proxy might block.
+    return embeddedHub.hub.getHistory();
   }
   const { url: hubUrl, secret } = effectiveHubConfig();
   if (!hubUrl) return aggregateHistory([], 0);

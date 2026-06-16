@@ -41,3 +41,46 @@ test('a hub without a secret binds to localhost only even when asked to bind eve
     fs.rmSync(dataFile, { force: true });
   }
 });
+
+test('ingest inserts a device and is visible in getStats', () => {
+  const dataFile = tempDataFile();
+  const hub = createHub({ port: 0, host: '127.0.0.1', secret: '', dataFile, logger: { error() {} } });
+  try {
+    const record = hub.ingest({ deviceId: 'dev-a', today: { totalTokens: 5, costUsd: 0.1 } });
+    assert.equal(record.deviceId, 'dev-a');
+    assert.equal(hub.getStats().devices.length, 1);
+  } finally {
+    fs.rmSync(dataFile, { force: true });
+  }
+});
+
+test('ingest without a deviceId throws', () => {
+  const dataFile = tempDataFile();
+  const hub = createHub({ port: 0, host: '127.0.0.1', secret: '', dataFile, logger: { error() {} } });
+  try {
+    assert.throws(() => hub.ingest({ today: { totalTokens: 1 } }), /deviceId/);
+  } finally {
+    fs.rmSync(dataFile, { force: true });
+  }
+});
+
+test('onStats fires on ingest and on deleteDevice, and unsubscribe stops it', () => {
+  const dataFile = tempDataFile();
+  const hub = createHub({ port: 0, host: '127.0.0.1', secret: '', dataFile, logger: { error() {} } });
+  try {
+    let calls = 0;
+    let lastDeviceCount = -1;
+    const unsub = hub.onStats((stats) => { calls += 1; lastDeviceCount = stats.devices.length; });
+    hub.ingest({ deviceId: 'dev-a', today: { totalTokens: 5 } });
+    assert.equal(calls, 1);
+    assert.equal(lastDeviceCount, 1);
+    hub.deleteDevice('dev-a');
+    assert.equal(calls, 2);
+    assert.equal(lastDeviceCount, 0);
+    unsub();
+    hub.ingest({ deviceId: 'dev-b', today: { totalTokens: 1 } });
+    assert.equal(calls, 2);
+  } finally {
+    fs.rmSync(dataFile, { force: true });
+  }
+});
