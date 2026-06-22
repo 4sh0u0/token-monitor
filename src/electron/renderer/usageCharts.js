@@ -367,9 +367,17 @@
   }
 
   function areaLineSvg(model) {
+    // Top-to-bottom blue fade (stop colours live in styles.css so they track the
+    // theme). objectBoundingBox keeps the fade vertical regardless of the path bbox.
+    const defs = model.areaPath
+      ? '<defs><linearGradient id="area-line-grad" x1="0" y1="0" x2="0" y2="1">'
+        + '<stop class="area-line-grad-top" offset="0"></stop>'
+        + '<stop class="area-line-grad-bottom" offset="1"></stop>'
+        + '</linearGradient></defs>'
+      : '';
     const fill = model.areaPath ? `<path class="area-line-fill" d="${model.areaPath}"></path>` : '';
     const line = model.linePath ? `<path class="area-line-stroke" d="${model.linePath}"></path>` : '';
-    return `<svg class="area-line" viewBox="0 0 ${model.width} ${model.height}" preserveAspectRatio="none" width="100%" height="100%" aria-hidden="true">${fill}${line}</svg>`;
+    return `<svg class="area-line" viewBox="0 0 ${model.width} ${model.height}" preserveAspectRatio="none" width="100%" height="100%" aria-hidden="true">${defs}${fill}${line}</svg>`;
   }
 
   function axisText(label, x, y) {

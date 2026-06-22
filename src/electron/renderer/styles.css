@@ -28,7 +28,11 @@
      themeCssVarEntries(). Must match --green above. */
   --accent-rgb: 183, 234, 212;
   --number: #f3fbf7;
-  --blue: #73bdf5;
+  /* Semantic blue, exposed as a triplet so the trend line and its area fill can
+     share one hue (and match the blue heatmap ramp) instead of the fill borrowing
+     the customisable --accent. */
+  --blue-rgb: 115, 189, 245;
+  --blue: rgb(var(--blue-rgb));
   --orange: #f4a073;
   --purple: #b394f4;
   --yellow: #f1d973;
@@ -1711,7 +1715,13 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   height: 100%;
 }
 .area-line-fill {
-  fill: rgba(var(--accent-rgb), 0.18);
+  fill: url(#area-line-grad);
+}
+.area-line-grad-top {
+  stop-color: rgba(var(--blue-rgb), 0.22);
+}
+.area-line-grad-bottom {
+  stop-color: rgba(var(--blue-rgb), 0);
 }
 .area-line-stroke {
   fill: none;

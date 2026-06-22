@@ -195,6 +195,9 @@ test('areaLineSvg renders line and filled area paths', () => {
   assert.match(svg, /viewBox="0 0 80 40"/);
   assert.match(svg, /class="area-line-fill"/);
   assert.match(svg, /class="area-line-stroke"/);
+  // The fill is a blue vertical gradient (defined in styles.css), not the accent slab.
+  assert.match(svg, /<linearGradient id="area-line-grad"/);
+  assert.match(svg, /fill="url\(#area-line-grad\)"|class="area-line-fill"/);
 });
 
 test('areaLineChart can smooth a compact trend path', () => {
