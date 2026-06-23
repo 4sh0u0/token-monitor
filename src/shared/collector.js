@@ -537,6 +537,20 @@ function deriveClientStatus(clientsCsv, allTimePeriod) {
   return statusFromSignals(clients, clientDataDirPresence(clientsCsv), allTimePeriod?.clients || {});
 }
 
+// The frozen wslAnchor is only valid to merge into a preview period when it was
+// captured in the same calendar window: today only if the anchor is from today,
+// month only if from the same month. Otherwise a cross-day / cross-month full
+// scan would briefly add the previous period's WSL usage to the preview before
+// the final fresh scan corrects it. Returns the WSL period to merge, or null.
+function wslPeriodsForPreview(wslAnchor, anchorDateKey, todayKey) {
+  if (!wslAnchor) return { today: null, month: null };
+  const key = anchorDateKey || '';
+  return {
+    today: key === todayKey ? wslAnchor.today : null,
+    month: key.slice(0, 7) === todayKey.slice(0, 7) ? wslAnchor.month : null
+  };
+}
+
 function startCollector(options) {
   const {
     clients, allTimeSince, commandTimeoutMs, deviceId, agentVersion, agentRuntime,
@@ -593,20 +607,26 @@ function startCollector(options) {
           if (!partial.today) return;
           try {
             if (typeof onPreview === 'function') {
+              // Frozen WSL snapshot, gated so a cross-day/cross-month full scan
+              // doesn't merge a stale period's WSL usage into the preview.
+              const wsl = wslPeriodsForPreview(wslAnchor, anchor?.dateKey, todayKey);
               const preview = {
                 deviceId, hostname: os.hostname(),
                 platform: `${process.platform}-${process.arch}`,
                 updatedAt: partial.updatedAt,
                 agentVersion, agentRuntime,
                 trackedClients: (clients || '').split(',').filter(Boolean),
-                today: partial.today
+                // Merge the frozen WSL snapshot into today (as month/allTime do
+                // below) so the today card keeps its WSL contribution during a
+                // warm scan instead of dropping to host-only until the final tick.
+                today: wsl.today ? mergePeriods(partial.today, wsl.today) : partial.today
               };
               // Only include month/allTime when actually scanned. During warm
               // full scans the main.js handler carries the previous values
               // forward for omitted fields, so these cards don't flash empty.
               if (partial.month) {
-                preview.month = wslAnchor
-                  ? mergePeriods(partial.month, wslAnchor.month)
+                preview.month = wsl.month
+                  ? mergePeriods(partial.month, wsl.month)
                   : partial.month;
               }
               if (partial.allTime) {
@@ -731,6 +751,7 @@ module.exports = {
   collectUsageOnce,
   clientDataDirPresence,
   deriveClientStatus,
+  wslPeriodsForPreview,
   statusFromSignals,
   decideResolver,
   localTodayKey,
