@@ -81,7 +81,7 @@ test('Discord Rich Presence uses labels and asset keys for new tokscale clients'
 
 test('Discord Rich Presence uses labels and asset keys for Pi, Zed, and Kilo Code', () => {
   const buildPayload = loadBuildPayload();
-  for (const [client, label] of [['pi', 'Pi'], ['zed', 'Zed'], ['kilocode', 'Kilo Code']]) {
+  for (const [client, label] of [['pi', 'Pi'], ['zed', 'Zed'], ['kilocode', 'Kilo Code'], ['micode', 'MiMo Code'], ['zcode', 'ZCode']]) {
     const payload = buildPayload({
       periods: {
         today: {

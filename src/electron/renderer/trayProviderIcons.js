@@ -10,7 +10,9 @@
     codex: '../../../assets/icons/tray-codex.svg',
     hermes: '../../../assets/icons/hermes-agent.svg',
     kimi: '../../../assets/icons/moonshot.svg',
-    grok: '../../../assets/icons/grok.svg'
+    grok: '../../../assets/icons/grok.svg',
+    micode: '../../../assets/icons/xiaomi.svg',
+    zcode: '../../../assets/icons/zai.svg'
   };
 
   function trayProviderIconSources(clientIds) {

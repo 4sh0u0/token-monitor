@@ -33,7 +33,9 @@ const WSL_DATA_MARKERS = [
   '.omp/agent/sessions',
   '.local/share/zed/threads/threads.db',
   '.config/Code/User/globalStorage/kilocode.kilo-code/tasks',
-  '.vscode-server/data/User/globalStorage/kilocode.kilo-code/tasks'
+  '.vscode-server/data/User/globalStorage/kilocode.kilo-code/tasks',
+  '.local/share/micode/mimocode.db',
+  '.zcode/projects'
 ];
 
 // Clients whose tokscale `--home` scan can fall back to a HOST-native database

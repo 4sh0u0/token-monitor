@@ -95,10 +95,11 @@ test('wslUsageHomes returns [] when no distro is running', () => {
 });
 
 // A WSL home that only holds a new A-class client's data (pi, Oh My Pi, zed,
-// kilocode) must still be discovered — mirroring the sync point each new tracked
-// client adds (see AGENTS.md "Tracked-client list must stay in sync"). Zed's
-// marker is the threads.db file, not the directory (tokscale checks is_file()).
-test('wslUsageHomes keeps a home whose only tracked-client data is pi, zed, or kilocode', () => {
+// kilocode, micode, zcode) must still be discovered — mirroring the sync point
+// each new tracked client adds (see AGENTS.md "Tracked-client list must stay in
+// sync"). Zed's marker is the threads.db file, not the directory (tokscale
+// checks is_file()).
+test('wslUsageHomes keeps a home whose only tracked-client data is pi, zed, kilocode, micode, or zcode', () => {
   function homesFor(markerRel) {
     return wslUsageHomes({
       platform: 'win32',
@@ -112,6 +113,8 @@ test('wslUsageHomes keeps a home whose only tracked-client data is pi, zed, or k
   assert.deepEqual(homesFor('.local/share/zed/threads/threads.db'), ['\\\\wsl$\\Ubuntu\\home\\alice']);
   assert.deepEqual(homesFor('.config/Code/User/globalStorage/kilocode.kilo-code/tasks'), ['\\\\wsl$\\Ubuntu\\home\\alice']);
   assert.deepEqual(homesFor('.vscode-server/data/User/globalStorage/kilocode.kilo-code/tasks'), ['\\\\wsl$\\Ubuntu\\home\\alice']);
+  assert.deepEqual(homesFor('.local/share/micode/mimocode.db'), ['\\\\wsl$\\Ubuntu\\home\\alice']);
+  assert.deepEqual(homesFor('.zcode/projects'), ['\\\\wsl$\\Ubuntu\\home\\alice']);
 });
 
 // A home holding only an alternate-root client (Claude transcripts, Kimi Code,

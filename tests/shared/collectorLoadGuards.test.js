@@ -135,13 +135,15 @@ test('watchPathsForClients watches Pi (incl. Oh My Pi), Zed (incl. native macOS)
     path.join('Library', 'Application Support', 'Zed', 'threads'),
     path.join('.config', 'Code', 'User', 'globalStorage', 'kilocode.kilo-code', 'tasks'),
     path.join('.vscode-server', 'data', 'User', 'globalStorage', 'kilocode.kilo-code', 'tasks'),
-    path.join('Library', 'Application Support', 'Code', 'User', 'globalStorage', 'kilocode.kilo-code', 'tasks')
+    path.join('Library', 'Application Support', 'Code', 'User', 'globalStorage', 'kilocode.kilo-code', 'tasks'),
+    path.join('.local', 'share', 'micode'),
+    path.join('.zcode', 'projects')
   ]);
   const originalHomedir = os.homedir;
   os.homedir = () => tmp;
   try {
     const { clientDataDirPresence, watchPathsForClients } = freshCollector();
-    const dirs = watchPathsForClients('pi,zed,kilocode');
+    const dirs = watchPathsForClients('pi,zed,kilocode,micode,zcode');
     assert.ok(dirs.includes(path.join(tmp, '.pi', 'agent', 'sessions')));
     assert.ok(dirs.includes(path.join(tmp, '.omp', 'agent', 'sessions')));
     assert.ok(dirs.includes(path.join(tmp, '.local', 'share', 'zed', 'threads')));
@@ -151,7 +153,11 @@ test('watchPathsForClients watches Pi (incl. Oh My Pi), Zed (incl. native macOS)
     // tokscale 3.1.3 does not scan KiloCode's native macOS/Windows globalStorage,
     // so we must not watch it (would be a dead watch + a false "active" status).
     assert.ok(!dirs.includes(path.join(tmp, 'Library', 'Application Support', 'Code', 'User', 'globalStorage', 'kilocode.kilo-code', 'tasks')));
-    assert.deepEqual(clientDataDirPresence('pi,zed,kilocode'), { pi: true, zed: true, kilocode: true });
+    assert.ok(dirs.includes(path.join(tmp, '.local', 'share', 'micode')));
+    assert.ok(dirs.includes(path.join(tmp, '.zcode', 'projects')));
+    assert.deepEqual(clientDataDirPresence('pi,zed,kilocode,micode,zcode'), {
+      pi: true, zed: true, kilocode: true, micode: true, zcode: true
+    });
   } finally {
     os.homedir = originalHomedir;
     delete require.cache[collectorPath];

@@ -35,7 +35,7 @@ test('renderer client labels cover every known client', () => {
 
 test('renderer known clients include current tokscale-supported tools', () => {
   const clients = knownClientIds(rendererSource());
-  for (const client of ['cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode']) {
+  for (const client of ['cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode']) {
     assert.ok(clients.includes(client), `${client} should be a known renderer client`);
   }
 });
@@ -45,4 +45,10 @@ test('renderer distinguishes Grok model and Grok Build tool icons', () => {
   assert.match(styles, /\.row-icon-xai\s*\{[^}]*assets\/icons\/grok\.svg/s);
   assert.match(styles, /\.row-icon-grok\s*\{[^}]*assets\/icons\/xai\.svg/s);
   assert.match(styles, /\.limit-icon-grok\s*\{[^}]*assets\/icons\/grok\.svg/s);
+});
+
+test('renderer reuses vendor icons for MiMo Code and ZCode tool rows', () => {
+  const styles = rendererStyles();
+  assert.match(styles, /\.row-icon-micode\s*\{[^}]*assets\/icons\/xiaomi\.svg/s);
+  assert.match(styles, /\.row-icon-zcode\s*\{[^}]*assets\/icons\/zai\.svg/s);
 });

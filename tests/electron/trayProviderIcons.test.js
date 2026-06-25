@@ -27,4 +27,6 @@ test('tray provider icon sources keep optimized menubar icons where available', 
   assert.equal(sources.codex, '../../../assets/icons/tray-codex.svg');
   assert.equal(sources.hermes, '../../../assets/icons/hermes-agent.svg');
   assert.equal(sources.grok, '../../../assets/icons/grok.svg');
+  assert.equal(trayProviderIconSources(['micode']).micode, '../../../assets/icons/xiaomi.svg');
+  assert.equal(trayProviderIconSources(['zcode']).zcode, '../../../assets/icons/zai.svg');
 });

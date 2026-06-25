@@ -505,6 +505,8 @@ function clientWatchCandidates(clientsCsv) {
     path.join(home, '.config', 'Code', 'User', 'globalStorage', 'kilocode.kilo-code', 'tasks'),
     path.join(home, '.vscode-server', 'data', 'User', 'globalStorage', 'kilocode.kilo-code', 'tasks')
   );
+  add('micode', path.join(home, '.local', 'share', 'micode'));
+  add('zcode', path.join(home, '.zcode', 'projects'));
   add(
     'cline',
     path.join(home, '.config', 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'tasks'),
