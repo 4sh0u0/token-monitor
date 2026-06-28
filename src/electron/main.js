@@ -6,7 +6,13 @@ const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, clipboard, globalShortcut, ipcMain, nativeImage, screen, session, shell } = require('electron');
 const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, sharedDataDir } = require('../shared/config');
+const { installSafeStdout } = require('../shared/safeStdio');
 const { appVersion } = require('../shared/appVersion');
+
+// Install EPIPE suppression before anything that might log. Without this,
+// a closed parent pipe turns the next log call into an unhandled 'error'
+// event and Electron pops a "JavaScript error in the main process" dialog.
+installSafeStdout();
 const { DEFAULT_CLIENTS, clientsCsvForSetting } = require('../shared/clientTracking');
 const { startCollector, lookupModelPricing } = require('../shared/collector');
 const { customPricingPath } = require('../shared/tokscaleConfig');
