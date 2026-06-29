@@ -178,7 +178,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistoryPreviewKey: '', homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistoryPreviewKey: '', homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: false, settingsInTitlebar: false };
 let preferenceDrag = null;
@@ -1873,10 +1873,31 @@ function scheduleViewSwitcherHoverClose() {
   }, VIEW_SWITCHER_HOVER_CLOSE_MS);
 }
 
+function updateViewSwitcherOpenState({ focusMenu = false, focusDisclosure = false } = {}) {
+  if (!els.viewSwitcher) return false;
+  const menu = els.viewSwitcher.querySelector('#viewSwitcherMenu');
+  const disclosure = els.viewSwitcher.querySelector('.view-switcher-disclosure');
+  if (!menu || !disclosure) return false;
+
+  els.viewSwitcher.classList.toggle('is-open', state.viewSwitcherOpen);
+  els.viewSwitcher.classList.toggle('has-opened', state.viewSwitcherHasOpened);
+  disclosure.setAttribute('aria-expanded', String(state.viewSwitcherOpen));
+  menu.classList.toggle('hidden', !state.viewSwitcherOpen);
+  menu.setAttribute('aria-hidden', String(!state.viewSwitcherOpen));
+  for (const item of menu.querySelectorAll('.view-switcher-menu-item')) {
+    item.tabIndex = state.viewSwitcherOpen && item.classList.contains('is-current') ? 0 : -1;
+  }
+  if (focusMenu) requestAnimationFrame(() => menu.querySelector('.is-current')?.focus());
+  if (focusDisclosure) requestAnimationFrame(() => disclosure.focus());
+  return true;
+}
+
 function setViewSwitcherOpen(open, { focusMenu = false, focusDisclosure = false } = {}) {
   const nextOpen = Boolean(open);
   if (state.viewSwitcherOpen === nextOpen && !focusMenu && !focusDisclosure) return;
+  if (nextOpen) state.viewSwitcherHasOpened = true;
   state.viewSwitcherOpen = nextOpen;
+  if (updateViewSwitcherOpenState({ focusMenu, focusDisclosure })) return;
   renderViewSwitcher({ focusMenu, focusDisclosure });
 }
 
@@ -1947,6 +1968,7 @@ function renderViewSwitcher({ focusMenu = false, focusDisclosure = false } = {})
   menu.className = `view-switcher-menu${state.viewSwitcherOpen ? '' : ' hidden'}`;
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', t('views.switcher.choose'));
+  menu.setAttribute('aria-hidden', String(!state.viewSwitcherOpen));
   for (const id of order) {
     const item = document.createElement('button');
     const active = id === currentId;
@@ -1956,7 +1978,7 @@ function renderViewSwitcher({ focusMenu = false, focusDisclosure = false } = {})
     item.setAttribute('role', 'menuitemradio');
     item.setAttribute('aria-checked', String(active));
     if (active) item.setAttribute('aria-current', 'page');
-    item.tabIndex = active ? 0 : -1;
+    item.tabIndex = state.viewSwitcherOpen ? (active ? 0 : -1) : -1;
     item.append(viewSwitcherIcon(id));
     const itemLabel = document.createElement('span');
     itemLabel.className = 'view-switcher-menu-label';
@@ -1989,6 +2011,7 @@ function renderViewSwitcher({ focusMenu = false, focusDisclosure = false } = {})
   });
 
   els.viewSwitcher.classList.toggle('is-open', state.viewSwitcherOpen);
+  els.viewSwitcher.classList.toggle('has-opened', state.viewSwitcherHasOpened);
   els.viewSwitcher.replaceChildren(current, disclosure, menu);
   if (focusMenu) requestAnimationFrame(() => menu.querySelector('.is-current')?.focus());
   if (focusDisclosure) requestAnimationFrame(() => disclosure.focus());

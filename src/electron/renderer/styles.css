@@ -2506,6 +2506,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   gap: 2px;
   padding: 4px;
   overflow: hidden auto;
+  transform-origin: left bottom;
   border: 1px solid rgba(var(--line-rgb), 0.22);
   border-radius: 7px;
   background:
@@ -2514,9 +2515,25 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(var(--overlay-rgb), 0.1);
   -webkit-backdrop-filter: blur(28px) saturate(115%);
   backdrop-filter: blur(28px) saturate(115%);
+  opacity: 1;
+  visibility: visible;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 190ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 190ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 190ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
+  will-change: opacity, transform, filter;
 }
 .view-switcher-menu.hidden {
-  display: none;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px) scale(0.985);
+  filter: blur(2px);
+  transition-duration: 130ms, 130ms, 130ms, 0s;
+  transition-delay: 0s, 0s, 0s, 130ms;
 }
 .view-switcher-menu-item {
   display: grid;
@@ -2549,6 +2566,12 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .view-switcher-menu {
+    filter: none;
+    transition-duration: 0.01ms;
+  }
 }
 .view-icon-home { -webkit-mask-image: url("icons/views/home.svg"); mask-image: url("icons/views/home.svg"); }
 .view-icon-tool { -webkit-mask-image: url("icons/views/tool.svg"); mask-image: url("icons/views/tool.svg"); }
