@@ -5349,11 +5349,10 @@ function renderCodexAccounts() {
   if (!statusEl || !listEl || !errorEl) return;
 
   const accounts = state.settings?.codexManagedAccounts || [];
+  const enabledCount = accounts.filter(account => account.enabled !== false).length;
   const statusText = accounts.length === 0
     ? t('settings.codex.notConfigured')
-    : accounts.length === 1
-      ? t('settings.codex.accountOne')
-      : t('settings.codex.accountMany', { count: accounts.length });
+    : t('settings.opencode.connected', { linked: enabledCount, total: accounts.length });
   setCursorStatusText(statusEl, statusText);
   errorEl.textContent = state.codexAccountError || '';
   errorEl.classList.toggle('hidden', !state.codexAccountError);
@@ -5365,36 +5364,72 @@ function renderCodexAccounts() {
     listEl.append(empty);
   } else {
     for (const account of accounts) {
+      const enabled = account.enabled !== false;
       const row = document.createElement('div');
       row.className = 'managed-account-row';
+      row.classList.toggle('disabled', !enabled);
+      const input = document.createElement('input');
+      input.className = 'managed-account-checkbox';
+      input.type = 'checkbox';
+      input.checked = account.enabled !== false;
+      input.setAttribute('aria-label', t('settings.codex.toggleAccount', {
+        account: account.email || t('settings.codex.unnamedAccount')
+      }));
       const main = document.createElement('div');
       main.className = 'managed-account-main';
       const email = document.createElement('div');
       email.className = 'managed-account-email';
       email.textContent = account.email || t('settings.codex.unnamedAccount');
-      const meta = document.createElement('div');
-      meta.className = 'managed-account-meta';
-      meta.textContent = [account.accountLabel, account.updatedAt ? formatTime(account.updatedAt) : '']
-        .filter(Boolean)
-        .join(' · ');
-      main.append(email, meta);
+      main.append(email);
+      input.addEventListener('change', async () => {
+        input.disabled = true;
+        const result = await window.tokenMonitor.codex.setAccountEnabled(account.id, input.checked);
+        if (!result?.ok) {
+          state.codexAccountError = result?.error || t('settings.codex.toggleFailed');
+        } else {
+          state.codexAccountError = '';
+          state.settings.codexManagedAccounts = result.accounts || [];
+        }
+        renderCodexAccounts();
+        renderSettingsSummaries();
+      });
+      const right = document.createElement('span');
+      right.className = 'managed-account-right';
+      const info = document.createElement('span');
+      info.className = 'managed-account-info';
+      info.textContent = enabled ? account.accountLabel || '' : t('settings.codex.disabled');
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'managed-account-remove';
-      remove.textContent = t('settings.codex.remove');
+      remove.textContent = '✕';
+      remove.title = t('settings.codex.remove');
+      let confirmingRemove = false;
       remove.addEventListener('click', async () => {
+        if (!confirmingRemove) {
+          confirmingRemove = true;
+          remove.classList.add('confirming');
+          remove.textContent = '✓';
+          remove.title = t('settings.codex.removeConfirm', {
+            account: account.email || t('settings.codex.unnamedAccount')
+          });
+          return;
+        }
         const result = await window.tokenMonitor.codex.removeAccount(account.id);
         if (!result?.ok) {
           state.codexAccountError = result?.error || t('settings.codex.removeFailed');
         } else {
           state.codexAccountError = '';
           state.settings.codexManagedAccounts = result.accounts || [];
-          await refreshStats({ force: true });
+          renderCodexAccounts();
+          renderSettingsSummaries();
+          refreshStats({ force: true }).catch(() => {});
+          return;
         }
         renderCodexAccounts();
         renderSettingsSummaries();
       });
-      row.append(main, remove);
+      right.append(info, remove);
+      row.append(input, main, right);
       listEl.append(row);
     }
   }

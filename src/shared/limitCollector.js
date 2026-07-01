@@ -1761,7 +1761,8 @@ function normalizeCodexManagedAccounts(value) {
       authPath: String(account.authPath || '').trim(),
       email: String(account.email || '').trim().toLowerCase(),
       accountKey: String(account.accountKey || '').trim(),
-      accountLabel: String(account.accountLabel || account.plan || '').trim()
+      accountLabel: String(account.accountLabel || account.plan || '').trim(),
+      enabled: account.enabled !== false
     };
   }).filter(Boolean);
 }
@@ -1844,7 +1845,8 @@ async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now()) {
 
 async function fetchCodexLimits(options = {}, deps = {}) {
   const nowMs = (deps.now || Date.now)();
-  const managedAccounts = normalizeCodexManagedAccounts(options.codexManagedAccounts || deps.codexManagedAccounts);
+  const managedAccounts = normalizeCodexManagedAccounts(options.codexManagedAccounts || deps.codexManagedAccounts)
+    .filter((account) => account.enabled !== false);
   // Single live account: keep the original single-provider shape (and error
   // propagation) so a signed-out/not-configured state surfaces as before.
   if (managedAccounts.length === 0) return fetchLiveCodexAccount(deps, nowMs);

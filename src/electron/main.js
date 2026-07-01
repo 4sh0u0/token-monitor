@@ -306,7 +306,8 @@ function normalizeCodexManagedAccounts(value) {
       homePath,
       authPath: String(account.authPath || path.join(homePath, 'auth.json')).trim(),
       addedAt: account.addedAt || new Date().toISOString(),
-      updatedAt: account.updatedAt || account.addedAt || new Date().toISOString()
+      updatedAt: account.updatedAt || account.addedAt || new Date().toISOString(),
+      enabled: account.enabled !== false
     });
   }
   return accounts;
@@ -314,8 +315,8 @@ function normalizeCodexManagedAccounts(value) {
 
 function codexAccountsForRenderer() {
   return normalizeCodexManagedAccounts(settings?.codexManagedAccounts).map(({
-    id, email, accountKey, accountLabel, addedAt, updatedAt
-  }) => ({ id, email, accountKey, accountLabel, addedAt, updatedAt }));
+    id, email, accountKey, accountLabel, addedAt, updatedAt, enabled
+  }) => ({ id, email, accountKey, accountLabel, addedAt, updatedAt, enabled }));
 }
 
 function codexManagedAccountsForCollector() {
@@ -363,7 +364,8 @@ function commitCodexManagedAccount(identity, homePath, existing) {
     homePath,
     authPath: path.join(homePath, 'auth.json'),
     addedAt: existing?.addedAt || now,
-    updatedAt: now
+    updatedAt: now,
+    enabled: true
   };
   settings.codexManagedAccounts = normalizeCodexManagedAccounts([
     ...accounts.filter((account) => account.id !== id),
@@ -430,6 +432,18 @@ async function removeCodexManagedAccount(id) {
   settings.codexManagedAccounts = accounts.filter((entry) => entry.id !== accountId);
   saveSettings();
   await removeManagedHomeIfSafe(account.homePath);
+  startMode();
+  return { ok: true, accounts: codexAccountsForRenderer() };
+}
+
+function setCodexManagedAccountEnabled(id, enabled) {
+  const accountId = String(id || '').trim();
+  const accounts = normalizeCodexManagedAccounts(settings.codexManagedAccounts);
+  const account = accounts.find((entry) => entry.id === accountId);
+  if (!account) return { ok: false, error: 'Account not found' };
+  account.enabled = Boolean(enabled);
+  settings.codexManagedAccounts = accounts;
+  saveSettings();
   startMode();
   return { ok: true, accounts: codexAccountsForRenderer() };
 }
@@ -2882,6 +2896,7 @@ app.whenReady().then(() => {
     return { ok: true };
   });
   ipcMain.handle('codex:accounts', () => codexAccountsForRenderer());
+  ipcMain.handle('codex:setAccountEnabled', (_event, id, enabled) => setCodexManagedAccountEnabled(id, enabled));
   ipcMain.handle('codex:addAccount', async (event) => {
     if (codexLoginInFlight) return { ok: false, error: 'A Codex sign-in is already in progress.' };
     codexLoginInFlight = true;

@@ -188,6 +188,28 @@ test('fetchCodexLimits returns one provider per managed Codex account', async ()
   assert.deepEqual(providers.map((provider) => provider.sourceDetail), ['managed', 'managed']);
 });
 
+test('fetchCodexLimits skips disabled managed Codex accounts', async () => {
+  const seenHomes = [];
+  const providers = await fetchCodexLimits({
+    codexManagedAccounts: [
+      { id: 'one', email: 'one@example.com', homePath: '/tmp/token-monitor-codex/one', enabled: true },
+      { id: 'two', email: 'two@example.com', homePath: '/tmp/token-monitor-codex/two', enabled: false }
+    ]
+  }, {
+    now: () => Date.parse('2026-06-01T00:00:00Z'),
+    env: { PATH: '/usr/bin' },
+    readCodexRpc: async (deps) => {
+      if (!deps.env.CODEX_HOME) throw Object.assign(new Error('Codex account not configured'), { status: 'notConfigured' });
+      seenHomes.push(deps.env.CODEX_HOME);
+      return codexPayload('one@example.com');
+    }
+  });
+
+  assert.deepEqual(seenHomes, ['/tmp/token-monitor-codex/one']);
+  assert.equal(providers.length, 1);
+  assert.equal(providers[0].accountEmail, 'one@example.com');
+});
+
 test('fetchCodexLimits keeps the live system account visible alongside managed accounts', async () => {
   const seenHomes = [];
   const providers = await fetchCodexLimits({

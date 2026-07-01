@@ -86,6 +86,7 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     accounts: () => ipcRenderer.invoke('codex:accounts'),
     addAccount: () => ipcRenderer.invoke('codex:addAccount'),
     removeAccount: (id) => ipcRenderer.invoke('codex:removeAccount', id),
+    setAccountEnabled: (id, enabled) => ipcRenderer.invoke('codex:setAccountEnabled', id, enabled),
     onLoginOutput: (callback) => {
       const handler = (_event, text) => callback(text);
       ipcRenderer.on('codex:loginOutput', handler);

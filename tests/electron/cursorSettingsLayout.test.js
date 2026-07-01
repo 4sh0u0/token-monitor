@@ -110,6 +110,47 @@ test('OpenCode account panel provides multi-profile management', () => {
   assert.match(setupBody, /updateOpenCodeProfilesStatus\(\)/);
 });
 
+test('Codex account panel supports per-account enable toggles without showing timestamps', () => {
+  const app = readRendererFile('app.js');
+  const body = functionBody(app, 'renderCodexAccounts', 'refreshCodexAccounts');
+  assert.match(body, /const enabledCount = accounts\.filter\(account => account\.enabled !== false\)\.length;/);
+  assert.match(body, /t\('settings\.opencode\.connected', \{ linked: enabledCount, total: accounts\.length \}\)/);
+  assert.doesNotMatch(body, /t\('settings\.codex\.accountMany'/);
+  assert.match(body, /input\.type = 'checkbox'/);
+  assert.match(body, /input\.className = 'managed-account-checkbox'/);
+  assert.match(body, /input\.checked = account\.enabled !== false/);
+  assert.match(body, /window\.tokenMonitor\.codex\.setAccountEnabled\(account\.id, input\.checked\)/);
+  assert.match(body, /info\.className = 'managed-account-info'/);
+  assert.match(body, /info\.textContent = enabled \? account\.accountLabel \|\| '' : t\('settings\.codex\.disabled'\);/);
+  assert.match(body, /right\.append\(info, remove\)/);
+  assert.match(body, /row\.append\(input, main, right\)/);
+  assert.doesNotMatch(
+    body,
+    /setAccountEnabled\(account\.id, input\.checked\)[\s\S]*?refreshStats\(\{ force: true \}\)[\s\S]*?const remove/,
+    'Codex enable toggles should update the account row like OpenCode, not force-refresh all stats'
+  );
+  assert.doesNotMatch(body, /formatTime\(account\.updatedAt\)/);
+  assert.match(body, /remove\.className = 'managed-account-remove'/);
+  assert.match(body, /remove\.textContent = '✕'/);
+  assert.match(body, /let confirmingRemove = false;/);
+  assert.match(body, /remove\.classList\.add\('confirming'\)/);
+  assert.match(body, /remove\.textContent = '✓'/);
+  assert.doesNotMatch(body, /remove\.textContent = t\('settings\.codex\.remove'\)/);
+  assert.doesNotMatch(
+    body,
+    /removeAccount\(account\.id\)[\s\S]*?await refreshStats\(\{ force: true \}\)[\s\S]*?renderCodexAccounts\(\)/,
+    'Codex remove should redraw the account list before any full stats refresh'
+  );
+  assert.match(body, /refreshStats\(\{ force: true \}\)\.catch\(\(\) => \{\}\);/);
+
+  const preload = fs.readFileSync(path.join(rendererDir, '..', 'preload.js'), 'utf8');
+  assert.match(preload, /setAccountEnabled: \(id, enabled\) => ipcRenderer\.invoke\('codex:setAccountEnabled', id, enabled\)/);
+
+  const main = fs.readFileSync(path.join(rendererDir, '..', 'main.js'), 'utf8');
+  assert.match(main, /ipcMain\.handle\('codex:setAccountEnabled'/);
+  assert.match(main, /setCodexManagedAccountEnabled\(id, enabled\)/);
+});
+
 test('DeepSeek account panel provides a first-class API key entry', () => {
   const html = readRendererFile('index.html');
   const details = html.match(/<div id="deepseekSettingsDetails"[\s\S]*?<div id="deepseekErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';

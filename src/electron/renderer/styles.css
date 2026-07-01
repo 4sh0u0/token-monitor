@@ -681,9 +681,9 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   gap: 6px;
 }
 .managed-account-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   min-width: 0;
   padding: 7px 8px;
@@ -691,10 +691,22 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   border-radius: 6px;
   background: rgba(var(--sunken-rgb), 0.36);
 }
+.managed-account-row.disabled .managed-account-email,
+.managed-account-row.disabled .managed-account-info {
+  color: var(--muted);
+}
+.managed-account-checkbox {
+  justify-self: center;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--blue);
+}
+.managed-account-checkbox:disabled {
+  cursor: wait;
+}
 .managed-account-main {
-  display: grid;
   min-width: 0;
-  gap: 2px;
 }
 .managed-account-email {
   min-width: 0;
@@ -705,19 +717,49 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.managed-account-meta {
+.managed-account-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.managed-account-info {
+  max-width: 72px;
   overflow: hidden;
   color: var(--muted);
   font-size: 9px;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .managed-account-remove {
   flex: 0 0 auto;
-  height: 24px;
-  padding: 0 8px;
-  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.managed-account-row:hover .managed-account-remove {
+  opacity: 0.85;
+}
+.managed-account-remove:hover {
+  opacity: 1;
+  color: var(--text);
+}
+.managed-account-remove.confirming {
+  opacity: 1;
+  color: var(--red);
+  background: rgba(255, 91, 91, 0.12);
 }
 .codex-login-output {
   max-height: 120px;
