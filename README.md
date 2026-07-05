@@ -258,6 +258,10 @@ are gitignored.
  </picture>
 </a>
 
+## Contributing
+
+Issues and PRs are welcome. Project conventions, architecture notes, and the command reference live in [AGENTS.md](AGENTS.md) — written for coding agents, but it doubles as the contributor guide.
+
 ## Acknowledgments
 
 - [tokscale](https://github.com/junhoyeo/tokscale) for log parsing and token accounting.

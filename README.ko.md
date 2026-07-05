@@ -255,6 +255,10 @@ hub와 agent는 요약 필드만 전송합니다.
  </picture>
 </a>
 
+## 기여하기
+
+Issue와 PR을 환영합니다. 프로젝트 규약, 아키텍처 노트, 명령어 레퍼런스는 [AGENTS.md](AGENTS.md)에 있습니다 — 코딩 에이전트용으로 작성되었지만 기여자 가이드로도 사용할 수 있습니다.
+
 ## 감사의 글
 
 - [tokscale](https://github.com/junhoyeo/tokscale) — 로그 파싱 및 토큰 집계

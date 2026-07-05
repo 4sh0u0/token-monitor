@@ -255,6 +255,10 @@ hub 与代理只传输汇总字段:
  </picture>
 </a>
 
+## 参与贡献
+
+欢迎提交 Issue 和 PR。项目规范、架构说明和命令参考都在 [AGENTS.md](AGENTS.md) 中——它是为编码代理编写的，但同样可以作为贡献者指南。
+
 ## 致谢
 
 - [tokscale](https://github.com/junhoyeo/tokscale) 提供日志解析与 Token 计算。

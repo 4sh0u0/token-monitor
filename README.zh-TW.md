@@ -255,6 +255,10 @@ hub 與代理只傳輸摘要欄位：
  </picture>
 </a>
 
+## 參與貢獻
+
+歡迎提交 Issue 和 PR。專案規範、架構說明和指令參考都在 [AGENTS.md](AGENTS.md) 中——它是為編碼代理撰寫的，但同樣可以作為貢獻者指南。
+
 ## 致謝
 
 - [tokscale](https://github.com/junhoyeo/tokscale) 提供紀錄解析與 Token 計算。
