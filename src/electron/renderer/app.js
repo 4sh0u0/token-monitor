@@ -1454,7 +1454,11 @@ function renderProviderWindows(provider, color) {
     const fiveHour = windowForKind(provider, 'session');
     const weekly = windowForKind(provider, 'weekly');
     const mcp = windowForKind(provider, 'billing');
-    if (fiveHour) windows.append(limitWindowNode('5-hour', fiveHour, color, 0.95));
+    if (fiveHour) {
+      const fiveHourNode = limitWindowNode('5-hour', fiveHour, color, 0.95);
+      if (!weekly) fiveHourNode.classList.add('limit-window-wide');
+      windows.append(fiveHourNode);
+    }
     if (weekly) windows.append(limitWindowNode('Weekly', weekly, color, 0.68));
     if (mcp) {
       const mcpNode = limitWindowNode('MCP', mcp, color, 0.68);

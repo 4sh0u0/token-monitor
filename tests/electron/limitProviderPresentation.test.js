@@ -378,7 +378,8 @@ test('Z.ai renders 5-hour and Weekly first, then MCP full-width', () => {
   assert.match(renderProviderWindows, /const fiveHour = windowForKind\(provider, 'session'\);/);
   assert.match(renderProviderWindows, /const weekly = windowForKind\(provider, 'weekly'\);/);
   assert.match(renderProviderWindows, /const mcp = windowForKind\(provider, 'billing'\);/);
-  assert.match(renderProviderWindows, /limitWindowNode\('5-hour', fiveHour, color, 0\.95\)/);
+  assert.match(renderProviderWindows, /const fiveHourNode = limitWindowNode\('5-hour', fiveHour, color, 0\.95\)/);
+  assert.match(renderProviderWindows, /if \(!weekly\) fiveHourNode\.classList\.add\('limit-window-wide'\)/);
   assert.match(renderProviderWindows, /limitWindowNode\('Weekly', weekly, color, 0\.68\)/);
   assert.match(renderProviderWindows, /const mcpNode = limitWindowNode\('MCP', mcp, color, 0\.68\)/);
   assert.match(renderProviderWindows, /mcpNode\.classList\.add\('limit-window-wide'\)/);

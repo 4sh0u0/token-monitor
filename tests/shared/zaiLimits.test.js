@@ -63,6 +63,30 @@ test('parseZaiUsage maps quota windows to CodexBar labels and order', () => {
   assert.equal(usage.windows[2].resetsAt, '2026-07-13T00:00:00.000Z');
 });
 
+test('parseZaiUsage treats a single 5-hour token limit as the old-plan session window', () => {
+  const usage = parseZaiUsage({
+    data: {
+      limits: [
+        { type: 'TIME_LIMIT', unit: 5, number: 1, usage: 100, currentValue: 13, remaining: 87, percentage: 13 },
+        { type: 'TOKENS_LIMIT', unit: 3, number: 5, percentage: 12, nextResetTime: '2026-07-07T18:00:00Z' }
+      ]
+    }
+  });
+
+  assert.equal(usage.windows.length, 2);
+  assert.equal(usage.windows[0].kind, 'session');
+  assert.equal(usage.windows[0].label, '5-hour');
+  assert.equal(usage.windows[0].usedPercent, 12);
+  assert.equal(usage.windows[0].windowMinutes, 5 * 60);
+  assert.equal(usage.windows[1].kind, 'billing');
+  assert.equal(usage.windows[1].label, 'MCP');
+  // MCP is a monthly bucket; z.ai encodes it as a misleading unit=5/number=1
+  // (1-minute) marker, so drop windowMinutes and label the cadence Monthly.
+  assert.equal(usage.windows[1].windowMinutes, undefined);
+  assert.equal(usage.windows[1].resetDescription, 'Monthly');
+  assert.equal(usage.windows.find((window) => window.kind === 'weekly'), undefined);
+});
+
 test('parseZaiUsage reads official plan labels from subscription or quota payloads', () => {
   assert.equal(
     parseZaiUsage({ data: { level: 'lite', limits: [] } }, { data: [{ planName: 'Lite' }] }).plan,

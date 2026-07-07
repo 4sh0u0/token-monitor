@@ -184,7 +184,7 @@ function subscriptionResetAt(subscriptionBody) {
   return toIso(sub?.next_renew_time ?? sub?.nextRenewTime);
 }
 
-function zaiWindow(limit, { kind, label, fallbackResetAt = null }) {
+function zaiWindow(limit, { kind, label, fallbackResetAt = null, includeWindowMinutes = true, resetDescription = null }) {
   const usedPercent = zaiUsedPercent(limit);
   if (usedPercent === null) return null;
   const windowMinutes = zaiWindowMinutes(numberOrNull(limit.unit), numberOrNull(limit.number));
@@ -196,9 +196,15 @@ function zaiWindow(limit, { kind, label, fallbackResetAt = null }) {
     remainingPercent: Math.max(0, Math.min(100, 100 - usedPercent)),
     showMeter: true
   };
-  if (windowMinutes !== null) window.windowMinutes = windowMinutes;
+  if (includeWindowMinutes && windowMinutes !== null) window.windowMinutes = windowMinutes;
   if (resetsAt) window.resetsAt = resetsAt;
+  if (resetDescription) window.resetDescription = resetDescription;
   return window;
+}
+
+function isZaiSessionTokenLimit(limit) {
+  const minutes = zaiWindowMinutes(numberOrNull(limit?.unit), numberOrNull(limit?.number));
+  return minutes !== null && minutes <= 6 * 60;
 }
 
 function parseZaiUsage(quotaBody, subscriptionBody = null) {
@@ -224,8 +230,13 @@ function parseZaiUsage(quotaBody, subscriptionBody = null) {
     const bMinutes = zaiWindowMinutes(numberOrNull(b.unit), numberOrNull(b.number)) ?? Number.MAX_SAFE_INTEGER;
     return aMinutes - bMinutes;
   });
-  const sessionTokenLimit = tokenLimits.length >= 2 ? tokenLimits[0] : null;
-  const tokenLimit = tokenLimits.length >= 2 ? tokenLimits[tokenLimits.length - 1] : tokenLimits[0];
+  const onlyTokenLimit = tokenLimits[0] || null;
+  const sessionTokenLimit = tokenLimits.length >= 2
+    ? tokenLimits[0]
+    : isZaiSessionTokenLimit(onlyTokenLimit) ? onlyTokenLimit : null;
+  const tokenLimit = tokenLimits.length >= 2
+    ? tokenLimits[tokenLimits.length - 1]
+    : sessionTokenLimit ? null : onlyTokenLimit;
 
   const fiveHour = sessionTokenLimit && zaiWindow(sessionTokenLimit, { kind: 'session', label: '5-hour' });
   if (fiveHour) windows.push(fiveHour);
@@ -233,7 +244,16 @@ function parseZaiUsage(quotaBody, subscriptionBody = null) {
   const weekly = tokenLimit && zaiWindow(tokenLimit, { kind: 'weekly', label: 'Weekly' });
   if (weekly) windows.push(weekly);
 
-  const mcp = timeLimit && zaiWindow(timeLimit, { kind: 'billing', label: 'MCP', fallbackResetAt: resetAt });
+  // The MCP TIME_LIMIT is a monthly bucket, but z.ai encodes its window as a
+  // misleading unit=5/number=1 (1-minute) marker. Drop windowMinutes and carry
+  // a 'Monthly' cadence so the reset stays right when the renew time is absent.
+  const mcp = timeLimit && zaiWindow(timeLimit, {
+    kind: 'billing',
+    label: 'MCP',
+    fallbackResetAt: resetAt,
+    includeWindowMinutes: false,
+    resetDescription: 'Monthly'
+  });
   if (mcp) {
     const remaining = numberOrNull(timeLimit.remaining);
     if (remaining !== null) mcp.remaining = remaining;
