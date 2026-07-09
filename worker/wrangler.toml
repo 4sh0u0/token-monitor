@@ -16,3 +16,17 @@ STALE_AFTER_MS = "600000"
 # Set the shared secret with:
 #   wrangler secret put TOKEN_MONITOR_SECRET
 # Leave it unset only for trusted/private deployments.
+
+# Workers Logs: ingested, indexed, retained 7 days, queryable from the dashboard.
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+head_sampling_rate = 1
+
+# Traces are opt-in separately; `observability.enabled` only turns on logs.
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
