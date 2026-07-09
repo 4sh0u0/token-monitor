@@ -15,19 +15,19 @@ jobs:
             artifact_path: |
               dist/*.dmg
               dist/*.zip
-              dist/*.yml
+              dist/latest-mac.yml
               dist/*.blockmap
           - os: windows-latest
             target: win
             artifact_path: |
               dist/*.exe
-              dist/*.yml
+              dist/latest.yml
               dist/*.blockmap
           - os: ubuntu-latest
             target: linux
             artifact_path: |
               dist/*.AppImage
-              dist/*.yml
+              dist/latest-linux.yml
               dist/*.blockmap
     runs-on: ${{ matrix.os }}
     steps:
@@ -105,6 +105,8 @@ jobs:
             artifacts/*.zip
             artifacts/*.exe
             artifacts/*.AppImage
-            artifacts/*.yml
+            artifacts/latest.yml
+            artifacts/latest-mac.yml
+            artifacts/latest-linux.yml
             artifacts/*.blockmap
           body_path: .github/RELEASE_TEMPLATE.md
