@@ -46,6 +46,29 @@ function runMainFunction(source, name, nextName, expression, context = {}) {
   return vm.runInNewContext(`${body}\n${expression}`, context);
 }
 
+function runRendererFunctions(source, names, expression, context = {}) {
+  const snippets = names.map((name) => {
+    const start = source.indexOf(`function ${name}(`);
+    assert.notEqual(start, -1, `${name} function should exist`);
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < source.length; i += 1) {
+      const char = source[i];
+      if (char === '{') depth += 1;
+      if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+    assert.notEqual(end, -1, `${name} function should close`);
+    return source.slice(start, end);
+  }).join('\n');
+  return vm.runInNewContext(`${snippets}\n${expression}`, context);
+}
+
 test('Cursor account status stays inline with an email-only summary', () => {
   const html = readRendererFile('index.html');
   const toggle = html.match(/<button id="cursorSettingsToggle"[\s\S]*?<\/button>/)?.[0] || '';
@@ -197,6 +220,65 @@ test('Codex account panel supports per-account enable toggles without showing ti
   const main = fs.readFileSync(path.join(rendererDir, '..', 'main.js'), 'utf8');
   assert.match(main, /ipcMain\.handle\('codex:setAccountEnabled'/);
   assert.match(main, /setCodexManagedAccountEnabled\(id, enabled\)/);
+});
+
+test('Codex account email masking is an opt-in display-only setting', () => {
+  const app = readRendererFile('app.js');
+  const html = readRendererFile('index.html');
+  const main = fs.readFileSync(path.join(rendererDir, '..', 'main.js'), 'utf8');
+
+  assert.match(html, /<input id="maskLimitAccountEmailsInput" type="checkbox" \/>/);
+  assert.match(html, /data-i18n="settings\.limits\.maskAccountEmails"/);
+
+  const defaults = functionBody(main, 'defaultSettings', 'normalizeCollectionMode');
+  assert.match(defaults, /maskLimitAccountEmails:\s*false/);
+
+  const updateHandler = main.slice(
+    main.indexOf("ipcMain.handle('settings:update'"),
+    main.indexOf("ipcMain.handle('settings:openConfig'")
+  );
+  assert.match(updateHandler, /maskLimitAccountEmails:\s*parseBoolean\(patch\.maskLimitAccountEmails \?\? settings\.maskLimitAccountEmails, false\)/);
+  assert.doesNotMatch(updateHandler, /accountEmail|accountKey|syncLimits|publicLimits/);
+
+  const settingsBody = functionBody(app, 'syncSettingsForm', 'enabledClientSet');
+  assert.match(settingsBody, /els\.maskLimitAccountEmailsInput\.checked = Boolean\(state\.settings\.maskLimitAccountEmails\);/);
+
+  assert.match(app, /maskLimitAccountEmailsInput: document\.getElementById\('maskLimitAccountEmailsInput'\)/);
+  assert.match(app, /els\.maskLimitAccountEmailsInput\.addEventListener\('change'/);
+  assert.match(app, /saveSettings\(\{ maskLimitAccountEmails: els\.maskLimitAccountEmailsInput\.checked \}\)/);
+  assert.match(app, /renderLimits\(\);/);
+
+  assert.equal(
+    runRendererFunctions(app, ['maskEmailAddressForDisplay'], "maskEmailAddressForDisplay('javis603@gmail.com')")
+    , 'j***3@gmail.com'
+  );
+  assert.equal(
+    runRendererFunctions(app, ['maskEmailAddressForDisplay'], "maskEmailAddressForDisplay('linus.chua328@gmail.com')")
+    , 'l***8@gmail.com'
+  );
+  assert.equal(
+    runRendererFunctions(app, ['maskEmailAddressForDisplay'], "maskEmailAddressForDisplay('ab@example.com')")
+    , 'a***b@example.com'
+  );
+
+  assert.equal(
+    runRendererFunctions(
+      app,
+      ['maskEmailAddressForDisplay', 'codexAccountTitle'],
+      "codexAccountTitle({ accountEmail: 'javis603@gmail.com' }, 0)",
+      { state: { settings: { maskLimitAccountEmails: false } } }
+    ),
+    'javis603@gmail.com'
+  );
+  assert.equal(
+    runRendererFunctions(
+      app,
+      ['maskEmailAddressForDisplay', 'codexAccountTitle'],
+      "codexAccountTitle({ accountEmail: 'javis603@gmail.com' }, 0)",
+      { state: { settings: { maskLimitAccountEmails: true } } }
+    ),
+    'j***3@gmail.com'
+  );
 });
 
 test('Codex system account switching is exposed from limits account rows', () => {
