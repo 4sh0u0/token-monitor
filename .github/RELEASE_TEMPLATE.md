@@ -4,12 +4,14 @@
 
 ## What's changed
 
-### Improved
-- **Account labels:** AI Tool Limits account labels now render with consistent capitalization in provider cards and the Codex account list.
-- **Bundled tokscale 4.2.0:** Detects Kiro IDE sessions (the usage watcher now covers them for live refresh), keeps OpenCode's own recorded costs instead of re-pricing them from tokens, and counts Claude Code deep-nested subagent transcripts.
+### Added
+- **App Updates:** Settings now includes App Updates backed by GitHub releases, with check, download, dismiss, and restart-to-install flows on supported packaged builds. (#99)
+- **Codex local account switching:** On the Limits page, hover a Codex account email and click Switch to make it this device's local Codex account; restart Codex for the change to take effect. (#92)
+- **Z.ai Team Account:** AI Tool Limits can track GLM Team Coding Plan quota with the required BigModel organization and project credentials. (#94)
+- **Linux start at login:** AppImage builds now support the Startup -> Start at login setting, with a note when moving or renaming the AppImage would break the autostart entry. (#82)
 
-### Fixed
-- **GLM / Z.ai legacy quota:** Old GLM Coding Plans with a single 5-hour token quota no longer show it as a "Weekly" window — it renders as the 5-hour session window, and the monthly MCP bucket now shows a Monthly reset instead of a bogus 1-minute window. (#85)
+### Improved
+- **Codex account cards:** Managed Codex account chips stay compact on hover, and switching accounts refreshes only the selected Codex account instead of disturbing the rest of the provider list. (#101)
 
 ## Which file should I download?
 
@@ -47,12 +49,14 @@ open-source: https://github.com/junhoyeo/tokscale
 
 ## 更新内容
 
-### 改进
-- **账号标签：** AI 工具额度的账号标签现在在额度卡片和 Codex 账号列表中统一首字母大写显示。
-- **内置 tokscale 4.2.0：** 新增 Kiro IDE 会话识别（用量监看现在也覆盖该目录，实现秒级刷新），保留 OpenCode 自身记录的费用、不再按 token 重新计价，并计入 Claude Code 深层子代理会话。
+### 新增
+- **应用更新：** 设置中新增 App Updates，可基于 GitHub releases 检查更新，并在支持的打包版本上下载、忽略或重启安装更新。（#99）
+- **Codex 本机账号切换：** 在额度页悬停对应 Codex 账号的 email，点击「切换账号」即可将它设为本机 Codex 账号；切换后需要重启 Codex 才会生效。（#92）
+- **Z.ai 团队账号：** AI 工具额度现在可追踪 GLM 团队 Coding Plan 额度，并支持填写所需的 BigModel organization / project 凭证。（#94）
+- **Linux 登录时启动：** AppImage 版本现在支持「启动 -> 登录时启动」，并会提示移动或重命名 AppImage 后自启项会失效。（#82）
 
-### 修复
-- **GLM / Z.ai 旧版额度：** 旧版 GLM Coding Plan 的单一 5 小时 token 额度不再误显示为「Weekly」窗口，而是正确显示为 5 小时会话窗口；按月的 MCP 桶现在显示按月重置，不再出现错误的 1 分钟窗口。（#85）
+### 改进
+- **Codex 账号卡片：** 受管 Codex 账号的悬浮标签现在更紧凑；切换账号后只刷新选中的 Codex 账号，不会影响其他 provider 列表。（#101）
 
 ## 应该下载哪个文件？
 
