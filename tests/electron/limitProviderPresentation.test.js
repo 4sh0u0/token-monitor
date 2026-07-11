@@ -71,6 +71,15 @@ function runLocalProviderStatus(source, state, providerName) {
   );
 }
 
+function runLocalLiveCodexProvider(source, state) {
+  const localDeviceHelper = functionBody(source, 'localDeviceLimitsProviders', 'localProviderStatus');
+  const liveHelper = functionBody(source, 'localLiveCodexProvider', 'codexActiveAccountFromStats');
+  return vm.runInNewContext(
+    `${localDeviceHelper}\n${liveHelper}\nlocalLiveCodexProvider();`,
+    { state, limitProviderPresentationApi: { isCodexLiveAccount } }
+  );
+}
+
 test('capability tags explain how each provider is collected in settings', () => {
   assert.deepEqual(limitProviderCapabilityTags('claude'), ['Auto', 'OAuth/CLI']);
   assert.deepEqual(limitProviderCapabilityTags('codex'), ['Auto', 'App/CLI RPC']);
@@ -328,9 +337,37 @@ test('Codex limits render as one provider group with account subrows', () => {
 test('tray all-sessions mode can consider multiple providers for one configured id', () => {
   const app = readRendererFile('app.js');
   const pickConfigured = functionBody(app, 'pickConfiguredSessionProviders', 'renderAllSessionsIcon');
+  const renderAllSessions = functionBody(app, 'renderAllSessionsIcon', 'renderLimitSessionsIcon');
 
   assert.match(pickConfigured, /providersByLimitProviderId\(providers\)/);
   assert.doesNotMatch(pickConfigured, /new Map\(providers\.map\(\(p\) => \[String\(p\.provider\)\.toLowerCase\(\), p\]\)\)/);
+  assert.match(renderAllSessions, /trayBarsLayout\(height, \{ contentOnly: true \}\)/);
+});
+
+test('limit percent tray mode renders provider icons into a generated tray image', () => {
+  const app = readRendererFile('app.js');
+  const main = fs.readFileSync(path.join(__dirname, '../../src/electron/main.js'), 'utf8');
+  const renderLimitSessionsIcon = functionBody(app, 'renderLimitSessionsIcon', 'barsDataUrlForMode');
+  const maybeUpdateBarsIcon = functionBody(app, 'maybeUpdateBarsIcon', 'loadImage');
+  const updateTrayDisplay = functionBody(main, 'updateTrayDisplay', 'sendStatus');
+
+  assert.match(renderLimitSessionsIcon, /pickConfiguredSessionProviders\(stats, configOrder\)/);
+  assert.match(renderLimitSessionsIcon, /trayBarsLayout\(height/);
+  assert.match(renderLimitSessionsIcon, /layout\.iconSize/);
+  assert.match(renderLimitSessionsIcon, /picks\.length === 1/);
+  assert.match(renderLimitSessionsIcon, /kind === 'weekly'/);
+  assert.match(renderLimitSessionsIcon, /weeklyPercent === null \? '' : formatPercent\(weeklyPercent\)/);
+  assert.match(renderLimitSessionsIcon, /trayProviderImages\[pick\.provider\.provider\]/);
+  assert.match(renderLimitSessionsIcon, /`500 \$\{fontSize\}px/);
+  assert.match(renderLimitSessionsIcon, /formatPercent\(limitFillPercent/);
+  assert.match(renderLimitSessionsIcon, /·/);
+  assert.match(maybeUpdateBarsIcon, /limitsAllSessions/);
+  assert.match(maybeUpdateBarsIcon, /trayDataUrlForMode\(mode, 44\)/);
+  assert.match(updateTrayDisplay, /mode === 'limitsAllSessions'/);
+  assert.match(updateTrayDisplay, /const barsImageMode = .*?!limitText && providerTrayIcons\[mode\]/);
+  assert.match(updateTrayDisplay, /Boolean\(limitText\)/);
+  assert.match(updateTrayDisplay, /const limitText = formatTrayText/);
+  assert.match(updateTrayDisplay, /trayImageMode[\s\S]*?\? '' : limitText/);
 });
 
 test('Grok renders its single Monthly billing window full-width instead of an empty session/weekly pair', () => {
@@ -519,6 +556,63 @@ test('DeepSeek main Limits row uses a balance meter without since-tracking copy'
   assert.match(styles, /\.limit-window-no-reset \.limit-reset\s*\{/);
 });
 
+test('MiMo main Limits row falls back to balance plan fields for Token Plan', () => {
+  const app = readRendererFile('app.js');
+  const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
+  const tokenPlanFallback = functionBody(app, 'mimoTokenPlanWindowFromBalance', 'limitWindowNode');
+
+  assert.match(renderProviderWindows, /const balance = provider\.balance \|\| null;/);
+  assert.match(renderProviderWindows, /const tokenPlan = windowForKind\(provider, 'billing'\) \|\| mimoTokenPlanWindowFromBalance\(balance\);/);
+  assert.match(renderProviderWindows, /limitWindowNode\(tokenPlan\.label \|\| 'Token Plan', tokenPlan, color, 0\.68\)/);
+  assert.match(renderProviderWindows, /const giftBalance = optionalFiniteNumber\(balance\?\.giftBalance\);/);
+  assert.match(renderProviderWindows, /const cashBalance = optionalFiniteNumber\(balance\?\.cashBalance\);/);
+  assert.match(renderProviderWindows, /const balanceNode = limitWindowNode\(\s*'Balance',\s*\{ showMeter: false \},\s*color,\s*0\.68,\s*balanceText,\s*detailParts\.join\(' · '\)\s*\);/);
+  assert.match(renderProviderWindows, /balanceNode\.classList\.add\('limit-window-wide', 'limit-window-no-reset'\);/);
+  assert.match(tokenPlanFallback, /const used = optionalFiniteNumber\(balance\.planUsed\);/);
+  assert.match(tokenPlanFallback, /const limit = optionalFiniteNumber\(balance\.planLimit\);/);
+  assert.match(tokenPlanFallback, /const percent = optionalFiniteNumber\(balance\.planPercent\);/);
+  assert.match(tokenPlanFallback, /if \(!hasUsed && !hasLimit && !hasPercent\) return null;/);
+  assert.match(tokenPlanFallback, /usedPercent: resolvedPercent/);
+  assert.match(tokenPlanFallback, /remainingPercent: resolvedPercent == null \? null : Math\.max\(0, Math\.min\(100, 100 - resolvedPercent\)\)/);
+});
+
+test('MiMo balance-only accounts do not synthesize an empty Token Plan meter', () => {
+  const app = readRendererFile('app.js');
+  const optionalNumber = functionBody(app, 'optionalFiniteNumber', 'formatLimitWindowValue');
+  const tokenPlanFallback = functionBody(app, 'mimoTokenPlanWindowFromBalance', 'limitWindowNode');
+  const context = {};
+  vm.runInNewContext(`${optionalNumber}\n${tokenPlanFallback}\nresult = mimoTokenPlanWindowFromBalance({
+    planUsed: null,
+    planLimit: null,
+    planPercent: null,
+    planStatus: null
+  });`, context);
+  assert.equal(context.result, null);
+});
+
+test('MiMo expired Token Plan renders a localized status without a meter', () => {
+  const app = readRendererFile('app.js');
+  const i18n = readRendererFile('i18n.js');
+  const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
+  const tokenPlanFallback = functionBody(app, 'mimoTokenPlanWindowFromBalance', 'limitWindowNode');
+
+  assert.match(renderProviderWindows, /balance\?\.planStatus === 'expired'/);
+  assert.match(renderProviderWindows, /\{ showMeter: false \}, color, 0\.68, t\('limits\.mimo\.planExpired'\)/);
+  assert.match(tokenPlanFallback, /if \(balance\.planStatus === 'expired'\) return null;/);
+  assert.match(i18n, /'limits\.mimo\.planExpired': 'Expired'/);
+  assert.match(i18n, /'limits\.mimo\.planExpired': '已过期'/);
+  assert.match(i18n, /'limits\.mimo\.planExpired': '만료됨'/);
+  assert.match(i18n, /'limits\.mimo\.planExpired': '期限切れ'/);
+});
+
+test('main Limits plan text shows failure status before account labels', () => {
+  const app = readRendererFile('app.js');
+  const planBody = functionBody(app, 'limitProviderPlan', 'configuredLimitProviderOrder');
+
+  assert.match(planBody, /if \(provider\?\.status && provider\.status !== 'ok' && !provider\.stale\) return limitStatusLabel\(provider\.status, false\);/);
+  assert.match(planBody, /const label = String\(provider\?\.accountLabel \|\| ''\)\.trim\(\);/);
+});
+
 test('settings provider status waits for stats and refreshes when stats arrive', () => {
   const app = readRendererFile('app.js');
   const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'onToolTrackingToggle');
@@ -544,7 +638,7 @@ test('settings provider status waits for stats and refreshes when stats arrive',
     assert.match(statsPush, new RegExp(`${fn}\\(\\);`), `${fn} missing from onStatsPush`);
     assert.match(syncSettings, new RegExp(`${fn}\\(\\);`), `${fn} missing from syncSettingsForm`);
   }
-  for (const provider of ['zai', 'volcengine', 'qoder']) {
+  for (const provider of ['zai', 'volcengine', 'qoder', 'kimi']) {
     assert.match(refreshStats, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from refreshStats`);
     assert.match(statsPush, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from onStatsPush`);
     assert.match(syncSettings, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from syncSettingsForm`);
@@ -631,23 +725,29 @@ test('Copilot env token is documented in env example, not the README overview', 
   assert.doesNotMatch(readmeTw, /COPILOT_API_TOKEN|GITHUB_COPILOT_TOKEN/);
 });
 
-test('Accounts summary counts API-key and cookie account groups', () => {
+test('Accounts summary counts all managed account groups including MiMo', () => {
   const app = readRendererFile('app.js');
+  const mimoLinkedBody = functionBody(app, 'mimoAccountLinked', 'renderMimoStatus');
   const summaryBody = functionBody(app, 'settingsSectionSummary', 'renderSettingsSummaries');
 
+  assert.match(mimoLinkedBody, /return \(state\.settings\?\.mimoManagedAccounts \|\| \[\]\)\.length > 0;/);
   assert.match(summaryBody, /const minimaxLinked = minimaxAccountLinked\(\);/);
   assert.match(summaryBody, /const zaiLinked = externalProviderAccountLinked\('zai'\);/);
   assert.match(summaryBody, /const zaiteamLinked = externalProviderAccountLinked\('zaiteam'\);/);
   assert.match(summaryBody, /const volcengineLinked = externalProviderAccountLinked\('volcengine'\);/);
   assert.match(summaryBody, /const qoderLinked = externalProviderAccountLinked\('qoder'\);/);
+  assert.match(summaryBody, /const kimiLinked = externalProviderAccountLinked\('kimi'\);/);
+  assert.match(summaryBody, /const mimoLinked = mimoAccountLinked\(\);/);
   assert.match(summaryBody, /const copilotLinked = copilotAccountLinked\(\);/);
   assert.match(summaryBody, /\(minimaxLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(zaiLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(zaiteamLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(volcengineLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(qoderLinked \? 1 : 0\)/);
+  assert.match(summaryBody, /\(kimiLinked \? 1 : 0\)/);
+  assert.match(summaryBody, /\(mimoLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(copilotLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /total: 10/);
+  assert.match(summaryBody, /total: 12/);
 });
 
 test('account validation does not use a remote aggregate when the local device lacks the provider', () => {
@@ -665,6 +765,61 @@ test('account validation does not use a remote aggregate when the local device l
   }, 'minimax');
 
   assert.equal(provider, null);
+});
+
+test('active Codex account follows the local login, not a remote device signed into a different account', () => {
+  // Local machine is signed into `quality` (App) and only manages the other two.
+  // A synced device (9950x3d) is signed into `javis`, so aggregateLimits() picks
+  // its live App record for the `javis` row — which sorts first. Reading the
+  // aggregate would move the ✓ onto `javis`; the marker must instead track this
+  // device's own live login (`quality`).
+  const app = readRendererFile('app.js');
+  const localProviders = [
+    { provider: 'codex', status: 'ok', sourceDetail: 'managed', accountKey: 'sha256:javis', accountEmail: 'javis603@gmail.com' },
+    { provider: 'codex', status: 'ok', sourceDetail: 'managed', accountKey: 'sha256:linus', accountEmail: 'linus@gmail.com' },
+    { provider: 'codex', status: 'ok', sourceDetail: 'app', accountKey: 'sha256:quality', accountEmail: 'quality@icloud.com' }
+  ];
+  const remoteJavisLive = { provider: 'codex', status: 'ok', sourceDetail: 'app', accountKey: 'sha256:javis', accountEmail: 'javis603@gmail.com', sourceDeviceId: '9950x3d' };
+  const provider = runLocalLiveCodexProvider(app, {
+    settings: { deviceId: 'this-mac' },
+    stats: {
+      devices: [
+        { deviceId: 'this-mac', limits: { providers: localProviders } },
+        { deviceId: '9950x3d', limits: { providers: [remoteJavisLive] } }
+      ],
+      limits: { providers: [remoteJavisLive, localProviders[1], localProviders[2]] }
+    }
+  });
+
+  assert.equal(provider.accountKey, 'sha256:quality');
+});
+
+test('no active Codex account when this device is signed out, even if a synced device is live', () => {
+  const app = readRendererFile('app.js');
+  const remoteLive = { provider: 'codex', status: 'ok', sourceDetail: 'app', accountKey: 'sha256:javis', sourceDeviceId: '9950x3d' };
+  const provider = runLocalLiveCodexProvider(app, {
+    settings: { deviceId: 'this-mac' },
+    stats: {
+      devices: [
+        { deviceId: 'this-mac', limits: { providers: [{ provider: 'codex', status: 'ok', sourceDetail: 'managed', accountKey: 'sha256:javis' }] } },
+        { deviceId: '9950x3d', limits: { providers: [remoteLive] } }
+      ],
+      limits: { providers: [remoteLive] }
+    }
+  });
+
+  assert.equal(provider, null);
+});
+
+test('active Codex account falls back to the aggregate for legacy stats without device rows', () => {
+  const app = readRendererFile('app.js');
+  const live = { provider: 'codex', status: 'ok', sourceDetail: 'app', accountKey: 'sha256:solo' };
+  const provider = runLocalLiveCodexProvider(app, {
+    settings: { deviceId: 'this-mac' },
+    stats: { limits: { providers: [live] } }
+  });
+
+  assert.equal(provider.accountKey, 'sha256:solo');
 });
 
 test('account validation keeps aggregate fallback for legacy stats without device rows', () => {
@@ -708,6 +863,21 @@ test('minimax status copy uses the same API key wording as CodexBar', () => {
   );
 });
 
+test('mimo setup status uses the generic not configured and sign-in-again copy', () => {
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'mimo', status: 'notConfigured' }),
+    { label: 'Not set up', tone: 'setup' }
+  );
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'mimo', status: 'unauthorized' }),
+    { label: 'Sign in again', tone: 'setup' }
+  );
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'mimo', status: 'error' }),
+    { label: 'Unavailable', tone: 'warn' }
+  );
+});
+
 test('copilot setup status asks for sign-in instead of an API key', () => {
   assert.deepEqual(
     presentation.limitProviderStatusLabel({ provider: 'copilot', status: 'notConfigured' }),
@@ -738,4 +908,19 @@ test('Z.ai, Volcengine, and Qoder source labels and setup statuses', () => {
     presentation.limitProviderStatusLabel({ provider: 'qoder', status: 'unauthorized' }),
     { label: 'Sign in again', tone: 'setup' }
   );
+});
+
+test('Kimi capability tags and source label', () => {
+  assert.deepEqual(presentation.limitProviderCapabilityTags('kimi'), ['Coding Plan', 'API key']);
+  assert.equal(presentation.limitProviderSourceLabel({ provider: 'kimi', source: 'api' }), 'API');
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'kimi', status: 'notConfigured' }),
+    { label: 'Add API key', tone: 'setup' }
+  );
+});
+
+test('Kimi usage and limits share the canonical provider id and vendor color', () => {
+  const app = readRendererFile('app.js');
+  assert.match(app, /\{ id: 'kimi', label: 'Kimi' \}/);
+  assert.match(app, /const color = id === 'mimo' \? clientColors\.xiaomi : \(clientColors\[id\] \|\| clientColors\.default\)/);
 });

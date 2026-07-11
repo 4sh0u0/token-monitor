@@ -5,13 +5,13 @@
 ## What's changed
 
 ### Added
-- **App Updates:** Settings now includes App Updates backed by GitHub releases, with check, download, dismiss, and restart-to-install flows on supported packaged builds. (#99)
-- **Codex local account switching:** On the Limits page, hover a Codex account email and click Switch to make it this device's local Codex account; restart Codex for the change to take effect. (#92)
-- **Z.ai Team Account:** AI Tool Limits can track GLM Team Coding Plan quota with the required BigModel organization and project credentials. (#94)
-- **Linux start at login:** AppImage builds now support the Startup -> Start at login setting, with a note when moving or renaming the AppImage would break the autostart entry. (#82)
+- **MiMo account tracking:** AI Tool Limits now supports MiMo (Xiaomi), with cookie-based sign-in and multi-account tracking for balance and Token Plan quota. (#97)
+- **Kimi Code account tracking:** AI Tool Limits now supports Kimi Code, with API-key-based quota checks. (#91)
 
-### Improved
-- **Codex account cards:** Managed Codex account chips stay compact on hover, and switching accounts refreshes only the selected Codex account instead of disturbing the rest of the provider list. (#101)
+### Fixed
+- **Codex quota refreshes:** Session and weekly percentages no longer flicker to empty or incorrect values during transient refresh failures (rate limiting, temporary unavailability); the last known-good values are kept until a real update lands. (#116)
+- **Multi-device sync payloads:** Oversized usage payloads are now rejected with a clear error instead of failing unpredictably, and synced data drops the unbounded all-time session history while keeping all totals and breakdowns intact. (#121)
+- **Total tokens display:** Long total-token numbers now scale to fit the available width instead of clipping. (#117)
 
 ## Which file should I download?
 
@@ -50,13 +50,13 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 ### 新增
-- **应用更新：** 设置中新增 App Updates，可基于 GitHub releases 检查更新，并在支持的打包版本上下载、忽略或重启安装更新。（#99）
-- **Codex 本机账号切换：** 在额度页悬停对应 Codex 账号的 email，点击「切换账号」即可将它设为本机 Codex 账号；切换后需要重启 Codex 才会生效。（#92）
-- **Z.ai 团队账号：** AI 工具额度现在可追踪 GLM 团队 Coding Plan 额度，并支持填写所需的 BigModel organization / project 凭证。（#94）
-- **Linux 登录时启动：** AppImage 版本现在支持「启动 -> 登录时启动」，并会提示移动或重命名 AppImage 后自启项会失效。（#82）
+- **MiMo 账号追踪：** AI 工具额度现已支持 MiMo（小米），通过 Cookie 登录并支持多账号追踪余额与 Token Plan 额度。（#97）
+- **Kimi Code 账号追踪：** AI 工具额度现已支持 Kimi Code，通过 API 密钥查询额度。（#91）
 
-### 改进
-- **Codex 账号卡片：** 受管 Codex 账号的悬浮标签现在更紧凑；切换账号后只刷新选中的 Codex 账号，不会影响其他 provider 列表。（#101）
+### 修复
+- **Codex 额度刷新：** 在额度刷新出现暂时性失败（限流、暂不可用）时，单次与每周百分比不再闪烁为空白或错误数值，会保留最近一次的正确数据，直到下一次真正更新。（#116）
+- **多设备同步负载：** 超大用量负载现在会返回明确的错误，而不是不可预期地失败；同步数据不再包含无上限增长的全部时间会话记录，但仍保留全部汇总与明细。（#121）
+- **总 Token 显示：** 较长的总 Token 数字现在会自动缩放以适应显示宽度，不再被裁切。（#117）
 
 ## 应该下载哪个文件？
 
