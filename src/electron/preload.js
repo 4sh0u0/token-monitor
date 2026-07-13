@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('tokenMonitor', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
+  clearSessionUsageArchive: () => ipcRenderer.invoke('sessionUsageArchive:clear'),
   lookupModelPricing: (modelId) => ipcRenderer.invoke('pricing:lookup', modelId),
   previewAppearance: (patch) => ipcRenderer.invoke('appearance:preview', patch),
   getStats: (options) => ipcRenderer.invoke('stats:get', options),
@@ -13,6 +14,11 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
   getServiceStatus: (options) => ipcRenderer.invoke('serviceStatus:get', options),
   openDashboard: () => ipcRenderer.invoke('dashboard:open'),
   getDashboardHistory: () => ipcRenderer.invoke('dashboard:getHistory'),
+  onDashboardHistoryChanged: (callback) => {
+    const listener = () => { try { callback(); } catch (_) {} };
+    ipcRenderer.on('dashboard:historyChanged', listener);
+    return () => ipcRenderer.removeListener('dashboard:historyChanged', listener);
+  },
   dashboard: {
     minimize: () => ipcRenderer.send('dashboard:minimize'),
     close: () => ipcRenderer.send('dashboard:close')
@@ -87,6 +93,9 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     loginManual: (token) => ipcRenderer.invoke('cursor:loginManual', token),
     logout: () => ipcRenderer.invoke('cursor:logout'),
     status: () => ipcRenderer.invoke('cursor:status')
+  },
+  ollama: {
+    validateCookie: (cookie) => ipcRenderer.invoke('ollama:validateCookie', cookie)
   },
   opencode: {
     saveCookie: (cookie) => ipcRenderer.invoke('opencode:saveCookie', cookie),

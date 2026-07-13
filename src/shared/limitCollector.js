@@ -37,6 +37,8 @@ const volcengineLimits = require('./volcengineLimits');
 const { volcengineCredentials, fetchVolcengineLimits } = volcengineLimits;
 const qoderLimits = require('./qoderLimits');
 const { qoderCookie, fetchQoderLimits } = qoderLimits;
+const ollamaLimits = require('./ollamaLimits');
+const { ollamaSessionCookie, fetchOllamaLimits } = ollamaLimits;
 const kimiLimits = require('./kimiLimits');
 const { kimiToken, fetchKimiLimits } = kimiLimits;
 const {
@@ -49,7 +51,7 @@ const {
   fetchGrokLimits
 } = grokLimits;
 
-const LIMIT_PROVIDER_IDS = ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'mimo', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi'];
+const LIMIT_PROVIDER_IDS = ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'mimo', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi', 'ollama'];
 const LIMIT_REFRESH_VALUES = new Set([60_000, 120_000, 300_000, 900_000, 1_800_000]);
 const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const CLAUDE_OAUTH_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
@@ -2430,6 +2432,7 @@ async function collectLimitsOnce(options = {}, deps = {}) {
     zaiteam: (providerOptions) => zaiTeamLimits.fetchZaiTeamLimits(providerOptions, deps),
     volcengine: (providerOptions) => volcengineLimits.fetchVolcengineLimits(providerOptions, deps),
     qoder: (providerOptions) => qoderLimits.fetchQoderLimits(providerOptions, deps),
+    ollama: (providerOptions) => ollamaLimits.fetchOllamaLimits(providerOptions, deps),
     kimi: (providerOptions) => kimiLimits.fetchKimiLimits(providerOptions, deps),
     ...(deps.providerFetchers || {})
   };
@@ -2448,7 +2451,15 @@ async function collectLimitsOnce(options = {}, deps = {}) {
 
 function createLimitsCollector(options = {}, deps = {}) {
   const refreshMs = normalizeLimitsRefreshMs(options.limitsRefreshMs ?? options.refreshMs);
-  let cached = null;
+  // Seed the Codex transient-window retention from the last published limits.
+  // The collector is recreated on any settings change that reloads it (notably
+  // switching the active Codex account), and without a seed that restart wipes
+  // the 10-minute window that keeps an account's bars visible through a
+  // transient probe failure — which is exactly the cold RPC/token-refresh that
+  // tends to fail on the first tick after a switch. cachedAt stays 0 so the seed
+  // is never served as fresh: the first snapshot still refetches and only uses
+  // the seed as the retention baseline.
+  let cached = options.previousLimits ? normalizeLimitsSummary(options.previousLimits) : null;
   let cachedAt = 0;
   let inFlight = null;
 
@@ -2680,6 +2691,8 @@ module.exports = {
   fetchVolcengineLimits,
   qoderCookie,
   fetchQoderLimits,
+  ollamaSessionCookie,
+  fetchOllamaLimits,
   kimiToken,
   fetchKimiLimits,
   mapClaudeCliUsageToProvider,

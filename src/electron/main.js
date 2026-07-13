@@ -20,8 +20,9 @@ const { startCollector, lookupModelPricing, normalizeHistoryIntervalMs } = requi
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
-const { collectLimitsOnce, deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken } = require('../shared/limitCollector');
+const { collectLimitsOnce, deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken, ollamaSessionCookie } = require('../shared/limitCollector');
 const { mergeCodexTransientWindows } = require('../shared/limits');
+const { fetchOllamaLimits, rememberOllamaValidation } = require('../shared/ollamaLimits');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
 const { codexAuthIdentity, hashAccountKey } = require('../shared/codexAuth');
 const { codexLoginUrlFromOutput, isAllowedCodexLoginUrl } = require('../shared/codexLogin');
@@ -73,15 +74,25 @@ const {
   normalizeArchivedClientUsage,
   pruneArchivedClientUsage
 } = require('../shared/clientUsageArchive');
+const {
+  applySessionUsageArchive,
+  captureSessionUsageArchive,
+  clearSessionUsageArchive,
+  normalizeSessionUsageArchive,
+  readSessionUsageArchive,
+  sessionUsageArchiveDate,
+  writeSessionUsageArchive
+} = require('../shared/sessionUsageArchive');
 const { aggregateDevices, aggregateHistory, carryDeviceHistory } = require('../shared/usage');
 const { syncPayload } = require('../shared/syncPayload');
+const { mergedLocalAllTimeSessions } = require('../shared/localSessions');
 const {
   MIMO_PLATFORM_CONSOLE_URL,
   createMimoManagedAccount,
   fetchMimoLimits,
   normalizeMimoCookieHeader
 } = require('../shared/mimoLimits');
-const { historyPreview } = require('../shared/history');
+const { historyPreview, historyRevision } = require('../shared/history');
 const { readSessionDetail } = require('../shared/sessionDetail');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
 const linuxAutostart = require('./linuxAutostart');
@@ -148,13 +159,14 @@ const COLLECTION_INTERVAL_OPTIONS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 10
 const DEFAULT_COLLECTION_INTERVAL_MS = 5 * 60 * 1000;
 const HUB_DEFAULT_PORT = 17321;
 const KNOWN_CLIENT_LIST = KNOWN_CLIENTS.split(',').map((id) => ({ id }));
-const DEFAULT_VIEW_LIST = ['home', 'tool', 'status', 'device', 'model', 'session', 'limits', 'trends'].map((id) => ({ id }));
+const DEFAULT_VIEW_LIST = ['home', 'tool', 'status', 'device', 'model', 'project', 'session', 'limits', 'trends'].map((id) => ({ id }));
 const DEFAULT_HOME_MODULE_LIST = ['limits', 'tool', 'device', 'model', 'trends'].map((id) => ({ id }));
 
 let mainWindow = null;
 let dashboardWindow = null;
 let settingsPath = null;
 let settings = null;
+let sessionUsageArchive = null;
 let rendererViewState = normalizeInitialRendererViewState();
 const serviceStatusClient = createServiceStatusClient();
 const STATUS_PAGE_HOSTS = new Set(SERVICE_STATUS_PROVIDERS.map((provider) => new URL(provider.pageUrl).hostname));
@@ -206,8 +218,10 @@ function defaultSettings() {
     hiddenViews: defaultViewDisplayPreferences().hiddenViews,
     homeModuleOrder: defaultHomeModulePreferences().homeModuleOrder,
     hiddenHomeModules: defaultHomeModulePreferences().hiddenHomeModules,
+    projectsEnabled: parseBoolean(process.env.TOKEN_MONITOR_PROJECTS_ENABLED, true),
     historyEnabled: true,
     historyIntervalMs: normalizeHistoryIntervalMs(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS),
+    sessionUsageArchiveEnabled: parseBoolean(process.env.TOKEN_MONITOR_SESSION_USAGE_ARCHIVE_ENABLED, true),
     wslScanEnabled: parseBoolean(process.env.TOKEN_MONITOR_WSL_SCAN, true),
     exportAutoEnabled: false,
     exportDir: '',
@@ -256,6 +270,7 @@ function defaultSettings() {
     qoderCookie: '',
     qoderSite: 'global',
     kimiApiKey: '',
+    ollamaCookie: '',
     codexManagedAccounts: [],
     mimoManagedAccounts: [],
     appUpdate: {
@@ -372,6 +387,14 @@ function normalizeQoderSite(value) {
 
 function currentQoderCookie() {
   return settings?.qoderCookie || qoderCookie(process.env);
+}
+
+function normalizeOllamaCookie(value) {
+  return ollamaSessionCookie({}, { ollamaCookie: String(value || '') });
+}
+
+function currentOllamaCookie() {
+  return settings?.ollamaCookie || ollamaSessionCookie(process.env);
 }
 
 function normalizeKimiApiKey(value) {
@@ -1316,6 +1339,12 @@ function readSettings() {
     if (saved.historyEnabled !== undefined) {
       merged.historyEnabled = parseBoolean(saved.historyEnabled, false);
     }
+    if (saved.projectsEnabled !== undefined) {
+      merged.projectsEnabled = parseBoolean(saved.projectsEnabled, true);
+    }
+    if (saved.sessionUsageArchiveEnabled !== undefined) {
+      merged.sessionUsageArchiveEnabled = parseBoolean(saved.sessionUsageArchiveEnabled, true);
+    }
     if (saved.wslScanEnabled !== undefined) {
       merged.wslScanEnabled = parseBoolean(saved.wslScanEnabled, true);
     }
@@ -1425,11 +1454,43 @@ function updateArchivedClientUsage(previousClients, nextClients) {
   settings.archivedClientUsage = archive;
 }
 
+function ensureSessionUsageArchiveLoaded() {
+  if (sessionUsageArchive) return sessionUsageArchive;
+  try {
+    sessionUsageArchive = readSessionUsageArchive();
+  } catch (error) {
+    console.log(`[session-archive] read failed: ${error.message}`);
+    sessionUsageArchive = normalizeSessionUsageArchive({});
+  }
+  return sessionUsageArchive;
+}
+
+function updateSessionUsageArchive(summary, now) {
+  const previous = ensureSessionUsageArchiveLoaded();
+  const next = captureSessionUsageArchive(previous, summary, now);
+  if (JSON.stringify(next) === JSON.stringify(previous)) return previous;
+  try {
+    writeSessionUsageArchive(next);
+    sessionUsageArchive = next;
+  } catch (error) {
+    console.log(`[session-archive] write failed: ${error.message}`);
+  }
+  return next;
+}
+
 function summaryWithArchivedClientUsage(summary) {
-  return applyArchivedClientUsage(summary, settings?.archivedClientUsage, {
+  const now = sessionUsageArchiveDate(summary);
+  const withArchivedClients = applyArchivedClientUsage(summary, settings?.archivedClientUsage, {
     activeClients: settings?.clients,
-    now: new Date()
+    now
   });
+  if (settings?.sessionUsageArchiveEnabled === false) return withArchivedClients;
+  if (isExternalAgentActive()) {
+    sessionUsageArchive = null;
+    return applySessionUsageArchive(withArchivedClients, ensureSessionUsageArchiveLoaded(), { now });
+  }
+  const sessionArchive = updateSessionUsageArchive(summary, now);
+  return applySessionUsageArchive(withArchivedClients, sessionArchive, { now });
 }
 
 function applyMacActivationPolicy(state = {}) {
@@ -1493,8 +1554,9 @@ function applyNativeMaterial(source = settings) {
 }
 
 function withHistoryPreview(stats, devices) {
-  const history = settings?.historyEnabled === false ? aggregateHistory([], 0) : aggregateHistory(devices, 0);
+  const history = settings?.historyEnabled === false ? aggregateHistory([]) : aggregateHistory(devices);
   stats.historyPreview = historyPreview(history);
+  stats.historyRevision = historyRevision(history);
   return stats;
 }
 
@@ -1670,6 +1732,7 @@ function startSyncCollector() {
     agentRuntime: 'electron-widget',
     intervalMs: collectorIntervalMs(),
     historyEnabled: settings.historyEnabled !== false,
+    projectsEnabled: settings.projectsEnabled !== false,
     historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
     watchEnabled: collectorWatchEnabled(),
     watchDebounceMs: 1500,
@@ -1677,6 +1740,7 @@ function startSyncCollector() {
     wslScanEnabled: settings.wslScanEnabled !== false,
     limitProviders: settings.limitProviders ?? defaultLimitProviders(),
     limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
+    previousLimits: lastCollectedDevice?.limits,
     opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
@@ -1694,12 +1758,13 @@ function startSyncCollector() {
     qoderCookie: settings.qoderCookie || '',
     qoderSite: settings.qoderSite || 'global',
     kimiApiKey: settings.kimiApiKey || '',
+    ollamaCookie: settings.ollamaCookie || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     mimoManagedAccounts: mimoManagedAccountsForCollector(),
     onUpdate: async (summary) => {
+      if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
       const visibleSummary = summaryWithArchivedClientUsage(summary);
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
-      if (isExternalAgentActive()) return;
       try {
         await postToHub(visibleSummary);
       } catch (error) {
@@ -1725,6 +1790,7 @@ function startHostCollector() {
     agentRuntime: 'electron-widget',
     intervalMs: collectorIntervalMs(),
     historyEnabled: settings.historyEnabled !== false,
+    projectsEnabled: settings.projectsEnabled !== false,
     historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
     watchEnabled: collectorWatchEnabled(),
     watchDebounceMs: 1500,
@@ -1732,6 +1798,7 @@ function startHostCollector() {
     wslScanEnabled: settings.wslScanEnabled !== false,
     limitProviders: settings.limitProviders ?? defaultLimitProviders(),
     limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
+    previousLimits: lastCollectedDevice?.limits,
     opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
@@ -1749,12 +1816,13 @@ function startHostCollector() {
     qoderCookie: settings.qoderCookie || '',
     qoderSite: settings.qoderSite || 'global',
     kimiApiKey: settings.kimiApiKey || '',
+    ollamaCookie: settings.ollamaCookie || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     mimoManagedAccounts: mimoManagedAccountsForCollector(),
     onUpdate: (summary) => {
+      if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
       const visibleSummary = summaryWithArchivedClientUsage(summary);
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
-      if (isExternalAgentActive()) return;
       if (!embeddedHub) return;
       try {
         const stale = settings.lastPostedDeviceId;
@@ -1804,15 +1872,32 @@ function startHostStats() {
 // sync/host mode without depending on the hub (or a remote Worker) being
 // redeployed to preserve these fields.
 function injectLocalDeviceStatus(stats) {
-  if (!stats || !lastCollectedDevice || !Array.isArray(stats.devices)) return stats;
-  const device = stats.devices.find((entry) => entry.deviceId === lastCollectedDevice.deviceId);
-  if (!device) return stats;
-  if (lastCollectedDevice.clientStatus) device.clientStatus = lastCollectedDevice.clientStatus;
-  if (lastCollectedDevice.wslStatus) device.wslStatus = lastCollectedDevice.wslStatus;
+  if (!stats || !Array.isArray(stats.devices)) return stats;
+  if (lastCollectedDevice) {
+    const device = stats.devices.find((entry) => entry.deviceId === lastCollectedDevice.deviceId);
+    if (device) {
+      if (lastCollectedDevice.clientStatus) device.clientStatus = lastCollectedDevice.clientStatus;
+      if (lastCollectedDevice.wslStatus) device.wslStatus = lastCollectedDevice.wslStatus;
+    }
+  }
+  // syncPayload drops the unbounded allTime.sessions from uploads (#118), so a hub
+  // aggregate carries no all-time session detail and the TOTAL session view would fall back
+  // to a model list. Rebuild the list — the hub's cross-device month sessions as the
+  // immediate baseline (present on the first frame, before this restart's first local scan),
+  // then this machine's own full all-time sessions once collected (free, in-process). Carry
+  // it as a display-only sibling instead of mutating periods.allTime.sessions: the exporter
+  // writes periods verbatim under a lossless contract, so the export must keep the true
+  // aggregate. The renderer overlays this onto periods.allTime for the session view.
+  // Only sync/host mode needs this: in local mode periods.allTime.sessions already holds the
+  // full native list, so building the sibling there would just ship the unbounded map twice.
+  if (mode !== 'local' && stats.periods?.allTime) {
+    stats.allTimeSessionsView = mergedLocalAllTimeSessions(stats.periods, lastCollectedDevice);
+  }
   return stats;
 }
 
 function sendPush(payload) {
+  const previousHistoryRevision = statsHistoryRevision(latestStats);
   if (payload?.data?.stats) {
     injectLocalDeviceStatus(payload.data.stats);
     latestStats = payload.data.stats;
@@ -1826,6 +1911,19 @@ function sendPush(payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     try { mainWindow.webContents.send('stats:push', payload); } catch (_) {}
   }
+  if (payload?.data?.stats) {
+    const nextHistoryRevision = statsHistoryRevision(payload.data.stats);
+    if (nextHistoryRevision !== previousHistoryRevision && dashboardWindow && !dashboardWindow.isDestroyed()) {
+      try { dashboardWindow.webContents.send('dashboard:historyChanged'); } catch (_) {}
+    }
+  }
+}
+
+function statsHistoryRevision(stats) {
+  const revision = String(stats?.historyRevision || '').trim();
+  if (revision) return revision;
+  // Compatibility with an older remote hub that has not shipped revisions yet.
+  return JSON.stringify(stats?.historyPreview || null);
 }
 
 let rateCache = null;            // { rates, date, source, fetchedAt }
@@ -1923,6 +2021,7 @@ function startLocalCollector() {
     agentRuntime: 'electron-widget',
     intervalMs: collectorIntervalMs(),
     historyEnabled: settings.historyEnabled !== false,
+    projectsEnabled: settings.projectsEnabled !== false,
     historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
     watchEnabled: collectorWatchEnabled(),
     watchDebounceMs: 1500,
@@ -1930,6 +2029,7 @@ function startLocalCollector() {
     wslScanEnabled: settings.wslScanEnabled !== false,
     limitProviders: settings.limitProviders ?? defaultLimitProviders(),
     limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
+    previousLimits: lastCollectedDevice?.limits,
     opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
@@ -1947,6 +2047,7 @@ function startLocalCollector() {
     qoderCookie: settings.qoderCookie || '',
     qoderSite: settings.qoderSite || 'global',
     kimiApiKey: settings.kimiApiKey || '',
+    ollamaCookie: settings.ollamaCookie || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     mimoManagedAccounts: mimoManagedAccountsForCollector(),
     onUpdate: (summary, reason) => {
@@ -2174,6 +2275,11 @@ function settingsForRenderer() {
     : qoderCookie(process.env)
       ? 'env'
       : '';
+  const ollamaCookieSource = settings?.ollamaCookie
+    ? 'settings'
+    : ollamaSessionCookie(process.env)
+      ? 'env'
+      : '';
   const kimiApiKeySource = settings?.kimiApiKey
     ? 'settings'
     : kimiToken(process.env)
@@ -2193,6 +2299,7 @@ function settingsForRenderer() {
     volcengineSecretAccessKey: '',
     qoderCookie: settings?.qoderCookie ? 'set' : '',
     kimiApiKey: '',
+    ollamaCookie: settings?.ollamaCookie ? 'set' : '',
     // Never ship OpenCode session cookies to the renderer; the UI only needs to
     // know whether a cookie is configured, not its value.
     opencodeCookie: settings?.opencodeCookie ? 'set' : '',
@@ -2215,6 +2322,8 @@ function settingsForRenderer() {
     volcengineCredentialsSource,
     qoderCookieConfigured: Boolean(currentQoderCookie()),
     qoderCookieSource,
+    ollamaCookieConfigured: Boolean(currentOllamaCookie()),
+    ollamaCookieSource,
     kimiApiKeyConfigured: Boolean(currentKimiApiKey()),
     kimiApiKeySource,
     currencyRatesEffective: effectiveRates || resolveEffectiveRates(rateCache?.rates || {}, settings?.currencyRates || {}),
@@ -2806,6 +2915,7 @@ function isAllowedExternalUrl(value) {
   if (parsed.hostname === 'bigmodel.cn' || parsed.hostname === 'www.bigmodel.cn') return true;
   if (parsed.hostname === 'www.volcengine.com' || parsed.hostname === 'console.volcengine.com') return true;
   if (parsed.hostname === 'qoder.com' || parsed.hostname === 'www.qoder.com' || parsed.hostname === 'qoder.com.cn' || parsed.hostname === 'www.qoder.com.cn') return true;
+  if ((parsed.hostname === 'ollama.com' || parsed.hostname === 'www.ollama.com') && (parsed.pathname === '/settings' || parsed.pathname === '/signin')) return true;
   if ((parsed.hostname === 'kimi.com' || parsed.hostname === 'www.kimi.com') && parsed.pathname.startsWith('/code')) return true;
   if (STATUS_PAGE_HOSTS.has(parsed.hostname) && (parsed.pathname === '' || parsed.pathname === '/')) return true;
   return false;
@@ -3029,14 +3139,14 @@ function createDashboardWindow() {
 }
 
 async function getDashboardHistory() {
-  if (settings?.historyEnabled === false) return aggregateHistory([], 0);
+  if (settings?.historyEnabled === false) return aggregateHistory([]);
   if (mode === 'local') {
     // The local collector keeps localDevice.history current (watch + interval
     // ticks, with carry-forward), so read it directly — exactly as the hub
     // branch reads /api/history. Forcing a full collection tick here made the
     // fetch take seconds; on a quick close/reopen the response outlived the
     // renderer and was dropped, stranding the dashboard on its empty state.
-    return aggregateHistory(localDevice ? [localDevice] : [], 0);
+    return aggregateHistory(localDevice ? [localDevice] : []);
   }
   if (settings.hubMode === 'host' && embeddedHub) {
     // Host mode reads its own hub store in-process, so the dashboard history
@@ -3044,7 +3154,7 @@ async function getDashboardHistory() {
     return embeddedHub.hub.getHistory();
   }
   const { url: hubUrl, secret } = effectiveHubConfig();
-  if (!hubUrl) return aggregateHistory([], 0);
+  if (!hubUrl) return aggregateHistory([]);
   const url = `${hubUrl.replace(/\/$/, '')}/api/history`;
   const response = await fetch(url, { headers: secret ? { authorization: `Bearer ${secret}` } : {} });
   if (!response.ok) throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
@@ -3117,6 +3227,19 @@ app.whenReady().then(() => {
   rateRefreshTimer = setInterval(() => { refreshExchangeRates(); }, 6 * 60 * 60 * 1000);
   setTimeout(() => { checkTokscaleNpm({ silent: true }); }, 2000);
   ipcMain.handle('settings:get', () => settingsForRenderer());
+  ipcMain.handle('sessionUsageArchive:clear', () => {
+    if (isExternalAgentActive()) return { ok: false, error: 'agentActive' };
+    try {
+      clearSessionUsageArchive();
+      sessionUsageArchive = normalizeSessionUsageArchive({});
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    } finally {
+      startMode();
+      pushSettingsToRenderer();
+    }
+  });
   ipcMain.handle('pricing:lookup', async (_event, modelId) => {
     try {
       return { ok: true, result: await lookupModelPricing(modelId) };
@@ -3137,6 +3260,8 @@ app.whenReady().then(() => {
     const previousLimitProviders = settings.limitProviders;
     const previousLimitsRefreshMs = settings.limitsRefreshMs;
     const previousHistoryEnabled = settings.historyEnabled;
+    const previousProjectsEnabled = settings.projectsEnabled;
+    const previousSessionUsageArchiveEnabled = settings.sessionUsageArchiveEnabled;
     const previousHistoryIntervalMs = settings.historyIntervalMs;
     const previousWslScanEnabled = settings.wslScanEnabled;
     const previousCollectionMode = settings.collectionMode;
@@ -3156,6 +3281,7 @@ app.whenReady().then(() => {
     const previousQoderCookie = settings.qoderCookie;
     const previousQoderSite = settings.qoderSite;
     const previousKimiApiKey = settings.kimiApiKey;
+    const previousOllamaCookie = settings.ollamaCookie;
     const previousDiscordRpcEnabled = settings.discordRpcEnabled;
     const previousShowTrayIcon = settings.showTrayIcon;
     const previousTrayMode = settings.trayMode;
@@ -3184,6 +3310,7 @@ app.whenReady().then(() => {
     if (patch.qoderCookie !== undefined) normalizedPatch.qoderCookie = normalizeQoderCookie(patch.qoderCookie);
     if (patch.qoderSite !== undefined) normalizedPatch.qoderSite = normalizeQoderSite(patch.qoderSite);
     if (patch.kimiApiKey !== undefined) normalizedPatch.kimiApiKey = normalizeKimiApiKey(patch.kimiApiKey);
+    if (patch.ollamaCookie !== undefined) normalizedPatch.ollamaCookie = normalizeOllamaCookie(patch.ollamaCookie);
     if (patch.collectionMode !== undefined) normalizedPatch.collectionMode = normalizeCollectionMode(patch.collectionMode, settings.collectionMode);
     if (patch.collectionIntervalMs !== undefined) normalizedPatch.collectionIntervalMs = normalizeCollectionIntervalMs(patch.collectionIntervalMs, settings.collectionIntervalMs);
     settings = normalizeWindowBehaviorSettings({
@@ -3217,7 +3344,9 @@ app.whenReady().then(() => {
       homeLimitProviderOrder: patch.homeLimitProviderOrder !== undefined ? migrateHomeLimitProviderOrder(patch.homeLimitProviderOrder) : (settings.homeLimitProviderOrder || ''),
       hiddenHomeLimitProviders: patch.hiddenHomeLimitProviders !== undefined ? normalizeHiddenLimitProviders(patch.hiddenHomeLimitProviders) : normalizeHiddenLimitProviders(settings.hiddenHomeLimitProviders),
       historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, false),
+      projectsEnabled: parseBoolean(patch.projectsEnabled ?? settings.projectsEnabled, true),
       historyIntervalMs: normalizeHistoryIntervalMs(patch.historyIntervalMs ?? settings.historyIntervalMs),
+      sessionUsageArchiveEnabled: parseBoolean(patch.sessionUsageArchiveEnabled ?? settings.sessionUsageArchiveEnabled, true),
       wslScanEnabled: parseBoolean(patch.wslScanEnabled ?? settings.wslScanEnabled, true),
       collectionMode: normalizeCollectionMode(patch.collectionMode ?? settings.collectionMode),
       collectionIntervalMs: normalizeCollectionIntervalMs(patch.collectionIntervalMs ?? settings.collectionIntervalMs),
@@ -3254,6 +3383,7 @@ app.whenReady().then(() => {
       volcengineRegion: patch.volcengineRegion !== undefined ? normalizeVolcengineRegion(patch.volcengineRegion) : (settings.volcengineRegion || ''),
       qoderCookie: patch.qoderCookie !== undefined ? normalizeQoderCookie(patch.qoderCookie) : (settings.qoderCookie || ''),
       qoderSite: patch.qoderSite !== undefined ? normalizeQoderSite(patch.qoderSite) : normalizeQoderSite(settings.qoderSite || 'global'),
+      ollamaCookie: patch.ollamaCookie !== undefined ? normalizeOllamaCookie(patch.ollamaCookie) : (settings.ollamaCookie || ''),
       customModelPricing: patch.customModelPricing !== undefined
         ? normalizeCustomPricingSetting(patch.customModelPricing)
         : normalizeCustomPricingSetting(settings.customModelPricing)
@@ -3298,6 +3428,8 @@ app.whenReady().then(() => {
       settings.limitProviders !== previousLimitProviders ||
       settings.limitsRefreshMs !== previousLimitsRefreshMs ||
       settings.historyEnabled !== previousHistoryEnabled ||
+      settings.projectsEnabled !== previousProjectsEnabled ||
+      settings.sessionUsageArchiveEnabled !== previousSessionUsageArchiveEnabled ||
       settings.historyIntervalMs !== previousHistoryIntervalMs ||
       settings.wslScanEnabled !== previousWslScanEnabled ||
       settings.collectionMode !== previousCollectionMode ||
@@ -3316,7 +3448,8 @@ app.whenReady().then(() => {
       settings.volcengineRegion !== previousVolcengineRegion ||
       settings.qoderCookie !== previousQoderCookie ||
       settings.qoderSite !== previousQoderSite ||
-      settings.kimiApiKey !== previousKimiApiKey
+      settings.kimiApiKey !== previousKimiApiKey ||
+      settings.ollamaCookie !== previousOllamaCookie
     ) {
       startMode();
     }
@@ -3527,6 +3660,13 @@ app.whenReady().then(() => {
     } catch (err) {
       return { ok: false, error: err.message };
     }
+  });
+  ipcMain.handle('ollama:validateCookie', async (_event, raw) => {
+    const cookie = normalizeOllamaCookie(raw);
+    if (!cookie) return { ok: false, status: 'notConfigured' };
+    const provider = await fetchOllamaLimits({ ollamaCookie: cookie }, { bypassValidationCache: true });
+    rememberOllamaValidation(cookie, provider);
+    return { ok: provider.status === 'ok', status: provider.status };
   });
   ipcMain.handle('opencode:saveCookie', async (_event, raw) => {
     const cookie = opencodeWeb.sanitizeCookieHeader(raw);
