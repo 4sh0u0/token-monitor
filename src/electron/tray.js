@@ -6,11 +6,16 @@ const { maskEmailAddress } = require('./renderer/accountIdentity');
 const { translate: translateMessage } = require('./renderer/i18n');
 
 const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+const TRAY_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icons', 'tray-token-monitor.png');
 
-function buildTrayIcon() {
-  const { nativeImage } = require('electron');
-  // macOS menu bar items render at 16–22pt; 18px is a good middle ground.
-  // Resize handles HiDPI itself; 20px matches typical menubar item size.
+function buildTrayIcon(options = {}) {
+  const platform = options.platform || process.platform;
+  const nativeImage = options.nativeImage || require('electron').nativeImage;
+  if (platform === 'darwin') {
+    const image = nativeImage.createFromPath(TRAY_ICON_PATH).resize({ height: 20, quality: 'best' });
+    image.setTemplateImage(true);
+    return image;
+  }
   return nativeImage.createFromPath(ICON_PATH).resize({ width: 20, height: 20 });
 }
 

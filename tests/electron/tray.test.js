@@ -4,8 +4,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const zlib = require('node:zlib');
 
 const {
+  buildTrayIcon,
   buildTrayMenuTemplate,
   formatTrayText,
   reconcileCodexAccountSelection,
@@ -33,6 +35,72 @@ const stats = {
     }
   }
 };
+
+test('fallback tray icon source stays transparent and high-resolution', () => {
+  const icon = fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'icons', 'tray-token-monitor.png'));
+  assert.equal(icon.toString('ascii', 1, 4), 'PNG');
+  assert.deepEqual([icon.readUInt32BE(16), icon.readUInt32BE(20)], [44, 44]);
+  assert.equal(icon[25], 6, 'tray PNG should use RGBA color');
+  assert.equal(icon[28], 0, 'tray PNG should not be interlaced');
+
+  const idat = [];
+  for (let offset = 8; offset < icon.length;) {
+    const length = icon.readUInt32BE(offset);
+    const type = icon.toString('ascii', offset + 4, offset + 8);
+    if (type === 'IDAT') idat.push(icon.subarray(offset + 8, offset + 8 + length));
+    offset += 12 + length;
+  }
+  const scanlines = zlib.inflateSync(Buffer.concat(idat));
+  assert.equal(scanlines[4], 0, 'tray PNG corner should remain fully transparent');
+});
+
+test('macOS tray icon downsamples the high-resolution template like provider icons', () => {
+  const calls = [];
+  const resized = {
+    setTemplateImage(value) { calls.push(['template', value]); }
+  };
+  const image = {
+    resize(size) { calls.push(['resize', size]); return resized; }
+  };
+
+  assert.equal(buildTrayIcon({
+    platform: 'darwin',
+    nativeImage: {
+      createFromPath(iconPath) {
+        calls.push(['path', iconPath]);
+        return image;
+      }
+    }
+  }), resized);
+
+  assert.match(calls[0][1], /assets[\\/]icons[\\/]tray-token-monitor\.png$/);
+  assert.deepEqual(calls.slice(1), [
+    ['resize', { height: 20, quality: 'best' }],
+    ['template', true]
+  ]);
+});
+
+test('non-macOS tray icon keeps the resized full-color app asset', () => {
+  const calls = [];
+  const resized = {};
+  const image = {
+    setTemplateImage(value) { calls.push(['template', value]); },
+    resize(size) { calls.push(['resize', size]); return resized; }
+  };
+
+  assert.equal(buildTrayIcon({
+    platform: 'win32',
+    nativeImage: {
+      createFromPath(iconPath) {
+        calls.push(['path', iconPath]);
+        return image;
+      }
+    }
+  }), resized);
+
+  assert.match(calls[0][1], /assets[\\/]icon\.png$/);
+  assert.deepEqual(calls.slice(1), [['resize', { width: 20, height: 20 }]]);
+});
 
 test('tray context menu complements the primary click with useful commands', () => {
   const calls = [];
