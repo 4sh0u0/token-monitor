@@ -334,13 +334,18 @@ test('Codex limits render as one provider group with account subrows', () => {
   assert.match(styles, /\.limit-account-row\s*\{/);
 });
 
-test('tray all-sessions mode can consider multiple providers for one configured id', () => {
+test('tray primary-limit modes use the shared provider-aware resolver', () => {
   const app = readRendererFile('app.js');
   const pickConfigured = functionBody(app, 'pickConfiguredSessionProviders', 'renderAllSessionsIcon');
   const renderAllSessions = functionBody(app, 'renderAllSessionsIcon', 'renderLimitSessionsIcon');
+  const renderBars = functionBody(app, 'renderBarsIcon', 'pickConfiguredSessionProviders');
+  const pickSession = functionBody(app, 'pickWorstSessionProvider', 'pickWorstWeeklyProvider');
 
-  assert.match(pickConfigured, /providersByLimitProviderId\(providers\)/);
-  assert.doesNotMatch(pickConfigured, /new Map\(providers\.map\(\(p\) => \[String\(p\.provider\)\.toLowerCase\(\), p\]\)\)/);
+  assert.match(pickConfigured, /pickConfiguredLimitProviders\(stats/);
+  assert.match(pickSession, /pickLimitProviderByKindPriority\(stats, \['session', 'weekly'\]\)/);
+  assert.match(renderBars, /primaryWindow/);
+  assert.match(renderBars, /secondaryWindow/);
+  assert.doesNotMatch(renderBars, /\.find\(\(w\) => w\.kind/);
   assert.match(renderAllSessions, /trayBarsLayout\(height, \{ contentOnly: true \}\)/);
 });
 
@@ -355,19 +360,21 @@ test('limit percent tray mode renders provider icons into a generated tray image
   assert.match(renderLimitSessionsIcon, /trayBarsLayout\(height/);
   assert.match(renderLimitSessionsIcon, /layout\.iconSize/);
   assert.match(renderLimitSessionsIcon, /picks\.length === 1/);
-  assert.match(renderLimitSessionsIcon, /kind === 'weekly'/);
-  assert.match(renderLimitSessionsIcon, /weeklyPercent === null \? '' : formatPercent\(weeklyPercent\)/);
-  assert.match(renderLimitSessionsIcon, /trayProviderImages\[pick\.provider\.provider\]/);
+  assert.match(renderLimitSessionsIcon, /primaryWindow/);
+  assert.match(renderLimitSessionsIcon, /secondaryWindow/);
+  assert.match(renderLimitSessionsIcon, /trayProviderImages\[pick\.providerRecord\.provider\]/);
   assert.match(renderLimitSessionsIcon, /`500 \$\{fontSize\}px/);
   assert.match(renderLimitSessionsIcon, /formatPercent\(limitFillPercent/);
   assert.match(renderLimitSessionsIcon, /·/);
   assert.match(maybeUpdateBarsIcon, /limitsAllSessions/);
   assert.match(maybeUpdateBarsIcon, /trayDataUrlForMode\(mode, 44\)/);
+  assert.match(maybeUpdateBarsIcon, /\{ \[mode\]: dataUrl \|\| null \}/);
   assert.match(updateTrayDisplay, /mode === 'limitsAllSessions'/);
   assert.match(updateTrayDisplay, /const barsImageMode = .*?!limitText && providerTrayIcons\[mode\]/);
   assert.match(updateTrayDisplay, /Boolean\(limitText\)/);
   assert.match(updateTrayDisplay, /const limitText = formatTrayText/);
   assert.match(updateTrayDisplay, /trayImageMode[\s\S]*?\? '' : limitText/);
+  assert.match(main, /if \(dataUrl === null\) \{[\s\S]*?delete providerTrayIcons\[id\]/);
 });
 
 test('Grok renders its single Monthly billing window full-width instead of an empty session/weekly pair', () => {
@@ -446,18 +453,15 @@ test('Codex renders manual reset credits below session and weekly windows', () =
   const app = readRendererFile('app.js');
   const styles = readRendererFile('styles.css');
   const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
-  const resetCreditsValue = functionBody(app, 'formatCodexResetCreditsValue', 'formatCodexResetCreditsExpiry');
-  const resetCreditsExpiry = functionBody(app, 'formatCodexResetCreditsExpiry', 'codexResetCreditExpirationDates');
+  const resetCreditsValue = functionBody(app, 'formatCodexResetCreditsValue', 'codexResetCreditExpirationDates');
   const resetCreditExpirationDates = functionBody(app, 'codexResetCreditExpirationDates', 'codexResetCreditExpiryLabel');
-  const resetCreditExpiryLabel = functionBody(app, 'codexResetCreditExpiryLabel', 'codexResetCreditsNode');
+  const resetCreditExpiryLabel = functionBody(app, 'codexResetCreditExpiryLabel', 'codexResetCreditExpiryDetailLabel');
+  const resetCreditExpiryDetailLabel = functionBody(app, 'codexResetCreditExpiryDetailLabel', 'codexResetCreditExpiryDateLabel');
+  const resetCreditExpiryDateLabel = functionBody(app, 'codexResetCreditExpiryDateLabel', 'resetCreditsTooltipShouldHoldRender');
   const codexResetCreditsNode = functionBody(app, 'codexResetCreditsNode', 'renderLimitProviderHead');
   const resetCreditsTooltipShouldHoldRender = functionBody(app, 'resetCreditsTooltipShouldHoldRender', 'flushPendingResetCreditsTooltipRender');
-  const flushPendingResetCreditsTooltipRender = functionBody(app, 'flushPendingResetCreditsTooltipRender', 'codexResetCreditsNode');
   const renderLimits = functionBody(app, 'renderLimits', 'serviceStatusLabel');
 
-  assert.match(app, /resetCreditsTooltipHasOpened: false/);
-  assert.match(app, /resetCreditsTooltipActive: false/);
-  assert.match(app, /resetCreditsTooltipRenderPending: false/);
   assert.match(renderProviderWindows, /provider\.provider === 'codex'/);
   assert.match(renderProviderWindows, /if \(!weekly\) sessionNode\.classList\.add\('limit-window-wide'\);/);
   assert.match(renderProviderWindows, /if \(!session\) weeklyNode\.classList\.add\('limit-window-wide'\);/);
@@ -465,60 +469,44 @@ test('Codex renders manual reset credits below session and weekly windows', () =
   assert.doesNotMatch(renderProviderWindows, /limitWindowNode\('Reset credits'/);
   assert.match(resetCreditsValue, /if \(count <= 0\) return '';/);
   assert.match(resetCreditsValue, /return `\$\{count\} reset\$\{count === 1 \? '' : 's'\}`;/);
-  assert.doesNotMatch(resetCreditsValue, /available`;/);
-  assert.match(resetCreditsExpiry, /`Next expires in \$\{formatDuration\(diffMs\)\}`/);
   assert.match(resetCreditExpirationDates, /resetCredits\?\.expirations/);
   assert.match(resetCreditExpirationDates, /\.sort\(\(a, b\) => a\.getTime\(\) - b\.getTime\(\)\)/);
-  assert.match(resetCreditExpiryLabel, /`Expires in \$\{formatDuration\(diffMs\)\}`/);
+  assert.match(resetCreditExpirationDates, /resetCredits\?\.nextExpiresAt/);
+  assert.match(resetCreditExpiryLabel, /diffMs <= 0 \? 'now'/);
+  assert.match(resetCreditExpiryLabel, /formatDuration\(diffMs\)/);
+  assert.match(resetCreditExpiryDetailLabel, /`Expires in \$\{formatDuration\(diffMs\)\}`/);
+  assert.match(resetCreditExpiryDateLabel, /Intl\.DateTimeFormat\(currentLocale\(\), \{ month: 'numeric', day: 'numeric' \}\)/);
   assert.match(codexResetCreditsNode, /limit-reset-credits/);
   assert.match(codexResetCreditsNode, /limit-reset-credits-line/);
+  assert.match(codexResetCreditsNode, /limit-reset-credits-timeline/);
+  assert.match(codexResetCreditsNode, /limit-reset-credits-time/);
+  assert.match(codexResetCreditsNode, /limit-reset-credits-separator/);
+  assert.match(codexResetCreditsNode, /separator\.textContent = '·'/);
   assert.match(codexResetCreditsNode, /limit-reset-credits-info-wrap/);
-  assert.match(codexResetCreditsNode, /limit-reset-credits-info/);
   assert.match(codexResetCreditsNode, /limit-reset-credits-tooltip/);
-  assert.match(codexResetCreditsNode, /infoWrap\.classList\.toggle\('has-opened', state\.resetCreditsTooltipHasOpened\);/);
-  assert.match(codexResetCreditsNode, /pointerenter/);
-  assert.match(codexResetCreditsNode, /focusin/);
-  assert.match(codexResetCreditsNode, /state\.resetCreditsTooltipHasOpened = true;/);
-  assert.match(codexResetCreditsNode, /state\.resetCreditsTooltipActive = true;/);
-  assert.match(codexResetCreditsNode, /infoWrap\.classList\.add\('has-opened'\);/);
+  assert.match(codexResetCreditsNode, /expirationDates\.slice\(0, 3\)\.map\(codexResetCreditExpiryLabel\)/);
+  assert.match(codexResetCreditsNode, /hiddenExpirationCount = expirationDates\.length - summaryParts\.length/);
+  assert.match(codexResetCreditsNode, /summaryParts\.push\(`\+\$\{hiddenExpirationCount\}`\)/);
+  assert.match(codexResetCreditsNode, /expirationDates\.forEach/);
+  assert.match(codexResetCreditsNode, /label\.textContent = codexResetCreditExpiryDateLabel\(date\)/);
+  assert.match(codexResetCreditsNode, /tooltipExpiry\.textContent = codexResetCreditExpiryLabel\(date\)/);
+  assert.match(codexResetCreditsNode, /state\.resetCreditsTooltipActive = true/);
   assert.match(codexResetCreditsNode, /addEventListener\('pointerenter', markResetCreditsTooltipOpened\)/);
-  assert.match(codexResetCreditsNode, /addEventListener\('focusin', markResetCreditsTooltipOpened\)/);
-  assert.match(codexResetCreditsNode, /addEventListener\('pointerleave', releaseResetCreditsTooltip\)/);
-  assert.match(codexResetCreditsNode, /addEventListener\('focusout', releaseResetCreditsTooltip\)/);
-  assert.match(codexResetCreditsNode, /infoWrap\.matches\(':hover, :focus-within'\)/);
-  assert.match(codexResetCreditsNode, /info\.textContent = 'i';/);
-  assert.match(codexResetCreditsNode, /infoWrap\.append\(info, tooltip\);/);
-  assert.match(codexResetCreditsNode, /expiryGroup\.append\(infoWrap\);/);
-  assert.match(codexResetCreditsNode, /tabIndex = 0/);
-  assert.doesNotMatch(codexResetCreditsNode, /aria-expanded/);
-  assert.doesNotMatch(codexResetCreditsNode, /addEventListener\('click'/);
   assert.match(codexResetCreditsNode, /formatCodexResetCreditsValue\(resetCredits\)/);
-  assert.match(codexResetCreditsNode, /formatCodexResetCreditsExpiry\(resetCredits\)/);
   assert.match(codexResetCreditsNode, /aria-label/);
   assert.match(resetCreditsTooltipShouldHoldRender, /state\.resetCreditsTooltipActive/);
-  assert.match(resetCreditsTooltipShouldHoldRender, /querySelector\('\.limit-reset-credits-info-wrap:hover, \.limit-reset-credits-info-wrap:focus-within'\)/);
-  assert.match(flushPendingResetCreditsTooltipRender, /state\.resetCreditsTooltipRenderPending/);
-  assert.match(flushPendingResetCreditsTooltipRender, /state\.breakdown !== 'limits'/);
-  assert.match(flushPendingResetCreditsTooltipRender, /renderLimits\(\)/);
   assert.match(renderLimits, /const holdResetCreditsTooltipRender = resetCreditsTooltipShouldHoldRender\(\);/);
-  assert.match(renderLimits, /if \(holdResetCreditsTooltipRender \|\| holdCodexSwitchPopoverRender\) \{/);
-  assert.match(renderLimits, /if \(holdResetCreditsTooltipRender\) state\.resetCreditsTooltipRenderPending = true;/);
-  assert.match(renderLimits, /return;/);
-  assert.match(styles, /\.limit-reset-credits\s*\{[^}]*font-size: 9px;/s);
+  assert.match(renderLimits, /if \(holdResetCreditsTooltipRender \|\| holdCodexSwitchPopoverRender\)/);
+  assert.match(styles, /\.limit-reset-credits\s*\{[^}]*min-height: 11px;[^}]*font-size: 9px;/s);
   assert.match(styles, /\.limit-reset-credits-line\s*\{[^}]*justify-content: space-between;/s);
+  assert.match(styles, /\.limit-reset-credits-expiry-group\s*\{[^}]*flex: 0 0 auto;/s);
+  assert.match(styles, /\.limit-reset-credits-timeline\s*\{[^}]*opacity: 0\.66;/s);
+  assert.match(styles, /\.limit-reset-credits-time\s*\{[^}]*gap: 3px;/s);
   assert.match(styles, /\.limit-reset-credits-info-wrap\s*\{[^}]*position: relative;/s);
-  assert.match(styles, /\.limit-reset-credits-info-wrap\s*\{[^}]*width: 14px;/s);
-  assert.match(styles, /\.limit-reset-credits-info\s*\{[^}]*width: 10px;/s);
-  assert.match(styles, /\.limit-reset-credits-info\s*\{[^}]*cursor: default;/s);
-  assert.match(styles, /\.limit-reset-credits-info\s*\{[^}]*border-radius: 999px;/s);
-  assert.match(styles, /\.limit-reset-credits-tooltip\s*\{[^}]*position: absolute;/s);
-  assert.match(styles, /\.limit-reset-credits-tooltip\s*\{[^}]*rgba\(var\(--glass-rgb\), 0\.76\)/s);
-  assert.match(styles, /\.limit-reset-credits-info-wrap:hover \.limit-reset-credits-tooltip/s);
-  assert.match(styles, /\.limit-reset-credits-info-wrap:focus-within \.limit-reset-credits-tooltip/s);
-  assert.match(styles, /\.limit-reset-credits-info-wrap\.has-opened \.limit-reset-credits-tooltip\s*\{[^}]*transition: none;/s);
-  assert.doesNotMatch(styles, /\.limit-reset-credits-info:hover \+ \.limit-reset-credits-tooltip/);
-  assert.doesNotMatch(styles, /\.limit-reset-credits-details/);
-  assert.match(styles, /\.limit-reset-credits-expiry\s*\{[^}]*opacity: 0\.66;/s);
+  assert.match(styles, /\.limit-reset-credits-tooltip\s*\{[^}]*position: absolute;[^}]*width: max-content;[^}]*grid-template-columns: max-content max-content;/s);
+  assert.match(styles, /\.limit-reset-credit-detail\s*\{[^}]*display: contents;/s);
+  assert.match(styles, /\.limit-reset-credit-detail span:last-child\s*\{[^}]*text-align: right;/s);
+  assert.doesNotMatch(styles, /\.limit-reset-credits-clock/);
 });
 
 test('Home uses explicit billing labels so Copilot Premium and Chat stay distinct', () => {
@@ -539,17 +527,14 @@ test('Home uses explicit billing labels so Copilot Premium and Chat stay distinc
   assert.doesNotMatch(i18n, /home\.limit\.(balance|leftPercent|leftAmount)/);
 });
 
-test('tray bars draw the billing window for a billing-only provider instead of two empty bars', () => {
-  // renderBarsIcon used to unconditionally draw session+weekly, painting two
-  // empty tracks for a Grok-only selection. It must now branch: session/weekly
-  // when present, else the single billing bar on the top track.
+test('tray bars draw the resolved primary window on top and preserve an empty lower track', () => {
   const app = readRendererFile('app.js');
   const renderBarsIcon = functionBody(app, 'renderBarsIcon', 'renderAllSessionsIcon');
 
-  assert.match(renderBarsIcon, /w\.kind === 'billing'/);
-  assert.match(renderBarsIcon, /if \(session \|\| weekly\)/);
-  assert.match(renderBarsIcon, /} else if \(billing\)/);
-  assert.match(renderBarsIcon, /drawBar\(layout\.barsStartY, Number\(billing\.remainingPercent\)\)/);
+  assert.match(renderBarsIcon, /primaryWindow\?\.remainingPercent/);
+  assert.match(renderBarsIcon, /secondaryWindow\?\.remainingPercent/);
+  assert.equal((renderBarsIcon.match(/drawBar\(/g) || []).length, 3);
+  assert.doesNotMatch(renderBarsIcon, /\.find\(\(w\) => w\.kind/);
 });
 
 test('DeepSeek main Limits row uses a balance meter without since-tracking copy', () => {

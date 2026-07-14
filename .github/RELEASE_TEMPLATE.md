@@ -5,23 +5,24 @@
 ## What's changed
 
 ### Added
-- **Ollama Cloud account tracking:** AI Tool Limits now supports Ollama Cloud, with cookie-based usage and quota tracking. (#98)
-- **Proma usage tracking:** Local Proma token usage, model breakdowns, and costs are now tracked across desktop and WSL environments. (#108)
-- **Session history:** Deleted or cleared sessions now keep their token totals by default; pause preservation or clear retained data anytime. (#119)
+- **Projects view:** Disabled by default; enable it under **Settings → Main Screen → Enable project tracking** to track Claude Code, Codex, and OpenCode token usage and costs by workspace, with cross-device rollups and no raw workspace paths sent to the hub. (#122, #138, #144)
+- **Shareable theme codes:** Copy or import a `TM1` theme code to share appearance settings. (#130)
+- **Windows app updates:** Windows installer builds can now download and install updates from inside Token Monitor; portable builds continue to update manually. (#136)
 
 ### Improved
-- **Client secret entry:** Multi-device Sync now includes a paste button for the client-side secret field. (#129)
+- **Codex reset counts:** Upcoming reset expirations now appear as a timeline, and a lone quota window expands to the full card width. (#135)
+- **Appearance settings:** Vendor Colors now have their own section for easier customization.
 
 ### Fixed
-- **Usage history:** Trends now retain history from offline devices, and an open Usage Dashboard refreshes when history changes. (#127)
-- **Codex account status:** The active-account indicator now follows the local Codex login in multi-device setups, and account bars remain available through collector restarts and transient refresh failures. (#126, #128)
+- **Session details:** The `TOTAL` session view is available again in sync and host modes. (#131)
+- **AI Tool Limits:** Tray limit bars now fall back to weekly windows when a provider has no session window, and MiMo no longer shows Token Plan for inactive or free accounts. (#137, #142)
 
 ## Download
 
-- **macOS Apple Silicon** — [Token-Monitor-0.26.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0-arm64.dmg)
-- **Windows Installer** — [Token-Monitor-Setup-0.26.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-Setup-0.26.0.exe)
-- **Windows Portable** — [Token-Monitor-0.26.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0.exe)
-- **Linux x64** — [Token-Monitor-0.26.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.27.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.27.0/Token-Monitor-0.27.0-arm64.dmg)
+- **Windows Installer** — [Token-Monitor-Setup-0.27.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.27.0/Token-Monitor-Setup-0.27.0.exe) (recommended)
+- **Windows Portable** — [Token-Monitor-0.27.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.27.0/Token-Monitor-0.27.0.exe) (no install required)
+- **Linux x64** — [Token-Monitor-0.27.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.27.0/Token-Monitor-0.27.0.AppImage)
 
 <details>
 <summary><strong>First launch and other notes</strong></summary>
@@ -60,23 +61,24 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 ### 新增
-- **Ollama Cloud 账号追踪：** AI 工具额度现已支持 Ollama Cloud，通过 Cookie 追踪用量与额度。（#98）
-- **Proma 用量追踪：** 现已支持追踪桌面与 WSL 环境中的 Proma 本地 Token 用量、模型明细与费用。（#108）
-- **会话记录：** 来源工具删除或清除会话后，默认仍会保留其 Token 用量，可随时暂停保留或清除已保留的数据。（#119）
+- **项目视图：** 此功能默认关闭，可前往 **设置 → 主界面 → 启用项目追踪** 开启，按工作区追踪 Claude Code、Codex 与 OpenCode 的 Token 用量和费用；支持跨设备汇总，且不会向 Hub 发送原始工作区路径。（#122、#138、#144）
+- **主题分享码：** 可复制或导入 `TM1` 主题码，分享外观设置。（#130）
+- **Windows 应用更新：** Windows 安装版现可在 Token Monitor 内下载并安装更新；便携版仍需手动更新。（#136）
 
 ### 改进
-- **客户端密钥输入：** 多设备同步的客户端密钥输入框现已加入粘贴按钮。（#129）
+- **Codex 重置次数：** 即将到期的重置次数现以时间线显示；仅有一个额度窗口时也会扩展至卡片全宽。（#135）
+- **外观设置：** 厂商色现有独立设置区，更方便自定义。
 
 ### 修复
-- **用量历史：** 趋势现会保留离线设备的历史记录，用量仪表板打开时也会随历史变化刷新。（#127）
-- **Codex 账号状态：** 多设备同步时，当前账号标记现会正确跟随本机 Codex 登录；收集器重启或暂时刷新失败时，账号额度条也会继续保留。（#126、#128）
+- **会话明细：** 同步与主机模式现已恢复 `TOTAL` 会话视图。（#131）
+- **AI 工具额度：** 当服务商没有会话窗口时，托盘额度条现会改用每周窗口；MiMo 的未订阅或免费账号也不再误显示 Token Plan。（#137、#142）
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.26.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0-arm64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.26.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-Setup-0.26.0.exe)
-- **Windows 便携版** — [Token-Monitor-0.26.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0.exe)
-- **Linux x64** — [Token-Monitor-0.26.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.26.0/Token-Monitor-0.26.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.27.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.27.0/Token-Monitor-0.27.0-arm64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.27.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.27.0/Token-Monitor-Setup-0.27.0.exe)（推荐）
+- **Windows 便携版** — [Token-Monitor-0.27.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.27.0/Token-Monitor-0.27.0.exe)（免安装）
+- **Linux x64** — [Token-Monitor-0.27.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.27.0/Token-Monitor-0.27.0.AppImage)
 
 <details>
 <summary><strong>首次启动与其他说明</strong></summary>

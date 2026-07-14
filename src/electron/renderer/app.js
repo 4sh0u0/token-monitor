@@ -267,6 +267,16 @@ Object.assign(els, {
   appearanceSettingsSummary: document.getElementById('appearanceSettingsSummary'),
   themePresetChips: document.getElementById('themePresetChips'),
   themeColorGrid: document.getElementById('themeColorGrid'),
+  themeCodeInput: document.getElementById('themeCodeInput'),
+  applyThemeCodeButton: document.getElementById('applyThemeCodeButton'),
+  copyThemeCodeButton: document.getElementById('copyThemeCodeButton'),
+  themeCodeStatus: document.getElementById('themeCodeStatus'),
+  themeAdvancedGroup: document.getElementById('themeAdvancedGroup'),
+  themeAdvancedToggle: document.getElementById('themeAdvancedToggle'),
+  themeAdvancedDetails: document.getElementById('themeAdvancedDetails'),
+  themeVendorGroup: document.getElementById('themeVendorGroup'),
+  themeVendorToggle: document.getElementById('themeVendorToggle'),
+  themeVendorDetails: document.getElementById('themeVendorDetails'),
   vendorColorList: document.getElementById('vendorColorList'),
   resetThemeColorsButton: document.getElementById('resetThemeColorsButton'),
   resetVendorColorsButton: document.getElementById('resetVendorColorsButton'),
@@ -1005,20 +1015,33 @@ function applyHomeListMark(mark, iconKind, color) {
   mark.style.background = color;
 }
 
-function renderRows(rows) {
-  if (rows.length === 0) {
+function renderRows(rows, { showProjectIncompleteHint = false } = {}) {
+  if (rows.length === 0 && !showProjectIncompleteHint) {
     els.breakdown.replaceChildren();
     state.rowSignature = '';
     return;
   }
   const max = Math.max(1, ...rows.map((row) => row.value));
-  const signature = `${state.breakdown}\n${rows.map((row) => row.key).join('\n')}`;
-  const existing = new Map(Array.from(els.breakdown.children).map((child) => [child.dataset.key, child]));
+  const hintText = showProjectIncompleteHint ? t('projects.incomplete') : '';
+  const signature = JSON.stringify([state.breakdown, hintText, rows.map((row) => row.key)]);
+  const children = Array.from(els.breakdown.children);
+  const existingHint = children.find((child) => child.classList.contains('project-incomplete-hint'));
+  const existing = new Map(children.filter((child) => child !== existingHint).map((child) => [child.dataset.key, child]));
   if (signature !== state.rowSignature) {
-    els.breakdown.replaceChildren(...rows.map((row) => existing.get(row.key) || rowTemplate(row)));
+    const nodes = rows.map((row) => existing.get(row.key) || rowTemplate(row));
+    if (showProjectIncompleteHint) {
+      const hint = existingHint || document.createElement('p');
+      hint.className = 'project-incomplete-hint';
+      hint.setAttribute('role', 'status');
+      hint.textContent = hintText;
+      nodes.unshift(hint);
+    }
+    els.breakdown.replaceChildren(...nodes);
     state.rowSignature = signature;
   }
-  const current = new Map(Array.from(els.breakdown.children).map((child) => [child.dataset.key, child]));
+  const current = new Map(Array.from(els.breakdown.children)
+    .filter((child) => !child.classList.contains('project-incomplete-hint'))
+    .map((child) => [child.dataset.key, child]));
   for (const rowData of rows) {
     const row = current.get(rowData.key);
     if (row) updateRow(row, { ...rowData, max });
@@ -1278,24 +1301,29 @@ function formatCodexResetCreditsValue(resetCredits) {
   return `${count} reset${count === 1 ? '' : 's'}`;
 }
 
-function formatCodexResetCreditsExpiry(resetCredits) {
-  const date = resetCredits?.nextExpiresAt ? new Date(resetCredits.nextExpiresAt) : null;
-  if (!date || Number.isNaN(date.getTime())) return '';
-  const diffMs = date.getTime() - Date.now();
-  return diffMs <= 0 ? 'Next expires now' : `Next expires in ${formatDuration(diffMs)}`;
-}
-
 function codexResetCreditExpirationDates(resetCredits) {
   const values = Array.isArray(resetCredits?.expirations) ? resetCredits.expirations : [];
-  return values
+  const dates = values
     .map((value) => new Date(value))
     .filter((date) => !Number.isNaN(date.getTime()))
     .sort((a, b) => a.getTime() - b.getTime());
+  if (dates.length > 0) return dates;
+  const fallback = resetCredits?.nextExpiresAt ? new Date(resetCredits.nextExpiresAt) : null;
+  return fallback && !Number.isNaN(fallback.getTime()) ? [fallback] : [];
 }
 
 function codexResetCreditExpiryLabel(date) {
   const diffMs = date.getTime() - Date.now();
+  return diffMs <= 0 ? 'now' : formatDuration(diffMs);
+}
+
+function codexResetCreditExpiryDetailLabel(date) {
+  const diffMs = date.getTime() - Date.now();
   return diffMs <= 0 ? 'Expires now' : `Expires in ${formatDuration(diffMs)}`;
+}
+
+function codexResetCreditExpiryDateLabel(date) {
+  return new Intl.DateTimeFormat(currentLocale(), { month: 'numeric', day: 'numeric' }).format(date);
 }
 
 function resetCreditsTooltipShouldHoldRender() {
@@ -1325,7 +1353,6 @@ function flushPendingCodexSwitchPopoverRender() {
 function codexResetCreditsNode(resetCredits) {
   const valueText = formatCodexResetCreditsValue(resetCredits);
   if (!valueText) return null;
-  const expiryText = formatCodexResetCreditsExpiry(resetCredits);
   const expirationDates = codexResetCreditExpirationDates(resetCredits);
   const item = document.createElement('div');
   item.className = 'limit-window limit-window-wide limit-window-note limit-reset-credits';
@@ -1335,13 +1362,28 @@ function codexResetCreditsNode(resetCredits) {
   value.className = 'limit-reset-credits-value';
   value.textContent = valueText;
   line.append(value);
-  if (expiryText) {
+  if (expirationDates.length > 0) {
     const expiryGroup = document.createElement('span');
     expiryGroup.className = 'limit-reset-credits-expiry-group';
-    const expiry = document.createElement('span');
-    expiry.className = 'limit-reset-credits-expiry';
-    expiry.textContent = expiryText;
-    expiryGroup.append(expiry);
+    const timeline = document.createElement('span');
+    timeline.className = 'limit-reset-credits-timeline';
+    const summaryParts = expirationDates.slice(0, 3).map(codexResetCreditExpiryLabel);
+    const hiddenExpirationCount = expirationDates.length - summaryParts.length;
+    if (hiddenExpirationCount > 0) summaryParts.push(`+${hiddenExpirationCount}`);
+    summaryParts.forEach((text, index) => {
+      const time = document.createElement('span');
+      time.className = 'limit-reset-credits-time';
+      if (index > 0) {
+        const separator = document.createElement('span');
+        separator.className = 'limit-reset-credits-separator';
+        separator.textContent = '·';
+        separator.setAttribute('aria-hidden', 'true');
+        time.append(separator);
+      }
+      time.append(document.createTextNode(text));
+      timeline.append(time);
+    });
+    expiryGroup.append(timeline);
     if (expirationDates.length > 1) {
       const infoWrap = document.createElement('span');
       infoWrap.className = 'limit-reset-credits-info-wrap';
@@ -1350,15 +1392,15 @@ function codexResetCreditsNode(resetCredits) {
       info.className = 'limit-reset-credits-info';
       info.textContent = 'i';
       info.tabIndex = 0;
-      info.setAttribute('aria-label', expirationDates.map((date, index) => `Reset ${index + 1}: ${codexResetCreditExpiryLabel(date)}`).join(', '));
+      info.setAttribute('aria-label', expirationDates.map((date, index) => `Reset ${index + 1}: ${codexResetCreditExpiryDetailLabel(date)}`).join(', '));
       const tooltip = document.createElement('span');
       tooltip.className = 'limit-reset-credits-tooltip';
       tooltip.setAttribute('role', 'tooltip');
-      expirationDates.forEach((date, index) => {
+      expirationDates.forEach((date) => {
         const row = document.createElement('span');
         row.className = 'limit-reset-credit-detail';
         const label = document.createElement('span');
-        label.textContent = `Reset ${index + 1}`;
+        label.textContent = codexResetCreditExpiryDateLabel(date);
         const tooltipExpiry = document.createElement('span');
         tooltipExpiry.textContent = codexResetCreditExpiryLabel(date);
         row.append(label, tooltipExpiry);
@@ -1386,7 +1428,7 @@ function codexResetCreditsNode(resetCredits) {
     line.append(expiryGroup);
   }
   item.append(line);
-  item.setAttribute('aria-label', ['Reset credits', valueText, expiryText].filter(Boolean).join(', '));
+  item.setAttribute('aria-label', ['Reset credits', valueText, expirationDates.map(codexResetCreditExpiryDetailLabel).join(', ')].filter(Boolean).join(', '));
   return item;
 }
 
@@ -3504,7 +3546,10 @@ function render() {
     els.trendsPanel.classList.add('hidden');
     els.breakdown.classList.remove('hidden');
     const rows = rowsForPeriod(period);
-    renderRows(rows);
+    renderRows(rows, {
+      showProjectIncompleteHint: state.breakdown === 'project'
+        && projectRowsApi.projectBreakdownIncomplete(state.stats, state.period)
+    });
   }
   
   renderFloatingBubbleContent();
@@ -3775,6 +3820,7 @@ function applyAppearanceSettings(settings) {
 }
 
 const themePresetsApi = window.TokenMonitorThemePresets;
+let themeCodeFeedbackGeneration = 0;
 // Snapshot of the canonical brand colours, taken before any override is
 // applied. clientColors is mutated in place (other modules hold the same
 // reference), so this is the source of truth for "reset to brand".
@@ -3825,6 +3871,13 @@ function buildAppearanceColorControls() {
   renderThemePresetChips();
   renderThemeColorGrid();
   renderVendorColorList();
+  if (els.themeCodeInput && document.activeElement !== els.themeCodeInput) {
+    const code = themePresetsApi.encodeThemeCode(state.settings?.themeColors);
+    if (els.themeCodeInput.value !== code) {
+      els.themeCodeInput.value = code;
+      invalidateThemeCodeFeedback();
+    }
+  }
 }
 
 function renderThemePresetChips() {
@@ -3947,6 +4000,75 @@ async function commitThemeColors(overrides) {
   buildAppearanceColorControls();
   renderSettingsSummaries();
   await saveSettings({ themeColors: overrides });
+}
+
+function showThemeCodeStatus(key, type = '') {
+  if (!els.themeCodeStatus) return;
+  els.themeCodeStatus.textContent = t(key);
+  els.themeCodeStatus.classList.toggle('success', type === 'success');
+  els.themeCodeStatus.classList.toggle('error', type === 'error');
+}
+
+function clearThemeCodeStatus() {
+  if (!els.themeCodeStatus) return;
+  els.themeCodeStatus.textContent = '';
+  els.themeCodeStatus.classList.remove('success', 'error');
+}
+
+function invalidateThemeCodeFeedback() {
+  themeCodeFeedbackGeneration += 1;
+  clearThemeCodeStatus();
+  return themeCodeFeedbackGeneration;
+}
+
+function themeCodeFeedbackIsCurrent(generation, code) {
+  return generation === themeCodeFeedbackGeneration && els.themeCodeInput?.value === code;
+}
+
+async function applyThemeCodeFromInput() {
+  const generation = invalidateThemeCodeFeedback();
+  const parsed = themePresetsApi.decodeThemeCode(els.themeCodeInput?.value);
+  if (!parsed.ok) {
+    const key = parsed.reason === 'unsupportedVersion'
+      ? 'settings.appearance.themeCodeUnsupported'
+      : 'settings.appearance.themeCodeInvalid';
+    showThemeCodeStatus(key, 'error');
+    return;
+  }
+  els.themeCodeInput.value = parsed.code;
+  await commitThemeColors(parsed.colors);
+  if (themeCodeFeedbackIsCurrent(generation, parsed.code)) {
+    showThemeCodeStatus('settings.appearance.themeCodeApplied', 'success');
+  }
+}
+
+async function pasteAndApplyThemeCode() {
+  const generation = invalidateThemeCodeFeedback();
+  const code = els.themeCodeInput?.value;
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (_) {
+    if (!themeCodeFeedbackIsCurrent(generation, code)) return;
+    showThemeCodeStatus('settings.appearance.themeCodeCopyFailed', 'error');
+    return;
+  }
+  if (!themeCodeFeedbackIsCurrent(generation, code)) return;
+  const trimmed = (text || '').trim();
+  if (els.themeCodeInput) els.themeCodeInput.value = trimmed;
+  await applyThemeCodeFromInput();
+}
+
+async function copyCurrentThemeCode() {
+  const generation = invalidateThemeCodeFeedback();
+  const code = themePresetsApi.encodeThemeCode(state.settings?.themeColors);
+  els.themeCodeInput.value = code;
+  const copied = await copyToClipboard(code);
+  if (!themeCodeFeedbackIsCurrent(generation, code)) return;
+  showThemeCodeStatus(
+    copied ? 'settings.appearance.themeCodeCopied' : 'settings.appearance.themeCodeCopyFailed',
+    copied ? 'success' : 'error'
+  );
 }
 
 function previewVendorColor(id, value) {
@@ -4391,13 +4513,17 @@ function renderHubAddresses(addresses, port) {
 
 async function copyToClipboard(text, button) {
   try {
-    await navigator.clipboard.writeText(text);
+    if (window.tokenMonitor.copyText) await window.tokenMonitor.copyText(text);
+    else await navigator.clipboard.writeText(text);
     if (button) {
       const previous = button.textContent;
       button.textContent = '✓';
       setTimeout(() => { button.textContent = previous; }, 900);
     }
-  } catch (_) { /* clipboard blocked; no-op */ }
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 async function refreshHubInfo() {
@@ -6034,6 +6160,29 @@ els.blurInput.addEventListener('input', applyAppearanceFromControls);
 els.zoomInput.addEventListener('input', applyAppearanceFromControls);
 els.resetThemeColorsButton?.addEventListener('click', () => commitThemeColors({}));
 els.resetVendorColorsButton?.addEventListener('click', () => commitVendorColors({}));
+els.applyThemeCodeButton?.addEventListener('click', () => { void pasteAndApplyThemeCode(); });
+els.copyThemeCodeButton?.addEventListener('click', () => { void copyCurrentThemeCode(); });
+els.themeCodeInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  void applyThemeCodeFromInput();
+});
+els.themeCodeInput?.addEventListener('input', invalidateThemeCodeFeedback);
+function setupThemeAccordion(group, toggle, details) {
+  if (!group || !toggle || !details) return;
+  const setExpanded = (expanded) => {
+    const open = Boolean(expanded);
+    toggle.setAttribute('aria-expanded', String(open));
+    details.classList.toggle('hidden', !open);
+    details.inert = !open;
+    group.classList.toggle('expanded', open);
+  };
+  toggle.addEventListener('click', () => setExpanded(details.classList.contains('hidden')));
+  setExpanded(false);
+}
+
+setupThemeAccordion(els.themeAdvancedGroup, els.themeAdvancedToggle, els.themeAdvancedDetails);
+setupThemeAccordion(els.themeVendorGroup, els.themeVendorToggle, els.themeVendorDetails);
 els.systemGlassInput.addEventListener('change', saveAppearanceFromControls);
 els.liveDotInput.addEventListener('change', saveAppearanceFromControls);
 els.toolIconsInput.addEventListener('change', saveAppearanceFromControls);
@@ -6225,31 +6374,16 @@ window.tokenMonitor.onStatsPush?.((payload) => {
   restartTimer();
 });
 
-function pickWorstProvider(stats, windowFilter) {
-  const providers = stats?.limits?.providers || [];
-  let worstProvider = null;
-  let worstRemaining = Infinity;
-  for (const provider of providers) {
-    if (provider.status !== 'ok' || provider.stale) continue;
-    for (const window of provider.windows || []) {
-      if (windowFilter && !windowFilter(window)) continue;
-      const remaining = Number(window.remainingPercent);
-      if (!Number.isFinite(remaining)) continue;
-      if (remaining < worstRemaining) {
-        worstRemaining = remaining;
-        worstProvider = provider;
-      }
-    }
-  }
-  return worstProvider;
+function pickWorstProvider(stats) {
+  return window.TokenMonitorTrayText.pickWorstLimitProvider(stats);
 }
 
 function pickWorstSessionProvider(stats) {
-  return pickWorstProvider(stats, (window) => window.kind === 'session');
+  return window.TokenMonitorTrayText.pickLimitProviderByKindPriority(stats, ['session', 'weekly']);
 }
 
 function pickWorstWeeklyProvider(stats) {
-  return pickWorstProvider(stats, (window) => window.kind === 'weekly');
+  return window.TokenMonitorTrayText.pickWorstLimitProvider(stats, { kind: 'weekly' });
 }
 
 function roundedRectPath(ctx, x, y, w, h, r) {
@@ -6268,12 +6402,10 @@ const trayProviderImages = {};
 function renderBarsIcon(stats, height = 44, picker = pickWorstProvider, colors = {}) {
   const trackColor = colors.track || 'rgba(0, 0, 0, 0.32)';
   const fillColor = colors.fill || 'rgba(0, 0, 0, 1)';
-  const provider = picker(stats);
-  if (!provider) return null;
-  const session = (provider.windows || []).find((w) => w.kind === 'session');
-  const weekly = (provider.windows || []).find((w) => w.kind === 'weekly');
-  const billing = (provider.windows || []).find((w) => w.kind === 'billing');
-  const providerImage = trayProviderImages[provider.provider];
+  const selection = picker(stats);
+  if (!selection) return null;
+  const { providerRecord, primaryWindow, secondaryWindow } = selection;
+  const providerImage = trayProviderImages[providerRecord.provider];
   const { trayBarFillWidth, trayBarsLayout } = window.TokenMonitorTrayBars;
   const layout = trayBarsLayout(height);
 
@@ -6302,36 +6434,17 @@ function renderBarsIcon(stats, height = 44, picker = pickWorstProvider, colors =
     ctx.restore();
   }
 
-  if (session || weekly) {
-    drawBar(layout.barsStartY, Number(session?.remainingPercent));
-    drawBar(layout.barsStartY + layout.barHeight + layout.barGap, Number(weekly?.remainingPercent));
-  } else if (billing) {
-    // Billing-only providers (Grok Monthly) have no session/weekly pair — draw the
-    // single monthly bar on the top track and leave the bottom track empty, instead
-    // of painting two empty bars.
-    drawBar(layout.barsStartY, Number(billing.remainingPercent));
-  }
+  drawBar(layout.barsStartY, primaryWindow?.remainingPercent);
+  drawBar(layout.barsStartY + layout.barHeight + layout.barGap, secondaryWindow?.remainingPercent);
   return canvas.toDataURL('image/png');
 }
 
 function pickConfiguredSessionProviders(stats, configOrder) {
-  const providers = stats?.limits?.providers || [];
-  const byId = providersByLimitProviderId(providers);
-  const result = [];
-  for (const id of configOrder) {
-    let pick = null;
-    for (const p of byId.get(id) || []) {
-      if (!p || p.status !== 'ok' || p.stale) continue;
-      const session = (p.windows || []).find((w) => w.kind === 'session');
-      const remaining = Number(session?.remainingPercent);
-      if (!session || !Number.isFinite(remaining)) continue;
-      if (!pick || remaining < Number(pick.session.remainingPercent)) pick = { provider: p, session };
-    }
-    if (!pick) continue;
-    result.push(pick);
-    if (result.length === 2) break;
-  }
-  return result;
+  return window.TokenMonitorTrayText.pickConfiguredLimitProviders(stats, {
+    limitProviderOrder: configOrder,
+    limitProviders: configOrder,
+    showLimitUsed: Boolean(state.settings?.showLimitUsed)
+  });
 }
 
 function renderAllSessionsIcon(stats, height = 44, configOrder, colors = {}) {
@@ -6339,8 +6452,9 @@ function renderAllSessionsIcon(stats, height = 44, configOrder, colors = {}) {
   const fillColor = colors.fill || 'rgba(0, 0, 0, 1)';
   const picks = pickConfiguredSessionProviders(stats, configOrder);
   if (picks.length === 0) return null;
-  // Only one tool has session data → fall back to that tool's session+weekly view.
-  if (picks.length === 1) return renderBarsIcon(stats, height, () => picks[0].provider, colors);
+  // With one tool, preserve its canonical pair; a lone weekly/billing window is
+  // promoted to the top lane and the lower lane remains an empty track.
+  if (picks.length === 1) return renderBarsIcon(stats, height, () => picks[0], colors);
 
   const { trayBarFillWidth, trayBarsLayout } = window.TokenMonitorTrayBars;
   const layout = trayBarsLayout(height, { contentOnly: true });
@@ -6366,8 +6480,8 @@ function renderAllSessionsIcon(stats, height = 44, configOrder, colors = {}) {
     ctx.restore();
   }
 
-  drawBar(layout.barsStartY, Number(picks[0].session.remainingPercent));
-  drawBar(layout.barsStartY + layout.barHeight + layout.barGap, Number(picks[1].session.remainingPercent));
+  drawBar(layout.barsStartY, picks[0].primaryWindow.remainingPercent);
+  drawBar(layout.barsStartY + layout.barHeight + layout.barGap, picks[1].primaryWindow.remainingPercent);
   return canvas.toDataURL('image/png');
 }
 
@@ -6390,24 +6504,20 @@ function renderLimitSessionsIcon(stats, height = 44, configOrder, colors = {}, o
   const measureCtx = measureCanvas.getContext('2d');
   measureCtx.font = font;
   const visiblePicks = picks.length === 1
-    ? (() => {
-        const weekly = (picks[0].provider.windows || []).find((w) => w.kind === 'weekly');
-        const weeklyPercent = limitFillPercent(weekly?.remainingPercent, weekly?.usedPercent, showUsed);
-        return [{
-          ...picks[0],
-          text: [
-            formatPercent(limitFillPercent(picks[0].session.remainingPercent, picks[0].session.usedPercent, showUsed)),
-            weeklyPercent === null ? '' : formatPercent(weeklyPercent)
-          ].filter(Boolean).join(separator)
-        }];
-      })()
+    ? [{
+        ...picks[0],
+        text: [picks[0].primaryWindow, picks[0].secondaryWindow]
+          .filter(Boolean)
+          .map((window) => formatPercent(limitFillPercent(window.remainingPercent, window.usedPercent, showUsed)))
+          .join(separator)
+      }]
     : picks.map((pick) => ({
         ...pick,
-        text: formatPercent(limitFillPercent(pick.session.remainingPercent, pick.session.usedPercent, showUsed))
+        text: formatPercent(limitFillPercent(pick.primaryWindow.remainingPercent, pick.primaryWindow.usedPercent, showUsed))
       }));
   const entries = visiblePicks.map((pick) => {
     const text = pick.text;
-    const image = trayProviderImages[pick.provider.provider];
+    const image = trayProviderImages[pick.providerRecord.provider];
     const textWidth = Math.ceil(measureCtx.measureText(text).width);
     const iconWidth = image ? iconSize + gap : 0;
     return { pick, text, image, width: iconWidth + textWidth };
@@ -6462,8 +6572,7 @@ async function maybeUpdateBarsIcon() {
   if (mode !== 'bars' && mode !== 'barsSession' && mode !== 'barsWeekly' && mode !== 'barsAllSessions' && mode !== 'limitsAllSessions') return;
   if (!window.tokenMonitor.setTrayIcons) return;
   const dataUrl = trayDataUrlForMode(mode, 44);
-  if (!dataUrl) return;
-  try { await window.tokenMonitor.setTrayIcons({ [mode]: dataUrl }); } catch (_) {}
+  try { await window.tokenMonitor.setTrayIcons({ [mode]: dataUrl || null }); } catch (_) {}
 }
 
 function loadImage(src) {

@@ -7,7 +7,8 @@ const { appVersion } = require('../shared/appVersion');
 const { clientsCsvForSetting } = require('../shared/clientTracking');
 const { collectUsageOnce, normalizeHistoryIntervalMs, startCollector } = require('../shared/collector');
 const { normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders } = require('../shared/limitCollector');
-const { syncPayload } = require('../shared/syncPayload');
+const { postSyncPayload } = require('../shared/syncPayload');
+const { applyProjectRollups } = require('../shared/usage');
 const {
   applySessionUsageArchive,
   captureSessionUsageArchive,
@@ -31,7 +32,7 @@ const limitsEnabled = parseBoolean(args.limits ?? args.limitsEnabled ?? process.
 const limitProviders = parseLimitProviders(args.limitProviders ?? process.env.TOKEN_MONITOR_LIMIT_PROVIDERS).join(',');
 const limitsRefreshMs = normalizeLimitsRefreshMs(args.limitsRefreshMs || process.env.TOKEN_MONITOR_LIMITS_REFRESH_MS);
 const historyEnabled = parseBoolean(args.history ?? args.historyEnabled ?? process.env.TOKEN_MONITOR_HISTORY_ENABLED, true);
-const projectsEnabled = parseBoolean(args.projects ?? args.projectsEnabled ?? process.env.TOKEN_MONITOR_PROJECTS_ENABLED, true);
+const projectsEnabled = parseBoolean(args.projects ?? args.projectsEnabled ?? process.env.TOKEN_MONITOR_PROJECTS_ENABLED, false);
 const sessionUsageArchiveEnabled = parseBoolean(args.sessionArchive ?? args.sessionUsageArchiveEnabled ?? process.env.TOKEN_MONITOR_SESSION_USAGE_ARCHIVE_ENABLED, true);
 const wslScanEnabled = parseBoolean(args.wslScan ?? args.wslScanEnabled ?? process.env.TOKEN_MONITOR_WSL_SCAN, true);
 const opencodeCookie = String(process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '').trim();
@@ -42,28 +43,31 @@ const collectorOptions = { clients, allTimeSince, commandTimeoutMs, deviceId, ag
 let sessionUsageArchive;
 
 function summaryWithSessionUsageArchive(summary, now = new Date()) {
-  if (!sessionUsageArchiveEnabled) return summary;
-  const archiveDate = sessionUsageArchiveDate(summary, now);
-  const previous = sessionUsageArchive || readSessionUsageArchive();
-  const next = captureSessionUsageArchive(previous, summary, archiveDate);
-  if (!dryRun && JSON.stringify(next) !== JSON.stringify(previous)) {
-    try {
-      writeSessionUsageArchive(next);
+  let visibleSummary = summary;
+  if (sessionUsageArchiveEnabled) {
+    const archiveDate = sessionUsageArchiveDate(summary, now);
+    const previous = sessionUsageArchive || readSessionUsageArchive();
+    const next = captureSessionUsageArchive(previous, summary, archiveDate);
+    if (!dryRun && JSON.stringify(next) !== JSON.stringify(previous)) {
+      try {
+        writeSessionUsageArchive(next);
+        sessionUsageArchive = next;
+      } catch (error) {
+        console.error(`[session-archive] write failed: ${error.message}`);
+      }
+    } else if (!dryRun) {
       sessionUsageArchive = next;
-    } catch (error) {
-      console.error(`[session-archive] write failed: ${error.message}`);
     }
-  } else if (!dryRun) {
-    sessionUsageArchive = next;
+    visibleSummary = applySessionUsageArchive(summary, next, { now: archiveDate });
   }
-  return applySessionUsageArchive(summary, next, { now: archiveDate });
+  return projectsEnabled ? applyProjectRollups(visibleSummary) : visibleSummary;
 }
 
 async function postUsage(summary) {
-  const response = await fetch(`${hubUrl}/api/ingest`, {
-    method: 'POST',
+  const { response } = await postSyncPayload(fetch, `${hubUrl}/api/ingest`, {
     headers: { 'content-type': 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
-    body: JSON.stringify(syncPayload(summary))
+    summary,
+    logger: (message) => console.warn(`[sync] ${message}`)
   });
   if (!response.ok) throw new Error(`Hub responded ${response.status}: ${(await response.text()).slice(0, 300)}`);
   return response.json();

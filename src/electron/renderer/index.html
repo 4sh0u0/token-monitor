@@ -179,10 +179,10 @@
                       <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
                       <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
                       <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
-                      <option value="limitsAllSessions" data-i18n="settings.tray.limitsAllSessions">Limits: first two session quotas (12% · 34%)</option>
+                      <option value="limitsAllSessions" data-i18n="settings.tray.limitsAllSessions">Limits: first two tools' primary quotas (12% · 34%)</option>
                       <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
                       <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
-                      <option value="barsAllSessions" data-i18n="settings.tray.barsAllSessions">Limit bars: first two session limits</option>
+                      <option value="barsAllSessions" data-i18n="settings.tray.barsAllSessions">Limit bars: first two tools' primary quotas</option>
                       <option value="bars" data-i18n="settings.tray.barsWindow">Limit bars: lowest remaining limit</option>
                     </select>
                   </label>
@@ -199,10 +199,10 @@
                       <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
                       <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
                       <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
-                      <option value="limitsAllSessions" data-i18n="settings.tray.limitsAllSessions">Limits: first two session quotas (12% · 34%)</option>
+                      <option value="limitsAllSessions" data-i18n="settings.tray.limitsAllSessions">Limits: first two tools' primary quotas (12% · 34%)</option>
                       <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
                       <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
-                      <option value="barsAllSessions" data-i18n="settings.tray.barsAllSessions">Limit bars: first two session limits</option>
+                      <option value="barsAllSessions" data-i18n="settings.tray.barsAllSessions">Limit bars: first two tools' primary quotas</option>
                       <option value="bars" data-i18n="settings.tray.barsWindow">Limit bars: lowest remaining limit</option>
                       <option value="icon" data-i18n="settings.tray.iconOnly">Icon only</option>
                     </select>
@@ -242,17 +242,44 @@
                 </div>
               </div>
               <div id="themePresetChips" class="theme-preset-chips"></div>
-              <div id="themeColorGrid" class="color-picker-grid"></div>
-            </div>
-            <div class="settings-subgroup settings-vendor-color-group">
-              <div class="settings-note-row">
-                <div class="settings-group-header"><span data-i18n="settings.appearance.vendorTitle">Vendor Colors</span></div>
-                <div class="tool-header-actions">
-                  <button id="resetVendorColorsButton" class="tool-header-action" type="button" title="Reset to brand" aria-label="Reset to brand" data-i18n-title="settings.appearance.resetBrand" data-i18n-aria-label="settings.appearance.resetBrand"><span aria-hidden="true">↺</span></button>
+              <div class="settings-field theme-code-field">
+                <label for="themeCodeInput" data-i18n="settings.appearance.themeCodeLabel">Theme Code</label>
+                <div class="hub-secret-row">
+                  <input id="themeCodeInput" class="theme-code-input" type="text" maxlength="64" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TM1-..." data-i18n-placeholder="settings.appearance.themeCodePlaceholder" />
+                  <button id="copyThemeCodeButton" class="icon-button" type="button" title="Copy theme code" data-i18n-title="settings.appearance.themeCodeCopy" aria-label="Copy theme code" data-i18n-aria-label="settings.appearance.themeCodeCopy">⧉</button>
+                  <button id="applyThemeCodeButton" class="icon-button" type="button" title="Paste and apply" data-i18n-title="settings.appearance.themeCodeApply" aria-label="Paste and apply" data-i18n-aria-label="settings.appearance.themeCodeApply">⎘</button>
+                </div>
+                <p class="settings-note" data-i18n="settings.appearance.themeCodeNote">Shares interface colours only. Vendor colours and appearance preferences stay local.</p>
+                <p id="themeCodeStatus" class="theme-code-status" aria-live="polite"></p>
+              </div>
+              <div id="themeAdvancedGroup" class="settings-group cursor-account-group theme-color-accordion">
+                <button id="themeAdvancedToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="themeAdvancedDetails">
+                  <span data-i18n="settings.appearance.advanced">Advanced customization</span>
+                  <span class="cursor-settings-summary">
+                    <span class="cursor-disclosure-icon" aria-hidden="true"></span>
+                  </span>
+                </button>
+                <div id="themeAdvancedDetails" class="cursor-settings-details hidden" inert>
+                  <div id="themeColorGrid" class="color-picker-grid"></div>
                 </div>
               </div>
-              <p class="settings-note" data-i18n="settings.appearance.vendorNote">Override the chart and list colour for each tool. Reset returns it to the brand colour.</p>
-              <div id="vendorColorList" class="vendor-color-list"></div>
+              <div id="themeVendorGroup" class="settings-group cursor-account-group theme-color-accordion settings-vendor-color-group">
+                <div class="settings-note-row">
+                  <button id="themeVendorToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="themeVendorDetails">
+                    <span data-i18n="settings.appearance.vendorTitle">Vendor Colors</span>
+                    <span class="cursor-settings-summary">
+                      <span class="cursor-disclosure-icon" aria-hidden="true"></span>
+                    </span>
+                  </button>
+                  <div class="tool-header-actions">
+                    <button id="resetVendorColorsButton" class="tool-header-action" type="button" title="Reset to brand" aria-label="Reset to brand" data-i18n-title="settings.appearance.resetBrand" data-i18n-aria-label="settings.appearance.resetBrand"><span aria-hidden="true">↺</span></button>
+                  </div>
+                </div>
+                <div id="themeVendorDetails" class="cursor-settings-details hidden" inert>
+                  <p class="settings-note" data-i18n="settings.appearance.vendorNote">Override the chart and list colour for each tool. Reset returns it to the brand colour.</p>
+                  <div id="vendorColorList" class="vendor-color-list"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -927,6 +954,7 @@
     <script src="preferenceDragSort.js"></script>
     <script src="i18n.js"></script>
     <script src="sessionRows.js"></script>
+    <script src="../../shared/projectKey.js"></script>
     <script src="projectRows.js"></script>
     <script src="sessionDetail.js"></script>
     <script src="customPricingForm.js"></script>

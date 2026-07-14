@@ -340,14 +340,28 @@ function projectIdentity(value) {
   return { projectId: hashKey('project', normalized), projectLabel: label };
 }
 
+// Keyed by path -> { key: `size:mtimeMs`, value }, mirroring projectPathCache.
+// The tail timestamp only moves when the transcript grows, so a mtime match lets
+// a full-tick decoration skip re-reading every idle session (issue: periodic UI
+// stutter once project tracking made this run on every session each tick).
+const jsonlTimestampCache = new Map();
+
 function lastJsonlTimestamp(filePath) {
+  let stat;
+  try { stat = fs.statSync(filePath); } catch (_) { return ''; }
+  const cacheKey = `${stat.size}:${stat.mtimeMs}`;
+  const cached = jsonlTimestampCache.get(filePath);
+  if (cached?.key === cacheKey) return cached.value;
   const tail = readFileTail(filePath);
   const lines = tail.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  let value = '';
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const timestamp = timestampFromJsonLine(lines[index]);
-    if (timestamp) return timestamp;
+    if (timestamp) { value = timestamp; break; }
   }
-  try { return fs.statSync(filePath).mtime.toISOString(); } catch (_) { return ''; }
+  if (!value) value = stat.mtime.toISOString();
+  jsonlTimestampCache.set(filePath, { key: cacheKey, value });
+  return value;
 }
 
 function sessionRefsForPeriods(periods) {
@@ -424,6 +438,30 @@ function sessionTimestampMap(periods, home = os.homedir(), deps = {}) {
   for (const ref of refs.values()) attemptedSessionKeys.add(`${ref.client}:${ref.sessionId}`);
 
   return metadata;
+}
+
+// Copy freshly decorated identities/timestamps from `today` onto the same session
+// in the delta-derived periods. Used on watch ticks, where month/allTime are not
+// re-decorated: a session that started today is absent from the anchor, so its
+// project label would otherwise be missing from the broader-period breakdown.
+function propagateTodayProjects(today, periods) {
+  for (const [key, session] of Object.entries(today?.sessions || {})) {
+    if (!session) continue;
+    for (const period of periods) {
+      const target = period?.sessions?.[key];
+      if (!target) continue;
+      if (session.projectId && !target.projectId) {
+        target.projectId = session.projectId;
+        target.projectLabel = session.projectLabel;
+      }
+      if (session.startedAt && (!target.startedAt || Date.parse(session.startedAt) < Date.parse(target.startedAt))) {
+        target.startedAt = session.startedAt;
+      }
+      if (session.lastUsedAt && (!target.lastUsedAt || Date.parse(session.lastUsedAt) > Date.parse(target.lastUsedAt))) {
+        target.lastUsedAt = session.lastUsedAt;
+      }
+    }
+  }
 }
 
 function applySessionTimestamps(periods, home, deps = {}) {
@@ -618,7 +656,20 @@ async function collectUsageOnce(options) {
       const allTimeJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--since', allTimeSince], commandTimeoutMs });
       allTime = extractUsageFromTokscale(allTimeJson);
     }
-    if (projectsEnabled) decorateLocalPeriods({ today, month, allTime }, { retryMisses: true });
+    if (projectsEnabled) {
+      if (anchorUsed) {
+        // Watch tick: `today` is a fresh scan and must be decorated, but month/
+        // allTime are derived from the last full-scan anchor and already carry each
+        // session's project label + timestamps through applyPeriodDelta. Decorating
+        // them again would re-stat every historical session file every few seconds
+        // (the perceived UI stutter). Decorate only today, then propagate its freshly
+        // resolved identities onto sessions that started today (absent from the anchor).
+        decorateLocalPeriods({ today }, { retryMisses: true });
+        propagateTodayProjects(today, [month, allTime]);
+      } else {
+        decorateLocalPeriods({ today, month, allTime }, { retryMisses: true });
+      }
+    }
     if (promaPeriods && !anchorUsed) {
       today = mergePeriods(today, promaPeriods.today);
       month = mergePeriods(month, promaPeriods.month);
@@ -723,6 +774,7 @@ async function collectUsageOnce(options) {
     updatedAt: collectedAt.toISOString(),
     agentVersion,
     ...(agentRuntime ? { agentRuntime } : {}),
+    projectsEnabled,
     trackedClients: normalizedClients ? normalizedClients.split(',') : [],
     clientStatus: deriveClientStatus(normalizedClients, allTime),
     wslStatus,
@@ -758,6 +810,15 @@ function dirExists(dir) {
   try { return fs.statSync(dir).isDirectory(); } catch (_) { return false; }
 }
 
+function hasCopilotChatSessions(workspaceRoot) {
+  try {
+    return fs.readdirSync(workspaceRoot, { withFileTypes: true })
+      .some((entry) => entry.isDirectory() && dirExists(path.join(workspaceRoot, entry.name, 'chatSessions')));
+  } catch (_) {
+    return false;
+  }
+}
+
 // Per-client data-dir candidates, keyed by client. Drives the detection-status
 // derivation and (minus the self-synced clients below) the chokidar watch list.
 function clientWatchCandidates(clientsCsv) {
@@ -776,7 +837,19 @@ function clientWatchCandidates(clientsCsv) {
   add('kimi', path.join(home, '.kimi', 'sessions'), path.join(process.env.KIMI_CODE_HOME || path.join(home, '.kimi-code'), 'sessions'));
   add('qwen', path.join(home, '.qwen', 'projects'));
   add('grok', path.join(process.env.GROK_HOME || path.join(home, '.grok'), 'sessions'));
-  add('copilot', path.join(home, '.copilot', 'otel'));
+  // Tokscale 4.5.2 also parses VS Code Copilot Chat JSONL under each
+  // workspaceStorage/*/chatSessions directory. Watch the workspaceStorage roots
+  // so newly created workspaces are picked up; watchIgnoreMatcher prunes every
+  // sibling except chatSessions + workspace.json to keep polling bounded.
+  const copilotWorkspaceRoots = [
+    path.join(home, 'Library', 'Application Support', 'Code', 'User', 'workspaceStorage'),
+    path.join(home, '.config', 'Code', 'User', 'workspaceStorage'),
+    ...(process.platform === 'win32'
+      ? [path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Code', 'User', 'workspaceStorage')]
+      : []),
+    path.join(home, 'AppData', 'Roaming', 'Code', 'User', 'workspaceStorage')
+  ];
+  add('copilot', path.join(home, '.copilot', 'otel'), ...new Set(copilotWorkspaceRoots));
   add('pi', path.join(home, '.pi', 'agent', 'sessions'), path.join(home, '.omp', 'agent', 'sessions'));
   // Zed: tokscale reads the XdgData root on every platform AND the native macOS
   // (Application Support) / Windows (LOCALAPPDATA) roots (see tokscale scanner.rs
@@ -888,7 +961,7 @@ function watchPathsForClients(clientsCsv) {
   // pulls the antigravity-cli rows in on the tick.
   const enabled = new Set(String(clientsCsv || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean));
   if (enabled.has('antigravity')) candidates.push(antigravityCliDataDir());
-  return candidates.filter(dirExists);
+  return [...new Set(candidates.filter(dirExists))];
 }
 
 // Inside a Hermes home dir tokscale only reads the SQLite db; the rest is the
@@ -903,28 +976,51 @@ function watchPathsForClients(clientsCsv) {
 const HERMES_DB_FILES = new Set(['state.db', 'state.db-wal', 'state.db-shm']);
 
 function watchIgnoreMatcher(clientsCsv) {
-  const roots = (clientWatchCandidates(clientsCsv).hermes || []).map((dir) => path.resolve(dir));
-  if (roots.length === 0) return undefined;
-  const rootSet = new Set(roots);
+  const candidates = clientWatchCandidates(clientsCsv);
+  const hermesRoots = (candidates.hermes || []).map((dir) => path.resolve(dir));
+  const hermesRootSet = new Set(hermesRoots);
+  const copilotRoots = (candidates.copilot || [])
+    .filter((dir) => path.basename(dir) === 'workspaceStorage')
+    .map((dir) => path.resolve(dir));
+  if (hermesRoots.length === 0 && copilotRoots.length === 0) return undefined;
   return (target) => {
     const resolved = path.resolve(target);
     // Every explicit watch root stays watched — the home dir AND each profile
     // dir. A profile dir lives under the home root, so the child-prune below
     // would otherwise ignore it (basename isn't a db file) before we recognise
     // it as a watch root in its own right, silencing profile-db change events.
-    if (rootSet.has(resolved)) return false;
-    for (const root of roots) {
+    if (hermesRootSet.has(resolved)) return false;
+    for (const root of hermesRoots) {
       if (resolved.startsWith(root + path.sep)) return !HERMES_DB_FILES.has(path.basename(resolved));
     }
-    return false; // non-Hermes paths are never ignored
+    for (const root of copilotRoots) {
+      if (resolved === root) return false;
+      if (!resolved.startsWith(root + path.sep)) continue;
+      const parts = path.relative(root, resolved).split(path.sep);
+      if (parts.length === 1) return false; // workspace hash dir
+      if (parts[1] === 'chatSessions') return false;
+      if (parts.length === 2 && parts[1] === 'workspace.json') return false;
+      return true;
+    }
+    return false; // paths outside the bounded Hermes/Copilot roots are never ignored
   };
 }
 
 // Whether each tracked client has at least one data directory on disk.
 function clientDataDirPresence(clientsCsv) {
   const presence = {};
-  for (const [client, dirs] of Object.entries(clientWatchCandidates(clientsCsv))) {
+  const candidates = clientWatchCandidates(clientsCsv);
+  for (const [client, dirs] of Object.entries(candidates)) {
     presence[client] = dirs.some(dirExists);
+  }
+  // workspaceStorage is shared by every VS Code extension. Count it as Copilot
+  // presence only when at least one workspace contains the chatSessions source
+  // Tokscale actually parses; the broader root is watched solely to catch a new
+  // workspace appearing after startup.
+  if (Object.prototype.hasOwnProperty.call(presence, 'copilot')) {
+    presence.copilot = (candidates.copilot || []).some((dir) => (
+      path.basename(dir) === 'workspaceStorage' ? hasCopilotChatSessions(dir) : dirExists(dir)
+    ));
   }
   // antigravity's watch candidate is only the IDE sync cache, so fold its separate
   // CLI data dir into the umbrella presence too — otherwise a CLI-only user with no

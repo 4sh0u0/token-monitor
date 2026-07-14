@@ -83,8 +83,8 @@ const {
   sessionUsageArchiveDate,
   writeSessionUsageArchive
 } = require('../shared/sessionUsageArchive');
-const { aggregateDevices, aggregateHistory, carryDeviceHistory } = require('../shared/usage');
-const { syncPayload } = require('../shared/syncPayload');
+const { aggregateDevices, aggregateHistory, applyProjectRollups, carryDeviceHistory } = require('../shared/usage');
+const { postSyncPayload, syncPayload } = require('../shared/syncPayload');
 const { mergedLocalAllTimeSessions } = require('../shared/localSessions');
 const {
   MIMO_PLATFORM_CONSOLE_URL,
@@ -218,7 +218,7 @@ function defaultSettings() {
     hiddenViews: defaultViewDisplayPreferences().hiddenViews,
     homeModuleOrder: defaultHomeModulePreferences().homeModuleOrder,
     hiddenHomeModules: defaultHomeModulePreferences().hiddenHomeModules,
-    projectsEnabled: parseBoolean(process.env.TOKEN_MONITOR_PROJECTS_ENABLED, true),
+    projectsEnabled: parseBoolean(process.env.TOKEN_MONITOR_PROJECTS_ENABLED, false),
     historyEnabled: true,
     historyIntervalMs: normalizeHistoryIntervalMs(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS),
     sessionUsageArchiveEnabled: parseBoolean(process.env.TOKEN_MONITOR_SESSION_USAGE_ARCHIVE_ENABLED, true),
@@ -1484,13 +1484,18 @@ function summaryWithArchivedClientUsage(summary) {
     activeClients: settings?.clients,
     now
   });
-  if (settings?.sessionUsageArchiveEnabled === false) return withArchivedClients;
+  let visibleSummary = withArchivedClients;
+  if (settings?.sessionUsageArchiveEnabled === false) {
+    return settings?.projectsEnabled === false ? visibleSummary : applyProjectRollups(visibleSummary);
+  }
   if (isExternalAgentActive()) {
     sessionUsageArchive = null;
-    return applySessionUsageArchive(withArchivedClients, ensureSessionUsageArchiveLoaded(), { now });
+    visibleSummary = applySessionUsageArchive(withArchivedClients, ensureSessionUsageArchiveLoaded(), { now });
+  } else {
+    const sessionArchive = updateSessionUsageArchive(summary, now);
+    visibleSummary = applySessionUsageArchive(withArchivedClients, sessionArchive, { now });
   }
-  const sessionArchive = updateSessionUsageArchive(summary, now);
-  return applySessionUsageArchive(withArchivedClients, sessionArchive, { now });
+  return settings?.projectsEnabled === false ? visibleSummary : applyProjectRollups(visibleSummary);
 }
 
 function applyMacActivationPolicy(state = {}) {
@@ -1702,10 +1707,10 @@ async function postToHub(summary) {
     catch (error) { console.log(`[sync] cleanup of old deviceId ${stale} failed: ${error.message}`); }
   }
   const url = `${hubUrl.replace(/\/$/, '')}/api/ingest`;
-  const response = await fetch(url, {
-    method: 'POST',
+  const { response } = await postSyncPayload(fetch, url, {
     headers: { 'content-type': 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
-    body: JSON.stringify(syncPayload(summary))
+    summary,
+    logger: (message) => console.log(`[sync] ${message}`)
   });
   if (!response.ok) throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
   if (settings.lastPostedDeviceId !== summary.deviceId) {
@@ -1829,7 +1834,11 @@ function startHostCollector() {
         if (stale && stale !== visibleSummary.deviceId) {
           embeddedHub.hub.deleteDevice(stale);
         }
-        embeddedHub.hub.ingest(syncPayload(visibleSummary));
+        const payload = syncPayload(visibleSummary);
+        if (payload.allTimeProjectsOmitted === true) {
+          console.log('[host-ingest] all-time project breakdown omitted to reduce the sync snapshot size');
+        }
+        embeddedHub.hub.ingest(payload);
         if (settings.lastPostedDeviceId !== visibleSummary.deviceId) {
           settings.lastPostedDeviceId = visibleSummary.deviceId;
           saveSettings();
@@ -3561,6 +3570,10 @@ app.whenReady().then(() => {
   ipcMain.handle('tray:setIcons', (_event, icons) => {
     if (!icons || typeof icons !== 'object') return false;
     for (const [id, dataUrl] of Object.entries(icons)) {
+      if (dataUrl === null) {
+        delete providerTrayIcons[id];
+        continue;
+      }
       if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png')) continue;
       const img = nativeImage.createFromDataURL(dataUrl);
       if (img.isEmpty()) continue;
@@ -3620,6 +3633,10 @@ app.whenReady().then(() => {
     loginItemSupported: loginItemEnabledHere(),
     loginItemOpenAtLogin: currentLoginItemState()
   }));
+  ipcMain.handle('clipboard:write', (_event, text) => {
+    clipboard.writeText(String(text || ''));
+    return true;
+  });
   ipcMain.handle('app:openExternal', (_event, url) => {
     if (!isAllowedExternalUrl(url)) return { ok: false, error: 'url not in allowlist' };
     return shell.openExternal(url)
