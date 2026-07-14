@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Token Monitor · Widgy widget preview</title>
+<style>
+  :root {
+    --accent-a: #7c5cff;
+    --accent-b: #22d3ee;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    background: #6b7280;
+    background: radial-gradient(120% 120% at 50% 0%, #7c8598 0%, #4b5563 55%, #374151 100%);
+  }
+
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .stage-label {
+    font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    color: rgba(255,255,255,.72);
+  }
+
+  /* ---- the widget card ---- */
+  .card {
+    width: 360px;
+    border-radius: 30px;
+    padding: 26px 26px 22px;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    font-variant-numeric: tabular-nums;
+  }
+  .card::before {  /* accent glow, top-right */
+    content: "";
+    position: absolute; inset: 0; z-index: -1;
+    background: radial-gradient(90% 70% at 88% -10%, color-mix(in srgb, var(--accent-a) 34%, transparent) 0%, transparent 60%);
+  }
+
+  /* dark theme tokens */
+  .card.dark {
+    color-scheme: dark;
+    background: linear-gradient(168deg, #161d31 0%, #10152420 40%, #0b0f1a 100%), #0b0f1a;
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.06);
+    --ink:      #f4f6fb;
+    --ink-2:    #a8b0c4;
+    --muted:    #6b7488;
+    --hair:     rgba(255,255,255,.09);
+    --cost:     #67e8f9;
+    --total-bg: rgba(124,92,255,.12);
+  }
+  /* light theme tokens */
+  .card.light {
+    color-scheme: light;
+    background: linear-gradient(168deg, #ffffff 0%, #f7f8ff 100%);
+    border: 1px solid rgba(17,24,39,.08);
+    box-shadow: 0 24px 60px -22px rgba(30,41,80,.35), inset 0 1px 0 rgba(255,255,255,.8);
+    --ink:      #0f1424;
+    --ink-2:    #545b6e;
+    --muted:    #9198a8;
+    --hair:     rgba(17,24,39,.08);
+    --cost:     #6d5cff;
+    --total-bg: rgba(124,92,255,.07);
+  }
+
+  .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 11px; flex: none;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--accent-a) 60%, transparent);
+  }
+  .logo svg { width: 21px; height: 21px; display: block; }
+  .wordmark { display: flex; flex-direction: column; line-height: 1.15; }
+  .wordmark b { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink); }
+  .wordmark span { font-size: 11px; color: var(--muted); }
+  .live { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 3px rgba(52,211,153,.18); }
+
+  .cols {
+    display: grid; grid-template-columns: 1fr auto auto;
+    align-items: baseline; column-gap: 18px;
+    font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+    padding: 0 4px 8px;
+  }
+  .cols .r { text-align: right; }
+
+  .row {
+    display: grid; grid-template-columns: 1fr auto auto;
+    align-items: center; column-gap: 18px;
+    padding: 13px 12px; border-radius: 14px;
+  }
+  .row + .row { margin-top: 2px; }
+  .row .label { display: flex; flex-direction: column; line-height: 1.2; }
+  .row .label b { font-size: 15px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .row .label span { font-size: 11px; color: var(--muted); }
+  .row .tokens { text-align: right; font-size: 19px; font-weight: 650; color: var(--ink); letter-spacing: -.01em; }
+  .row .cost   { text-align: right; font-size: 15px; font-weight: 700; color: var(--cost); min-width: 78px; }
+  .row.total   { background: var(--total-bg); }
+  .row.total .tokens { font-size: 21px; }
+  .row.total .cost   { font-size: 17px; }
+
+  .foot {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hair);
+    font-size: 11px; color: var(--muted);
+  }
+  .foot .spark { height: 3px; width: 46px; border-radius: 2px; background: linear-gradient(90deg, var(--accent-a), var(--accent-b)); }
+</style>
+</head>
+<body>
+
+  <!-- Reusable card markup, rendered once dark + once light -->
+  <div class="stage">
+    <div class="stage-label">Dark</div>
+    <div class="card dark">
+      <div class="head">
+        <div class="brand">
+          <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.5 8 8l4 4 5-6.5"/><path d="M14 5.5h3.5V9"/></svg>
+          </div>
+          <div class="wordmark"><b>Token Monitor</b><span>3 devices · usage</span></div>
+        </div>
+        <div class="live"><span class="dot"></span>Live · 18:02</div>
+      </div>
+
+      <div class="cols"><span>Period</span><span class="r">Tokens</span><span class="r">Cost</span></div>
+
+      <div class="row">
+        <div class="label"><b>Today</b><span>今日</span></div>
+        <div class="tokens">1.24M</div>
+        <div class="cost">$12.35</div>
+      </div>
+      <div class="row">
+        <div class="label"><b>This month</b><span>本月</span></div>
+        <div class="tokens">34.80M</div>
+        <div class="cost">$342.10</div>
+      </div>
+      <div class="row total">
+        <div class="label"><b>All time</b><span>累计</span></div>
+        <div class="tokens">128.40M</div>
+        <div class="cost">$1,284.90</div>
+      </div>
+
+      <div class="foot"><span>Updated 2026-07-14 18:02</span><span class="spark"></span></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-label">Light</div>
+    <div class="card light">
+      <div class="head">
+        <div class="brand">
+          <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.5 8 8l4 4 5-6.5"/><path d="M14 5.5h3.5V9"/></svg>
+          </div>
+          <div class="wordmark"><b>Token Monitor</b><span>3 devices · usage</span></div>
+        </div>
+        <div class="live"><span class="dot"></span>Live · 18:02</div>
+      </div>
+
+      <div class="cols"><span>Period</span><span class="r">Tokens</span><span class="r">Cost</span></div>
+
+      <div class="row">
+        <div class="label"><b>Today</b><span>今日</span></div>
+        <div class="tokens">1.24M</div>
+        <div class="cost">$12.35</div>
+      </div>
+      <div class="row">
+        <div class="label"><b>This month</b><span>本月</span></div>
+        <div class="tokens">34.80M</div>
+        <div class="cost">$342.10</div>
+      </div>
+      <div class="row total">
+        <div class="label"><b>All time</b><span>累计</span></div>
+        <div class="tokens">128.40M</div>
+        <div class="cost">$1,284.90</div>
+      </div>
+
+      <div class="foot"><span>Updated 2026-07-14 18:02</span><span class="spark"></span></div>
+    </div>
+  </div>
+
+</body>
+</html>
