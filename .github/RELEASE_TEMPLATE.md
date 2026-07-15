@@ -5,24 +5,16 @@
 ## What's changed
 
 <!-- app-update-notes:en:start -->
-### Added
-- **Tray shortcuts:** Right-click the tray icon to refresh usage, open a specific view, switch Codex accounts, change tray display and window presentation, open Settings, or quit. (#147)
-- **App update notes:** See the release highlights inside Token Monitor before downloading an update, with a link to the full GitHub release. (#150)
-- **VS Code Copilot Chat:** Usage is now detected automatically from local VS Code sessions on desktop and WSL, with no OpenTelemetry setup required.
-
-### Improved
-- **About Token Monitor:** Settings now show the installed version with direct links to GitHub and issue reporting. (#151)
-
 ### Fixed
-- **macOS tray icon:** The menu bar icon now uses native template styling so it follows the system appearance correctly.
+- **Live usage updates:** Fixed severe stuttering and temporary unresponsiveness when refreshing usage with large session histories. Session archive processing now scales linearly; in a real 568-session case, processing time dropped from about 1.1 seconds to 13 milliseconds. (#156)
 <!-- app-update-notes:en:end -->
 
 ## Download
 
-- **macOS Apple Silicon** — [Token-Monitor-0.28.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.28.0/Token-Monitor-0.28.0-arm64.dmg)
-- **Windows Installer** — [Token-Monitor-Setup-0.28.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.28.0/Token-Monitor-Setup-0.28.0.exe) (recommended)
-- **Windows Portable** — [Token-Monitor-0.28.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.28.0/Token-Monitor-0.28.0.exe) (no install required)
-- **Linux x64** — [Token-Monitor-0.28.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.28.0/Token-Monitor-0.28.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.28.1-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.28.1/Token-Monitor-0.28.1-arm64.dmg)
+- **Windows Installer** — [Token-Monitor-Setup-0.28.1.exe](https://github.com/Javis603/token-monitor/releases/download/v0.28.1/Token-Monitor-Setup-0.28.1.exe) (recommended)
+- **Windows Portable** — [Token-Monitor-0.28.1.exe](https://github.com/Javis603/token-monitor/releases/download/v0.28.1/Token-Monitor-0.28.1.exe) (no install required)
+- **Linux x64** — [Token-Monitor-0.28.1.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.28.1/Token-Monitor-0.28.1.AppImage)
 
 <details>
 <summary><strong>First launch and other notes</strong></summary>
@@ -61,24 +53,16 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 <!-- app-update-notes:zh:start -->
-### 新增
-- **托盘快捷操作：** 右键点击托盘图标即可刷新用量、打开指定视图、切换 Codex 账号、调整托盘显示与窗口模式、打开设置或退出应用。（#147）
-- **应用更新说明：** 下载更新前可直接在 Token Monitor 内查看本版重点，并可前往 GitHub 阅读完整发布说明。（#150）
-- **VS Code Copilot Chat：** 现可自动从桌面与 WSL 的本地 VS Code 会话中检测用量，无需配置 OpenTelemetry。
-
-### 改进
-- **关于 Token Monitor：** 设置中现会显示已安装版本，并提供 GitHub 与问题反馈的直达链接。（#151）
-
 ### 修复
-- **macOS 托盘图标：** 菜单栏图标现采用系统原生模板样式，可正确适配系统外观。
+- **实时用量更新：** 修复了历史会话较多时，刷新用量可能导致应用严重卡顿或短暂无响应的问题。会话归档现改为线性处理；在包含 568 个会话的实际案例中，处理时间由约 1.1 秒降至 13 毫秒。（#156）
 <!-- app-update-notes:zh:end -->
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.28.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.28.0/Token-Monitor-0.28.0-arm64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.28.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.28.0/Token-Monitor-Setup-0.28.0.exe)（推荐）
-- **Windows 便携版** — [Token-Monitor-0.28.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.28.0/Token-Monitor-0.28.0.exe)（免安装）
-- **Linux x64** — [Token-Monitor-0.28.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.28.0/Token-Monitor-0.28.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.28.1-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.28.1/Token-Monitor-0.28.1-arm64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.28.1.exe](https://github.com/Javis603/token-monitor/releases/download/v0.28.1/Token-Monitor-Setup-0.28.1.exe)（推荐）
+- **Windows 便携版** — [Token-Monitor-0.28.1.exe](https://github.com/Javis603/token-monitor/releases/download/v0.28.1/Token-Monitor-0.28.1.exe)（免安装）
+- **Linux x64** — [Token-Monitor-0.28.1.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.28.1/Token-Monitor-0.28.1.AppImage)
 
 <details>
 <summary><strong>首次启动与其他说明</strong></summary>
