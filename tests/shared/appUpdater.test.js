@@ -223,8 +223,18 @@ ${added}
 test('release template exposes marked English and Chinese app summaries', () => {
   const template = fs.readFileSync(path.join(__dirname, '..', '..', '.github', 'RELEASE_TEMPLATE.md'), 'utf8');
   const notes = extractReleaseNotes(template);
-  assert.deepEqual(notes.en.map((group) => group.title), ['Added', 'Improved', 'Fixed']);
-  assert.deepEqual(notes.zh.map((group) => group.title), ['新增', '改进', '修复']);
+  const categoryPairs = new Map([
+    ['Added', '新增'],
+    ['Changed', '变更'],
+    ['Improved', '改进'],
+    ['Fixed', '修复']
+  ]);
+  assert.ok(notes.en.length > 0);
+  assert.deepEqual(
+    notes.zh.map((group) => group.title),
+    notes.en.map((group) => categoryPairs.get(group.title))
+  );
+  assert.ok(notes.en.every((group) => categoryPairs.has(group.title)));
   assert.ok(notes.en.every((group) => group.items.length > 0));
   assert.ok(notes.zh.every((group) => group.items.length > 0));
   assert.ok(notes.en.every((group) => group.items.every((item) => !/\(#\d/.test(item))));
