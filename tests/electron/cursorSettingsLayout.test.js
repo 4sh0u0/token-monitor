@@ -7,6 +7,7 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const rendererDir = path.join(__dirname, '..', '..', 'src', 'electron', 'renderer');
+const { maskEmailAddress } = require('../../src/electron/renderer/accountIdentity');
 
 function readRendererFile(name) {
   return fs.readFileSync(path.join(rendererDir, name), 'utf8');
@@ -292,35 +293,35 @@ test('Codex account email masking is an opt-in display-only setting', () => {
   assert.match(app, /renderLimits\(\);/);
 
   assert.equal(
-    runRendererFunctions(app, ['maskEmailAddressForDisplay'], "maskEmailAddressForDisplay('javis603@gmail.com')")
-    , 'j***3@gmail.com'
+    maskEmailAddress('primary.user@example.com')
+    , 'p***r@example.com'
   );
   assert.equal(
-    runRendererFunctions(app, ['maskEmailAddressForDisplay'], "maskEmailAddressForDisplay('linus.chua328@gmail.com')")
-    , 'l***8@gmail.com'
+    maskEmailAddress('secondary.user@example.com')
+    , 's***r@example.com'
   );
   assert.equal(
-    runRendererFunctions(app, ['maskEmailAddressForDisplay'], "maskEmailAddressForDisplay('ab@example.com')")
+    maskEmailAddress('ab@example.com')
     , 'a***b@example.com'
   );
 
   assert.equal(
     runRendererFunctions(
       app,
-      ['maskEmailAddressForDisplay', 'codexAccountTitle'],
-      "codexAccountTitle({ accountEmail: 'javis603@gmail.com' }, 0)",
-      { state: { settings: { maskLimitAccountEmails: false } } }
+      ['codexAccountTitle'],
+      "codexAccountTitle({ accountEmail: 'primary.user@example.com' }, 0)",
+      { accountIdentityApi: { maskEmailAddress }, state: { settings: { maskLimitAccountEmails: false } } }
     ),
-    'javis603@gmail.com'
+    'primary.user@example.com'
   );
   assert.equal(
     runRendererFunctions(
       app,
-      ['maskEmailAddressForDisplay', 'codexAccountTitle'],
-      "codexAccountTitle({ accountEmail: 'javis603@gmail.com' }, 0)",
-      { state: { settings: { maskLimitAccountEmails: true } } }
+      ['codexAccountTitle'],
+      "codexAccountTitle({ accountEmail: 'primary.user@example.com' }, 0)",
+      { accountIdentityApi: { maskEmailAddress }, state: { settings: { maskLimitAccountEmails: true } } }
     ),
-    'j***3@gmail.com'
+    'p***r@example.com'
   );
 });
 
@@ -767,7 +768,7 @@ test('MiMo account panel matches the manual Cookie provider layout', () => {
   assert.match(preload, /openConsole: \(\) => ipcRenderer\.invoke\('mimo:openConsole'\)/);
   assert.match(main, /ipcMain\.handle\('mimo:openConsole'/);
   assert.match(main, /ipcMain\.handle\('mimo:addAccount', \(_event, cookieHeader\) => addMimoManagedAccount\(cookieHeader\)\)/);
-  assert.match(app, /maskEmailAddressForDisplay\(email\)/);
+  assert.match(app, /accountIdentityApi\.maskEmailAddress\(email\)/);
   assert.match(app, /function mimoSettingsAccountTitle\(account, index\) \{[\s\S]*account\?\.accountEmail[\s\S]*`Account \$\{index \+ 1\}`/);
   assert.match(app, /const accountName = mimoSettingsAccountTitle\(account, index\);/);
   const addBody = functionBody(main, 'addMimoManagedAccount', 'removeMimoManagedAccount');
@@ -924,6 +925,31 @@ test('collection cadence setting is exposed in the Collection panel', () => {
   assert.match(listenerSlice, /collectionIntervalMs:/);
 });
 
+test('sync upload interval setting is exposed in the Multi-device Sync panel', () => {
+  const html = readRendererFile('index.html');
+  const controls = html.match(/<label class="sync-upload-interval-row"[\s\S]*?<select id="syncUploadIntervalInput"[\s\S]*?<\/select>[\s\S]*?<\/label>/)?.[0] || '';
+  const clientFields = html.slice(html.indexOf('<div id="hubClientFields"'), html.indexOf('<div id="hubHostFields"'));
+  assert.match(clientFields, /sync-upload-interval-row/);
+  assert.match(controls, /data-i18n="settings\.sync\.uploadInterval"/);
+  assert.match(controls, /<option value="0"[\s\S]*data-i18n="settings\.sync\.uploadInterval\.live"/);
+  assert.match(controls, /<option value="600000"[\s\S]*data-i18n="settings\.sync\.uploadInterval\.10m"/);
+  assert.match(controls, /<option value="1200000"[\s\S]*data-i18n="settings\.sync\.uploadInterval\.20m"/);
+  assert.match(controls, /<option value="1800000"[\s\S]*data-i18n="settings\.sync\.uploadInterval\.30m"/);
+
+  const app = readRendererFile('app.js');
+  const syncBody = functionBody(app, 'syncSettingsForm', 'enabledClientSet');
+  assert.match(syncBody, /syncUploadIntervalInput/);
+  assert.match(syncBody, /state\.settings\.syncUploadIntervalMs/);
+  assert.match(syncBody, /Array\.from\(els\.syncUploadIntervalInput\.options/);
+  assert.doesNotMatch(syncBody, /const allowed = \[0, 600000, 1200000, 1800000\]/);
+
+  const listenerSlice = app.slice(
+    app.indexOf("els.syncUploadIntervalInput?.addEventListener('change'"),
+    app.indexOf("els.collectionCadenceInput?.addEventListener('change'")
+  );
+  assert.match(listenerSlice, /saveSettings\(\{ syncUploadIntervalMs: Number\(els\.syncUploadIntervalInput\.value\) \}\)/);
+});
+
 test('main settings normalize collection cadence and restart collectors when it changes', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
   assert.match(main, /function normalizeCollectionMode/);
@@ -950,6 +976,37 @@ test('main settings normalize collection cadence and restart collectors when it 
   assert.match(updateHandler, /collectionIntervalMs: normalizeCollectionIntervalMs/);
   assert.match(updateHandler, /settings\.collectionMode !== previousCollectionMode/);
   assert.match(updateHandler, /settings\.collectionIntervalMs !== previousCollectionIntervalMs/);
+});
+
+test('main settings normalize sync upload intervals and restart sync collectors when it changes', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
+  const envExample = fs.readFileSync(path.join(__dirname, '..', '..', '.env.example'), 'utf8');
+  assert.match(main, /createSyncUploadScheduler/);
+  assert.match(main, /normalizeSyncUploadIntervalMs/);
+  assert.match(envExample, /TOKEN_MONITOR_SYNC_UPLOAD_INTERVAL_MS=0/);
+  assert.match(envExample, /600000 \(10 min\).*1200000 \(20 min\).*1800000 \(30 min\)/);
+
+  const defaults = main.slice(main.indexOf('function defaultSettings'), main.indexOf('function defaultLimitProviders'));
+  assert.match(defaults, /syncUploadIntervalMs: normalizeSyncUploadIntervalMs\(process\.env\.TOKEN_MONITOR_SYNC_UPLOAD_INTERVAL_MS\)/);
+
+  const readSettingsBody = functionBody(main, 'readSettings', 'saveSettings');
+  assert.match(readSettingsBody, /merged\.syncUploadIntervalMs = normalizeSyncUploadIntervalMs\(merged\.syncUploadIntervalMs\);/);
+
+  const syncCollector = main.slice(main.indexOf('function startSyncCollector'), main.indexOf('// Host mode'));
+  assert.match(syncCollector, /createSyncUploadScheduler\(\{/);
+  assert.match(syncCollector, /intervalMs: syncUploadIntervalMs\(\)/);
+  assert.match(syncCollector, /const visibleSummary = \{[\s\S]*summaryWithArchivedClientUsage\(summary\)[\s\S]*syncUploadIntervalMs: syncUploadIntervalMs\(\)[\s\S]*\};/);
+  assert.match(syncCollector, /await syncUploadScheduler\.enqueue\(visibleSummary\)/);
+
+  const hostCollector = main.slice(main.indexOf('function startHostCollector'), main.indexOf('function stopHostStats'));
+  assert.doesNotMatch(hostCollector, /createSyncUploadScheduler|syncUploadScheduler/);
+  assert.match(hostCollector, /embeddedHub\.hub\.ingest\(payload\)/);
+
+  const updateHandler = main.slice(main.indexOf("ipcMain.handle('settings:update'"), main.indexOf("ipcMain.handle('appearance:preview'"));
+  assert.match(updateHandler, /previousSyncUploadIntervalMs/);
+  assert.match(updateHandler, /normalizedPatch\.syncUploadIntervalMs = normalizeSyncUploadIntervalMs/);
+  assert.match(updateHandler, /syncUploadIntervalMs: normalizeSyncUploadIntervalMs/);
+  assert.match(updateHandler, /\(settings\.hubMode === 'client' && settings\.syncUploadIntervalMs !== previousSyncUploadIntervalMs\)/);
 });
 
 test('main collectors pass GUI limit credentials in every widget mode', () => {
