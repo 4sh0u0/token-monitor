@@ -201,7 +201,9 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, resetCreditsTooltipHasOpened: false, resetCreditsTooltipActive: false, resetCreditsTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistoryPreviewKey: '', homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, resetCreditsTooltipHasOpened: false, resetCreditsTooltipActive: false, resetCreditsTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+state.homeHistoryLoadedSignature = '';
+state.homeHistoryRetrySignature = '';
 state.appUpdateNotesPresentedVersion = '';
 state.periodMotionActive = false;
 state.animateBarsFromZero = false;
@@ -215,7 +217,7 @@ let viewSwitcherLongPressTimer = null;
 let viewSwitcherLongPressTriggered = false;
 let viewSwitcherHoverCloseTimer = null;
 const els = {
-  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInput: document.getElementById('showLimitUsedInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutRecordButton: document.getElementById('windowToggleShortcutRecordButton'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
+  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInput: document.getElementById('showLimitUsedInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), showTrayProviderBadgeInput: document.getElementById('showTrayProviderBadgeInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
 };
 Object.assign(els, {
   floatingBubbleOptions: document.getElementById('floatingBubbleOptions'),
@@ -237,7 +239,7 @@ Object.assign(els, {
   collectionCadenceNote: document.getElementById('collectionCadenceNote'),
   sessionUsageArchiveInput: document.getElementById('sessionUsageArchiveInput'),
   sessionUsageArchiveStatus: document.getElementById('sessionUsageArchiveStatus'),
-  reduceMotionInput: document.getElementById('reduceMotionInput'),
+  reduceMotionInputs: Array.from(document.querySelectorAll('input[name="reduceMotionOption"]')),
   clearSessionUsageArchiveButton: document.getElementById('clearSessionUsageArchiveButton'),
   startupGroup: document.getElementById('startupGroup'),
   startAtLoginInput: document.getElementById('startAtLoginInput'),
@@ -1213,7 +1215,8 @@ function animateTrendBarsFrom(snapshot, { fromZero = false } = {}) {
 }
 
 const HOME_HISTORY_MOTION_MS = 920;
-const HOME_HEAT_CELL_MOTION_MS = 360;
+const HOME_HEATMAP_MOTION_MS = 640;
+const HOME_HEAT_CELL_MOTION_MS = 240;
 
 function animateHomeHistoryVisuals(activityScroll, activityCanvas, trendChart) {
   if (!state.animateChartsOnRender) return;
@@ -1226,12 +1229,12 @@ function animateHomeHistoryVisuals(activityScroll, activityCanvas, trendChart) {
     .filter(({ rect }) => viewport && rect.right > viewport.left && rect.left < viewport.right);
   const firstVisibleColumn = visibleCells.length ? visibleCells[0].column : 0;
   const lastVisibleColumn = visibleCells.length ? visibleCells[visibleCells.length - 1].column : firstVisibleColumn;
-  const heatColumnDelay = (HOME_HISTORY_MOTION_MS - HOME_HEAT_CELL_MOTION_MS) / Math.max(1, lastVisibleColumn - firstVisibleColumn);
+  const heatColumnDelay = (HOME_HEATMAP_MOTION_MS - HOME_HEAT_CELL_MOTION_MS) / Math.max(1, lastVisibleColumn - firstVisibleColumn);
   visibleCells.forEach(({ cell, column }) => {
     cell.animate([{ opacity: 0 }, { opacity: 1 }], {
       duration: HOME_HEAT_CELL_MOTION_MS,
       delay: (column - firstVisibleColumn) * heatColumnDelay,
-      easing: 'ease',
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
       fill: 'backwards'
     });
   });
@@ -3081,23 +3084,75 @@ function openViewFromTray(viewId) {
   renderBreakdownChange(viewId, { allowHidden: true });
 }
 
+const HOME_HISTORY_MAX_RETRIES = 3;
+const HOME_HISTORY_RETRY_MS = 4000;
+
 async function loadHomeHistory() {
   if (state.homeHistoryBusy || !window.tokenMonitor.getDashboardHistory) return;
   if (!homeOverviewApi.shouldFetchHomeHistory({
-    homeHistory: state.homeHistory,
     requested: state.homeHistoryRequested,
-    preview: state.stats?.historyPreview,
-    lastPreviewKey: state.homeHistoryPreviewKey
+    stats: state.stats,
+    lastSignature: state.homeHistorySignature
   })) return;
+  // The signature is recorded before the await on purpose: it stops a failed or empty
+  // fetch from re-firing on the very next render (renderHome runs loadHomeHistory every
+  // render), which is the #39 spin loop. A transient failure or a raced empty result is
+  // recovered by the bounded timer-driven retry in the finally block instead, not by
+  // render — so Home is not stranded on the 30-day preview until the history genuinely
+  // changes, which for an account with history but no current activity might be never.
+  const requestSignature = homeOverviewApi.homeHistorySignature(state.stats);
+  const previewHadDays = homeOverviewApi.historyHasDays(state.stats?.historyPreview);
+  if (state.homeHistoryRetrySignature !== requestSignature) {
+    clearTimeout(state.homeHistoryRetryTimer);
+    state.homeHistoryRetryTimer = null;
+    state.homeHistoryRetrySignature = requestSignature;
+    state.homeHistoryRetries = 0;
+  }
   state.homeHistoryRequested = true;
-  state.homeHistoryPreviewKey = homeOverviewApi.historyPreviewKey(state.stats?.historyPreview);
+  state.homeHistorySignature = requestSignature;
   state.homeHistoryBusy = true;
+  let resolved = false;
+  let fetchedHistory = null;
   try {
-    state.homeHistory = await window.tokenMonitor.getDashboardHistory();
+    // Only ever one fetch in flight (homeHistoryBusy), so the response is the freshest
+    // history at invoke time and can be taken as-is — no older reply can land on top of
+    // a newer one.
+    fetchedHistory = await window.tokenMonitor.getDashboardHistory();
+    resolved = true;
   } catch (error) {
     console.log(`[home] history failed: ${error.message}`);
   } finally {
     state.homeHistoryBusy = false;
+    const outcome = homeOverviewApi.homeHistoryFetchOutcome({
+      resolved,
+      history: fetchedHistory,
+      previewHasDays: previewHadDays
+    });
+    if (outcome.accepted) {
+      state.homeHistory = fetchedHistory;
+      state.homeHistoryLoadedSignature = requestSignature;
+      state.homeHistoryRetries = 0;
+      state.homeHistoryRetrySignature = '';
+      clearTimeout(state.homeHistoryRetryTimer);
+      state.homeHistoryRetryTimer = null;
+    } else if (homeOverviewApi.shouldRetryHomeHistory({
+      loadedDays: outcome.loadedDays,
+      previewHasDays: previewHadDays,
+      retries: state.homeHistoryRetries,
+      maxRetries: HOME_HISTORY_MAX_RETRIES
+    })) {
+      state.homeHistoryRetries += 1;
+      clearTimeout(state.homeHistoryRetryTimer);
+      state.homeHistoryRetryTimer = setTimeout(() => {
+        state.homeHistoryRetryTimer = null;
+        // Stale display data is not proof that this signature loaded. Retry only
+        // while the target is still current and no later request accepted it.
+        if (state.homeHistoryLoadedSignature === requestSignature) return;
+        if (homeOverviewApi.homeHistorySignature(state.stats) !== requestSignature) return;
+        state.homeHistorySignature = '';
+        void loadHomeHistory();
+      }, HOME_HISTORY_RETRY_MS);
+    }
     if (state.breakdown === 'home') render();
   }
 }
@@ -3802,10 +3857,11 @@ function renderHomeTrendsModule() {
     body.append(empty);
     return module;
   }
-  // homeHistory is fetched once and frozen, so its today bucket lags the live headline
-  // total; patch today's tokens with the live period total (like the trends sparkline's
+  // The snapshot's today bucket lags the live headline total between history ticks;
+  // patch today's tokens with the live period total (like the trends sparkline's
   // patchTodayBar) so the heatmap and trend line match the number shown above them.
-  const today = new Date().toISOString().slice(0, 10);
+  // The key must be the LOCAL day: the period being patched in is local-day scoped.
+  const today = charts.localDayKey();
   const todayPeriod = state.stats?.periods?.today;
   const points = homeOverviewApi.patchDailyToday(rawDaily, today, Number(todayPeriod?.totalTokens || 0), Number(todayPeriod?.costUsd || 0));
   const activityLayout = homeOverviewApi.homeActivityHeatmapLayout();
@@ -4125,6 +4181,17 @@ async function refreshStats(options = {}) {
   }
   try {
     state.stats = overlayAllTimeSessions(await window.tokenMonitor.getStats(options));
+    if (options.forceHistory === true) {
+      // A manual history rescan is an explicit retry boundary. Let Home request the
+      // corresponding full payload even when its revision is unchanged, and restore
+      // a retry budget that an earlier outage may have exhausted.
+      clearTimeout(state.homeHistoryRetryTimer);
+      state.homeHistoryRetryTimer = null;
+      state.homeHistoryLoadedSignature = '';
+      state.homeHistoryRetrySignature = '';
+      state.homeHistoryRetries = 0;
+      state.homeHistorySignature = '';
+    }
     applyCodexActiveAccountFromStats();
     setStatus(statusTextFor(state.mode, state.streamConnected));
     render();
@@ -4584,18 +4651,14 @@ function syncWindowBehaviorControls() {
 function syncWindowShortcutStatus() {
   const note = els.windowToggleShortcutNote;
   const value = els.windowToggleShortcutValue;
-  const recordButton = els.windowToggleShortcutRecordButton;
   const clearButton = els.windowToggleShortcutClearButton;
   if (!note || !value) return;
   const shortcut = normalizeWindowToggleShortcutValue(state.settings?.windowToggleShortcut);
-  const display = windowShortcutApi.formatWindowToggleShortcut(shortcut, t('settings.shortcut.off'));
+  // The value pill doubles as the record button, so its empty state is the action ("Record"), not "Off".
+  const display = windowShortcutApi.formatWindowToggleShortcut(shortcut, t('settings.shortcut.record'));
   const status = state.settings?.windowToggleShortcutStatus?.state || (shortcut ? 'unregistered' : 'off');
   value.classList.toggle('recording', state.recordingWindowShortcut);
   value.textContent = state.recordingWindowShortcut ? t('settings.shortcut.recording') : display;
-  if (recordButton) {
-    recordButton.textContent = state.recordingWindowShortcut ? t('settings.shortcut.recording') : t('settings.shortcut.record');
-    recordButton.disabled = state.recordingWindowShortcut;
-  }
   if (clearButton) clearButton.disabled = !shortcut && !state.recordingWindowShortcut;
   note.classList.toggle('error', state.windowShortcutInvalid || (Boolean(shortcut) && status !== 'registered'));
   if (state.recordingWindowShortcut) {
@@ -4603,9 +4666,8 @@ function syncWindowShortcutStatus() {
   } else if (!shortcut) {
     note.textContent = t('settings.display.windowShortcutNote');
   } else if (status === 'registered') {
-    note.textContent = t('settings.display.windowShortcutRegistered', {
-      shortcut: display
-    });
+    // The value pill already shows the active shortcut; repeating it here reads as clutter.
+    note.textContent = t('settings.display.windowShortcutNote');
   } else {
     note.textContent = t('settings.display.windowShortcutConflict', {
       shortcut: display
@@ -4685,19 +4747,11 @@ const BUBBLE_CONTENT_PAD_X = 10;
 // The tray bars are black (a macOS menu-bar template); on the bubble's dark glass they need light ink.
 const BUBBLE_BARS_COLORS = { track: 'rgba(255, 255, 255, 0.22)', fill: 'rgba(255, 255, 255, 0.92)' };
 
-function isBarsMode(mode) {
-  return mode === 'bars' || mode === 'barsSession' || mode === 'barsWeekly' || mode === 'barsAllSessions';
-}
-
-function isTrayImageMode(mode) {
-  return isBarsMode(mode) || mode === 'limitsAllSessions';
-}
-
 function renderFloatingBubbleContent() {
   const el = els.floatingBubbleContent;
   if (!el || !state.floatingBubble.collapsed) return;
   const mode = state.settings?.floatingBubbleContent || 'icon';
-  if (isTrayImageMode(mode)) {
+  if (window.TokenMonitorTrayText.isGeneratedTrayIconMode(mode)) {
     const dataUrl = state.stats
       ? trayDataUrlForMode(mode, 44, BUBBLE_BARS_COLORS, { contentOnly: mode === 'barsAllSessions' || mode === 'limitsAllSessions' })
       : null;
@@ -4730,7 +4784,7 @@ function reportFloatingBubbleSize() {
   // Height is constant; only the width tracks the content.
   let width = BUBBLE_CONTENT_MIN_W;
   if (mode !== 'icon' && el) {
-    const pad = isTrayImageMode(mode) ? 8 : BUBBLE_CONTENT_PAD_X * 2;
+    const pad = window.TokenMonitorTrayText.isGeneratedTrayIconMode(mode) ? 8 : BUBBLE_CONTENT_PAD_X * 2;
     width = Math.max(BUBBLE_CONTENT_MIN_W, Math.ceil(el.scrollWidth) + pad);
   }
   window.tokenMonitor.setFloatingBubbleCollapsedSize?.({ width, height: BUBBLE_CONTENT_HEIGHT });
@@ -4858,7 +4912,7 @@ function handleFloatingBubblePointerUp(event) {
 function appearancePatchFromControls() {
   return {
     systemGlass: Boolean(els.systemGlassInput.checked),
-    reduceMotion: els.reduceMotionInput?.value || 'system',
+    reduceMotion: els.reduceMotionInputs?.find((input) => input.checked)?.value || 'system',
     showLiveDot: Boolean(els.liveDotInput.checked),
     showToolIcons: Boolean(els.toolIconsInput.checked),
     titleIconOnly: Boolean(els.titleIconInput.checked),
@@ -4870,9 +4924,22 @@ function appearancePatchFromControls() {
   };
 }
 
+function syncSliderRow(input) {
+  if (!input) return;
+  const valueEl = input.closest('.settings-slider-item')?.querySelector('.slider-value');
+  if (valueEl) valueEl.textContent = String(Math.round(Number(input.value)));
+}
+
+function syncSliderRows() {
+  syncSliderRow(els.glassInput);
+  syncSliderRow(els.blurInput);
+  syncSliderRow(els.zoomInput);
+}
+
 function applyAppearanceFromControls() {
   const patch = appearancePatchFromControls();
   applyAppearanceSettings(patch);
+  syncSliderRows();
   window.tokenMonitor.previewAppearance?.(patch).catch(() => {});
 }
 
@@ -5080,7 +5147,7 @@ function syncSettingsForm() {
   renderWslPanel();
   els.systemGlassInput.checked = state.settings.systemGlass !== false;
   const reduceMotion = motionPreferenceApi.normalize(state.settings.reduceMotion);
-  if (els.reduceMotionInput) els.reduceMotionInput.value = reduceMotion;
+  for (const input of els.reduceMotionInputs || []) input.checked = input.value === reduceMotion;
   els.liveDotInput.checked = state.settings.showLiveDot !== false;
   els.toolIconsInput.checked = state.settings.showToolIcons !== false;
   els.titleIconInput.checked = state.settings.titleIconOnly === true;
@@ -5098,6 +5165,8 @@ function syncSettingsForm() {
   els.trayModeInput.checked = showTrayIcon && Boolean(state.settings.trayMode);
   els.trayContentInput.value = ['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon'].includes(state.settings.trayContent) ? state.settings.trayContent : 'tokens';
   els.trayContentInput.disabled = !showTrayIcon;
+  els.showTrayProviderBadgeInput.checked = state.settings.showTrayProviderBadge === true;
+  els.showTrayProviderBadgeInput.disabled = !showTrayIcon;
   els.trayIconOptions?.classList.toggle('hidden', !showTrayIcon);
   els.trayOptions?.classList.toggle('hidden', !showTrayIcon || !state.settings.trayMode);
   syncWindowShortcutStatus();
@@ -5115,6 +5184,7 @@ function syncSettingsForm() {
   els.glassInput.value = String(state.settings.glassOpacity ?? 68);
   els.blurInput.value = String(state.settings.glassBlur ?? 32);
   els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
+  syncSliderRows();
   renderDeepseekStatus();
   renderMinimaxStatus();
   renderExternalProviderStatus('zai');
@@ -6360,6 +6430,9 @@ async function saveSettings(patch) {
   preserveSettingsPanelScroll(syncSettingsForm);
   restartTimer();
   maybeUpdateBarsIcon();
+  if (patch.showTrayProviderBadge !== undefined) {
+    await deliverTrayProviderIcons(patch.showTrayProviderBadge === true);
+  }
 }
 
 function renderHomeIfVisible() {
@@ -6400,6 +6473,7 @@ async function init() {
   if (els.aboutVersion) els.aboutVersion.textContent = state.appInfo?.version ? `v${state.appInfo.version}` : '—';
   state.settings = await window.tokenMonitor.getSettings();
   applyEffectiveCurrencyRates();
+  deliverTrayProviderIcons();
 
   state.appUpdate = await window.tokenMonitor.getAppUpdateState();
   renderAppUpdatePill();
@@ -6672,10 +6746,13 @@ function setupThemeAccordion(group, toggle, details) {
 setupThemeAccordion(els.themeAdvancedGroup, els.themeAdvancedToggle, els.themeAdvancedDetails);
 setupThemeAccordion(els.themeVendorGroup, els.themeVendorToggle, els.themeVendorDetails);
 els.systemGlassInput.addEventListener('change', saveAppearanceFromControls);
-els.reduceMotionInput?.addEventListener('change', async () => {
-  state.settings.reduceMotion = applyReduceMotionPreference(els.reduceMotionInput.value);
-  await saveAppearanceFromControls();
-});
+for (const input of els.reduceMotionInputs || []) {
+  input.addEventListener('change', async () => {
+    if (!input.checked) return;
+    state.settings.reduceMotion = applyReduceMotionPreference(input.value);
+    await saveAppearanceFromControls();
+  });
+}
 els.liveDotInput.addEventListener('change', saveAppearanceFromControls);
 els.toolIconsInput.addEventListener('change', saveAppearanceFromControls);
 els.titleIconInput.addEventListener('change', saveAppearanceFromControls);
@@ -6701,6 +6778,7 @@ els.showTrayIconInput?.addEventListener('change', () => {
   els.trayModeInput.disabled = !showTrayIcon;
   if (!showTrayIcon) els.trayModeInput.checked = false;
   els.trayContentInput.disabled = !showTrayIcon;
+  els.showTrayProviderBadgeInput.disabled = !showTrayIcon;
   els.trayIconOptions?.classList.toggle('hidden', !showTrayIcon);
   els.trayOptions?.classList.toggle('hidden', !showTrayIcon || !els.trayModeInput.checked);
   saveSettings({ showTrayIcon, trayMode: showTrayIcon ? els.trayModeInput.checked : false });
@@ -6710,7 +6788,8 @@ els.trayModeInput.addEventListener('change', () => {
   saveSettings({ trayMode: els.trayModeInput.checked });
 });
 els.trayContentInput.addEventListener('change', () => saveSettings({ trayContent: els.trayContentInput.value }));
-els.windowToggleShortcutRecordButton?.addEventListener('click', startWindowShortcutRecording);
+els.showTrayProviderBadgeInput.addEventListener('change', () => saveSettings({ showTrayProviderBadge: els.showTrayProviderBadgeInput.checked }));
+els.windowToggleShortcutValue?.addEventListener('click', startWindowShortcutRecording);
 els.windowToggleShortcutClearButton?.addEventListener('click', () => setWindowToggleShortcut('').catch(() => {}));
 els.startAtLoginInput?.addEventListener('change', () => saveSettings({ startAtLogin: els.startAtLoginInput.checked }));
 els.glassInput.addEventListener('change', saveAppearanceFromControls);
@@ -6718,6 +6797,7 @@ els.blurInput.addEventListener('change', saveAppearanceFromControls);
 els.zoomInput.addEventListener('change', saveAppearanceFromControls);
 els.resetZoomButton.addEventListener('click', async () => {
   els.zoomInput.value = String(Math.round(defaultAppearance.zoomFactor * 100));
+  syncSliderRow(els.zoomInput);
   await saveSettings({ zoomFactor: defaultAppearance.zoomFactor });
 });
 els.openConfigButton.addEventListener('click', () => window.tokenMonitor.openUserData());
@@ -6729,7 +6809,10 @@ els.openRepositoryButton?.addEventListener('click', () => window.tokenMonitor.op
 els.reportIssueButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_ISSUES_URL));
 els.refreshButton.addEventListener('click', () => {
   if (state.breakdown === 'status') refreshStatusViewManually().catch(() => {});
-  else refreshStats({ force: true, feedback: true });
+  // Only this button asks for a history rescan: `{ force: true }` is used all over the
+  // settings/account flows, and folding history into it would re-run the expensive
+  // `tokscale graph` on every one of them.
+  else refreshStats({ force: true, forceHistory: true, feedback: true });
 });
 els.minButton.addEventListener('click', () => window.tokenMonitor.minimize());
 els.closeButton.addEventListener('click', () => window.tokenMonitor.close());
@@ -6952,6 +7035,7 @@ function roundedRectPath(ctx, x, y, w, h, r) {
 }
 
 const trayProviderImages = {};
+const trayProviderIconDeliveryGuard = window.TokenMonitorTrayProviderIcons.createTrayProviderIconDeliveryGuard();
 
 function renderBarsIcon(stats, height = 44, picker = pickWorstProvider, colors = {}) {
   const trackColor = colors.track || 'rgba(0, 0, 0, 0.32)';
@@ -7123,7 +7207,7 @@ function trayDataUrlForMode(mode, size = 44, colors, options = {}) {
 
 async function maybeUpdateBarsIcon() {
   const mode = state.settings?.trayContent;
-  if (mode !== 'bars' && mode !== 'barsSession' && mode !== 'barsWeekly' && mode !== 'barsAllSessions' && mode !== 'limitsAllSessions') return;
+  if (!window.TokenMonitorTrayText.isGeneratedTrayIconMode(mode)) return;
   if (!window.tokenMonitor.setTrayIcons) return;
   const dataUrl = trayDataUrlForMode(mode, 44);
   try { await window.tokenMonitor.setTrayIcons({ [mode]: dataUrl || null }); } catch (_) {}
@@ -7138,27 +7222,69 @@ function loadImage(src) {
   });
 }
 
-function imageToPngDataUrl(img, size) {
+function providerImageToPngDataUrl(img, size, showBadge = false) {
+  const { trayProviderBadgeLayout } = window.TokenMonitorTrayProviderIcons;
+  const layout = trayProviderBadgeLayout(size);
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = layout.iconSize;
+  canvas.height = layout.iconSize;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, size, size);
+  const imageInset = showBadge ? Math.max(1, Math.round(layout.iconSize * 0.07)) : 0;
+  const imageSize = layout.iconSize - imageInset * 2;
+  if (showBadge) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.95)';
+    ctx.shadowBlur = Math.max(2, Math.round(layout.iconSize * 0.1));
+    ctx.drawImage(img, imageInset, imageInset, imageSize, imageSize);
+    ctx.restore();
+  }
+  ctx.drawImage(img, imageInset, imageInset, imageSize, imageSize);
+
+  if (!showBadge) return canvas.toDataURL('image/png');
+
+  const { x, y, badgeSize, radius, borderWidth } = layout;
+  roundedRectPath(ctx, x, y, badgeSize, badgeSize, radius);
+  ctx.fillStyle = '#1688f8';
+  ctx.fill();
+  ctx.lineWidth = borderWidth;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+
+  // Draw the project's sigma mark as geometry so it remains crisp without a font dependency.
+  const left = x + badgeSize * 0.29;
+  const right = x + badgeSize * 0.72;
+  const top = y + badgeSize * 0.27;
+  const middle = y + badgeSize * 0.5;
+  const bottom = y + badgeSize * 0.73;
+  ctx.beginPath();
+  ctx.moveTo(right, top);
+  ctx.lineTo(left, top);
+  ctx.lineTo(x + badgeSize * 0.56, middle);
+  ctx.lineTo(left, bottom);
+  ctx.lineTo(right, bottom);
+  ctx.lineWidth = Math.max(2, badgeSize * 0.13);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
   return canvas.toDataURL('image/png');
 }
 
-async function deliverTrayProviderIcons() {
+async function deliverTrayProviderIcons(showBadge = state.settings?.showTrayProviderBadge === true) {
   if (!window.tokenMonitor.setTrayIcons) return;
+  const deliveryId = trayProviderIconDeliveryGuard.begin();
   const sources = window.TokenMonitorTrayProviderIcons.trayProviderIconSources(clientsWithIcon);
   const icons = {};
   for (const [id, path] of Object.entries(sources)) {
     try {
       const img = await loadImage(path);
       trayProviderImages[id] = img;
-      icons[id] = imageToPngDataUrl(img, 44);
+      icons[id] = providerImageToPngDataUrl(img, 44, showBadge);
     } catch (_) { /* skip missing */ }
   }
+  if (!trayProviderIconDeliveryGuard.isCurrent(deliveryId)) return;
   if (Object.keys(icons).length) await window.tokenMonitor.setTrayIcons(icons);
+  if (!trayProviderIconDeliveryGuard.isCurrent(deliveryId)) return;
   // Provider images may unlock a richer bars icon now that they're cached.
   maybeUpdateBarsIcon();
 }
@@ -9181,5 +9307,4 @@ initSettingsAnimationWrappers();
 setupSettingsSections();
 setupCursorAccountUI();
 setupCustomPricingUI();
-deliverTrayProviderIcons();
 init();
