@@ -86,6 +86,7 @@ const {
   sessionUsageArchiveDate,
   writeSessionUsageArchive
 } = require('../shared/sessionUsageArchive');
+const { clearDailyHistoryArchive } = require('../shared/dailyHistoryArchive');
 const { aggregateDevices, aggregateHistory, applyProjectRollups, carryDeviceHistory } = require('../shared/usage');
 const { postSyncPayload, syncPayload } = require('../shared/syncPayload');
 const { mergedLocalAllTimeSessions } = require('../shared/localSessions');
@@ -194,6 +195,15 @@ if (process.platform === 'win32') app.setAppUserModelId('com.javis.tokenmonitor'
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.exit(0);
 
+const HOME_LIMIT_ACCOUNT_COUNT_DEFAULT = 3;
+const HOME_LIMIT_ACCOUNT_COUNT_MAX = 12;
+
+function normalizeHomeLimitAccountCount(value) {
+  const count = Math.trunc(Number(value));
+  if (!Number.isFinite(count)) return HOME_LIMIT_ACCOUNT_COUNT_DEFAULT;
+  return Math.max(1, Math.min(HOME_LIMIT_ACCOUNT_COUNT_MAX, count));
+}
+
 function defaultSettings() {
   const envHubUrl = process.env.TOKEN_MONITOR_HUB_URL || '';
   const windowBehavior = process.env.TOKEN_MONITOR_ALWAYS_ON_TOP === '0' ? 'normal' : 'floating';
@@ -259,6 +269,7 @@ function defaultSettings() {
     limitProviderOrder: defaultLimitProviderOrder(),
     homeLimitProviderOrder: '',
     hiddenHomeLimitProviders: '',
+    homeLimitAccountCount: HOME_LIMIT_ACCOUNT_COUNT_DEFAULT,
     limitsRefreshMs: normalizeLimitsRefreshMs(process.env.TOKEN_MONITOR_LIMITS_REFRESH_MS),
     showLimitSource: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_SOURCE, false),
     maskLimitAccountEmails: false,
@@ -1362,6 +1373,7 @@ function readSettings() {
     if (saved.hiddenHomeLimitProviders !== undefined) {
       merged.hiddenHomeLimitProviders = normalizeHiddenLimitProviders(saved.hiddenHomeLimitProviders);
     }
+    merged.homeLimitAccountCount = normalizeHomeLimitAccountCount(merged.homeLimitAccountCount);
     if (saved.historyEnabled !== undefined) {
       merged.historyEnabled = parseBoolean(saved.historyEnabled, false);
     }
@@ -1562,7 +1574,7 @@ function applyWindowSettings() {
 }
 
 function nativeBlurEnabled(source = settings) {
-  return floatingBubbleNativeGlassEnabled(source, floatingBubbleState, process.platform);
+  return floatingBubbleNativeGlassEnabled(source);
 }
 
 function keepNativeBlurActive() {
@@ -1777,6 +1789,8 @@ function startSyncCollector() {
     agentRuntime: 'electron-widget',
     intervalMs: collectorIntervalMs(),
     historyEnabled: settings.historyEnabled !== false,
+    dailyHistoryArchiveEnabled: settings.sessionUsageArchiveEnabled !== false,
+    dailyHistoryArchiveWriteEnabled: () => !isExternalAgentActive(),
     projectsEnabled: settings.projectsEnabled !== false,
     historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
     watchEnabled: collectorWatchEnabled(),
@@ -1850,6 +1864,8 @@ function startHostCollector() {
     agentRuntime: 'electron-widget',
     intervalMs: collectorIntervalMs(),
     historyEnabled: settings.historyEnabled !== false,
+    dailyHistoryArchiveEnabled: settings.sessionUsageArchiveEnabled !== false,
+    dailyHistoryArchiveWriteEnabled: () => !isExternalAgentActive(),
     projectsEnabled: settings.projectsEnabled !== false,
     historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
     watchEnabled: collectorWatchEnabled(),
@@ -2086,6 +2102,8 @@ function startLocalCollector() {
     agentRuntime: 'electron-widget',
     intervalMs: collectorIntervalMs(),
     historyEnabled: settings.historyEnabled !== false,
+    dailyHistoryArchiveEnabled: settings.sessionUsageArchiveEnabled !== false,
+    dailyHistoryArchiveWriteEnabled: () => !isExternalAgentActive(),
     projectsEnabled: settings.projectsEnabled !== false,
     historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
     watchEnabled: collectorWatchEnabled(),
@@ -3296,7 +3314,7 @@ function createWindow(boundsOverride, options = {}) {
   });
   mainWindow = win;
   mainWindowChrome = { collapsedFloatingBubble };
-  applyWindowsChrome(win, { round: !collapsedFloatingBubble });
+  applyWindowsChrome(win, { round: true });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -3336,11 +3354,14 @@ function createWindow(boundsOverride, options = {}) {
   loadWindowFile(win, {
     waitForContent: options.waitForContent === true,
     inactive: options.inactive === true,
-    query: floatingBubbleInitialRendererQuery(floatingBubbleState, {
-      collapsedWindow: collapsedFloatingBubble,
-      suppressInitialNumberAnimation: options.suppressInitialNumberAnimation === true,
-      viewState: rendererViewState
-    })
+    query: {
+      ...floatingBubbleInitialRendererQuery(floatingBubbleState, {
+        collapsedWindow: collapsedFloatingBubble,
+        suppressInitialNumberAnimation: options.suppressInitialNumberAnimation === true,
+        viewState: rendererViewState
+      }),
+      ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {})
+    }
   });
 }
 
@@ -3544,6 +3565,7 @@ app.whenReady().then(() => {
     if (isExternalAgentActive()) return { ok: false, error: 'agentActive' };
     try {
       clearSessionUsageArchive();
+      clearDailyHistoryArchive();
       sessionUsageArchive = normalizeSessionUsageArchive({});
       return { ok: true };
     } catch (error) {
@@ -3661,6 +3683,7 @@ app.whenReady().then(() => {
       showHomeLimitBars: parseBoolean(patch.showHomeLimitBars ?? settings.showHomeLimitBars, false),
       homeLimitProviderOrder: patch.homeLimitProviderOrder !== undefined ? migrateHomeLimitProviderOrder(patch.homeLimitProviderOrder) : (settings.homeLimitProviderOrder || ''),
       hiddenHomeLimitProviders: patch.hiddenHomeLimitProviders !== undefined ? normalizeHiddenLimitProviders(patch.hiddenHomeLimitProviders) : normalizeHiddenLimitProviders(settings.hiddenHomeLimitProviders),
+      homeLimitAccountCount: normalizeHomeLimitAccountCount(patch.homeLimitAccountCount ?? settings.homeLimitAccountCount),
       historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, false),
       projectsEnabled: parseBoolean(patch.projectsEnabled ?? settings.projectsEnabled, true),
       historyIntervalMs: normalizeHistoryIntervalMs(patch.historyIntervalMs ?? settings.historyIntervalMs),
