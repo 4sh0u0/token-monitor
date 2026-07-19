@@ -1976,7 +1976,7 @@ html.is-windows .settings-panel select option {
 }
 .breakdown.hidden { display: none; }
 .breakdown::-webkit-scrollbar { width: 0; height: 0; }
-.project-incomplete-hint {
+.breakdown-incomplete-hint {
   margin: 0;
   padding: 0 2px 1px;
   color: var(--muted);
@@ -3864,6 +3864,18 @@ html.is-windows .limit-live-badge {
   margin: 2px 0 4px 14px;
   padding: 0 0 0 8px;
   border-left: 1px solid rgba(var(--line-rgb), 0.14);
+}
+.home-activity-settings {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 2px 0 4px 14px;
+  padding: 2px 0 2px 8px;
+  border-left: 1px solid rgba(var(--line-rgb), 0.14);
+  color: var(--muted);
+  font-size: 11px;
 }
 .home-limit-provider-header { margin-bottom: 1px; }
 .home-limit-status-setting {
