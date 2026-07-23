@@ -4,28 +4,25 @@
 
 <!-- app-update-notes:en:start -->
 ### Added
-- **Activity heatmap metric:** Color activity by Tokens or Cost on Home and Dashboard; Cost remains the default. (#190)
-- **Home account count:** Choose how many accounts (1–12) appear in Home → Limits under Settings → Main. (#195)
-- **Provider tray icon badge:** Optionally add a Token Monitor badge to provider icons so they are easier to distinguish from the matching IDE apps. Existing tray appearance remains the default. (#139)
+- **Windows Accent Blur:** Windows users can choose the experimental Accent Blur style under **Settings → Appearance → Windows Glass Style**. It keeps the background translucent and blurred when the window is unfocused, with an automatic Acrylic fallback on unsupported systems. (#229)
 
 ### Improved
-- **Windows downloads:** The installer and portable executable are now code-signed under the Token Monitor code signing policy. (#196)
-- **Activity animation:** The Home heatmap now enters faster with smoother cell motion.
+- **Usage and limits resilience:** Token usage and AI Tool Limits now refresh independently. Slow or failing providers use bounded concurrency and retries without blocking usage or other limits updates. (#225, #227)
+- **Glass appearance:** Custom glass tint and opacity now render without decorative color shifts, while very low opacity in macOS transparent mode avoids Chromium compositing artifacts. (#231)
+- **WSL usage collection:** Every requested tool can now be scanned in each detected WSL home without duplicating usage from the native Windows host.
 
 ### Fixed
-- **Activity history retention:** With **Preserve deleted session usage** enabled, daily activity already observed by Token Monitor no longer disappears when source transcripts are later cleaned up. (#193)
-- **Activity history refresh:** Home and Dashboard now follow the local calendar day, reload history across midnight, and rescan it on manual refresh. (#187)
-- **Floating Bubble contrast:** The collapsed bubble now follows the app appearance and keeps text and provider icons readable over light and dark wallpapers. (#189)
-- **Session recency:** Time sorting now works for supported tools when project tracking is disabled. (#191)
-- **Large sync payloads:** Devices with extensive session history now stay within the Hub upload limit while preserving totals and clearly marking omitted details. (#197)
+- **Large session lists:** Hub-backed Month and Total session lists remain responsive during live updates and keep stable scroll geometry as rows appear. (#235)
+- **Custom model pricing:** Pricing rows once again keep model details readable and the edit and remove actions correctly aligned. (#236)
 <!-- app-update-notes:en:end -->
 
 ## Download
 
-- **macOS Apple Silicon** — [Token-Monitor-0.31.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.31.0/Token-Monitor-0.31.0-arm64.dmg)
-- **Windows Installer** — [Token-Monitor-Setup-0.31.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.31.0/Token-Monitor-Setup-0.31.0.exe) (recommended)
-- **Windows Portable** — [Token-Monitor-0.31.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.31.0/Token-Monitor-0.31.0.exe) (no install required)
-- **Linux x64** — [Token-Monitor-0.31.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.31.0/Token-Monitor-0.31.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.34.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-0.34.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.34.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-0.34.0-x64.dmg)
+- **Windows Installer** — [Token-Monitor-Setup-0.34.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-Setup-0.34.0.exe) (recommended)
+- **Windows Portable** — [Token-Monitor-0.34.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-0.34.0.exe) (no install required)
+- **Linux x64** — [Token-Monitor-0.34.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-0.34.0.AppImage)
 
 <details>
 <summary><strong>First launch and other notes</strong></summary>
@@ -63,28 +60,25 @@ open-source: https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh:start -->
 ### 新增
-- **活动热力图指标：** 可在主页与仪表板中按 Tokens 或成本为活动数据着色；默认仍为成本。（#190）
-- **主页账号数量：** 可在设置 → 主画面 → 主页 → 额度中选择显示 1–12 个账号。（#195）
-- **提供者托盘图标徽章：** 可选择为提供者图标添加 Token Monitor 徽章，更容易与对应的 IDE 应用区分；现有托盘外观仍为默认设置。（#139）
+- **Windows Accent Blur：** Windows 用户现在可以在 **设置 → 外观 → Windows 玻璃样式** 中选择实验性的 Accent Blur；窗口失去焦点时背景仍保持半透明和模糊，不支持时会自动回退到 Acrylic。（#229）
 
 ### 改进
-- **Windows 下载：** 安装版与便携版现已根据 Token Monitor 代码签名政策完成签名。（#196）
-- **活动动画：** 主页热力图现在以更快、更流畅的单元格动画显示。
+- **用量与额度刷新韧性：** Token 用量与 AI 工具额度现在独立刷新；缓慢或失败的提供商会通过有限并发与重试处理，不再阻塞用量或其他额度更新。（#225、#227）
+- **玻璃效果呈现：** 自定义玻璃色调与透明度不再受装饰性叠色影响；macOS 透明模式在极低透明度下也能避免 Chromium 合成异常。（#231）
+- **WSL 用量采集：** 每个检测到的 WSL 主目录现在都能扫描所有指定工具，同时避免重复计入 Windows 主机上的原生用量。
 
 ### 修复
-- **活动历史保留：** 开启**保留已删除会话用量**后，Token Monitor 已观测到的每日活动不会再因来源 transcript 后续被清理而消失。（#193）
-- **活动历史刷新：** 主页与仪表板现在会按本地日期显示数据、跨午夜重新载入历史，并在手动刷新时重新扫描。（#187）
-- **悬浮球对比度：** 折叠后的悬浮球现在会跟随应用外观，并让文字与提供者图标在明暗壁纸上都保持清晰可读。（#189）
-- **会话时间排序：** 关闭项目追踪时，支持的工具现在也能正常按时间排序。（#191）
-- **大型同步数据：** 会话历史较多的设备现在也能保持在 Hub 上传限制内，同时保留总计，并清楚标示省略的明细。（#197）
+- **大型会话列表：** 通过 Hub 加载的月度与总计会话列表在实时更新时保持流畅，并在新增行时维持稳定的滚动位置。（#235）
+- **自定义模型定价：** 定价行现在会正确显示模型详情，并恢复编辑与移除操作的对齐布局。（#236）
 <!-- app-update-notes:zh:end -->
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.31.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.31.0/Token-Monitor-0.31.0-arm64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.31.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.31.0/Token-Monitor-Setup-0.31.0.exe)（推荐）
-- **Windows 便携版** — [Token-Monitor-0.31.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.31.0/Token-Monitor-0.31.0.exe)（免安装）
-- **Linux x64** — [Token-Monitor-0.31.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.31.0/Token-Monitor-0.31.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.34.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-0.34.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.34.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-0.34.0-x64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.34.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-Setup-0.34.0.exe)（推荐）
+- **Windows 便携版** — [Token-Monitor-0.34.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-0.34.0.exe)（免安装）
+- **Linux x64** — [Token-Monitor-0.34.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.34.0/Token-Monitor-0.34.0.AppImage)
 
 <details>
 <summary><strong>首次启动与其他说明</strong></summary>
