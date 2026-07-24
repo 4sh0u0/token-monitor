@@ -78,6 +78,7 @@ const {
 const cursorAuth = require('../shared/cursorAuth');
 const cursorProbe = require('../shared/cursorProbe');
 const opencodeWeb = require('../shared/opencodeWeb');
+const openrouterLimits = require('../shared/openrouterLimits');
 const semver = require('semver');
 const { normalizeCurrency, resolveEffectiveRates, configureRates } = require('../shared/currency');
 const { fetchRates, isCacheStale } = require('../shared/exchangeRates');
@@ -164,6 +165,7 @@ const {
   moveFloatingBubbleBounds
 } = require('./floatingBubble');
 const { applyWindowsChrome } = require('./windowsChrome');
+const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
 const {
   WINDOWS_BACKDROP_ACCENT,
   normalizeWindowsBackdropMode
@@ -317,6 +319,7 @@ function defaultSettings() {
     language: 'auto',
     opencodeCookie: '',
     opencodeProfiles: {},
+    openrouterProfiles: {},
     deepseekApiKey: '',
     minimaxApiKey: '',
     copilotApiToken: '',
@@ -1408,7 +1411,6 @@ function expandFloatingBubble(options = {}) {
   sendFloatingBubbleState();
   if (options.focus !== false) {
     mainWindow.show();
-    mainWindow.focus();
   }
   return true;
 }
@@ -1832,6 +1834,32 @@ function applyMacActivationPolicy(state = {}) {
   if (!app.dock) return;
   if (mode === 'accessory') app.dock.hide();
   else app.dock.show();
+}
+
+function applyMacSpaceBehavior(trayMode = Boolean(settings?.trayMode)) {
+  if (process.platform !== 'darwin' || !mainWindow || mainWindow.isDestroyed()) return;
+  if (trayMode) {
+    setMoveToActiveSpace(mainWindow, false);
+    if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
+      mainWindow.setVisibleOnAllWorkspaces(true, {
+        visibleOnFullScreen: true,
+        skipTransformProcessType: true
+      });
+    }
+    if (typeof mainWindow.setHiddenInMissionControl === 'function') {
+      mainWindow.setHiddenInMissionControl(true);
+    }
+  } else {
+    if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
+      mainWindow.setVisibleOnAllWorkspaces(false);
+    }
+    if (typeof mainWindow.setHiddenInMissionControl === 'function') {
+      mainWindow.setHiddenInMissionControl(false);
+    }
+    // Apply this last because Electron's workspace/Mission Control setters also
+    // update NSWindow.collectionBehavior.
+    setMoveToActiveSpace(mainWindow, true);
+  }
 }
 
 function applyWindowSettings() {
@@ -2482,13 +2510,13 @@ async function startStatsStream(options = {}) {
 function showPopover() {
   if (!mainWindow || mainWindow.isDestroyed() || !tray) return;
   applyMacActivationPolicy();
+  applyMacSpaceBehavior(true);
   applyWindowSettings();
   const current = mainWindow.getBounds();
   const target = popoverBounds(tray, current.width, current.height);
   mainWindow.setBounds(target);
   suppressNextBlurHide = true;
   mainWindow.show();
-  mainWindow.focus();
   // The focus event itself may not fire a blur; the suppress flag covers the
   // case where macOS fires blur immediately after show because the click that
   // opened us still has the menu bar as the focused element.
@@ -2514,10 +2542,10 @@ function focusExistingWindow() {
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
   if (settings?.trayMode) showPopover();
-  else if (floatingBubbleState.collapsed) expandFloatingBubble();
   else {
-    mainWindow.show();
-    mainWindow.focus();
+    applyMacSpaceBehavior(false);
+    if (floatingBubbleState.collapsed) expandFloatingBubble();
+    else mainWindow.show();
   }
 }
 
@@ -2534,6 +2562,15 @@ function redactOpencodeProfilesForRenderer(profiles) {
   const out = {};
   for (const [name, profile] of Object.entries(profiles)) {
     out[name] = { ...profile, cookie: profile && profile.cookie ? 'set' : '' };
+  }
+  return out;
+}
+
+function redactOpenRouterProfilesForRenderer(profiles) {
+  if (!profiles || typeof profiles !== 'object') return profiles;
+  const out = {};
+  for (const [name, profile] of Object.entries(profiles)) {
+    out[name] = { enabled: profile?.enabled !== false, apiKey: profile?.apiKey ? 'set' : '' };
   }
   return out;
 }
@@ -2610,6 +2647,10 @@ function settingsForRenderer() {
     ...(settings?.opencodeProfiles
       ? { opencodeProfiles: redactOpencodeProfilesForRenderer(settings.opencodeProfiles) }
       : {}),
+    ...(settings?.openrouterProfiles
+      ? { openrouterProfiles: redactOpenRouterProfilesForRenderer(settings.openrouterProfiles) }
+      : {}),
+    openrouterEnvConfigured: Boolean(openrouterLimits.openrouterToken(process.env)),
     codexManagedAccounts: codexAccountsForRenderer(),
     mimoManagedAccounts: mimoAccountsForRenderer(),
     deepseekApiKeyConfigured: Boolean(currentDeepSeekApiKey()),
@@ -2916,11 +2957,7 @@ function enterTrayMode() {
   applyMacActivationPolicy();
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(true);
-    // Without this, .show() yanks the user back to the Space the window was last
-    // shown on instead of popping over the current Space / fullscreen app.
-    if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
-      mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    }
+    applyMacSpaceBehavior(true);
     mainWindow.hide();
   }
 }
@@ -2929,9 +2966,7 @@ function exitTrayMode() {
   applyMacActivationPolicy({ mainWindowVisible: true });
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(false);
-    if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
-      mainWindow.setVisibleOnAllWorkspaces(false);
-    }
+    applyMacSpaceBehavior(false);
     const restore = restoredBounds() || DEFAULT_WINDOW;
     mainWindow.setBounds({
       width: restore.width,
@@ -2940,7 +2975,6 @@ function exitTrayMode() {
     });
     applyWindowSettings();
     mainWindow.show();
-    mainWindow.focus();
   }
   if (!shouldCreateTray(settings)) destroyTray();
   else ensureTray();
@@ -3449,6 +3483,7 @@ function isAllowedExternalUrl(value) {
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/Javis603/token-monitor')) return true;
   if ((parsed.hostname === 'cursor.com' || parsed.hostname === 'www.cursor.com') && parsed.pathname.startsWith('/settings')) return true;
   if (parsed.hostname === 'opencode.ai' || parsed.hostname === 'www.opencode.ai') return true;
+  if (parsed.hostname === 'openrouter.ai' && parsed.pathname.startsWith('/settings/keys')) return true;
   if (parsed.hostname === 'platform.deepseek.com' && parsed.pathname.startsWith('/api_keys')) return true;
   if (parsed.hostname === 'platform.minimaxi.com') return true;
   if (parsed.hostname === 'platform.minimax.io') return true;
@@ -3553,6 +3588,7 @@ function createWindow(boundsOverride, options = {}) {
   });
   mainWindow = win;
   mainWindowChrome = { collapsedFloatingBubble };
+  applyMacSpaceBehavior();
   applyWindowsChrome(win, { round: true });
   let windowsAccentFallback = false;
   if (windowsAccent && !applyWindowsAccentBlur(win)) {
@@ -3850,6 +3886,7 @@ app.whenReady().then(() => {
     const normalizedPatch = { ...patch, currency: normalizedCurrency };
     delete normalizedPatch.codexManagedAccounts;
     delete normalizedPatch.mimoManagedAccounts;
+    delete normalizedPatch.openrouterProfiles;
     delete normalizedPatch.customModelPricing;
     if (patch.clients !== undefined) normalizedPatch.clients = clientsCsvForSetting(patch.clients, '');
     if (patch.deepseekApiKey !== undefined) normalizedPatch.deepseekApiKey = normalizeDeepSeekApiKey(patch.deepseekApiKey);
@@ -4453,6 +4490,92 @@ app.whenReady().then(() => {
     }
     opencodeStatusCache = { value: null, at: 0 };
     void queueLimitInvalidation({ provider: 'opencode', accountName: name }, 'profile-state', {
+      clear: !enabled,
+      refresh: Boolean(enabled)
+    });
+    return { ok: true };
+  });
+  ipcMain.handle('openrouter:getProfiles', async () => {
+    return {
+      profiles: redactOpenRouterProfilesForRenderer(settings.openrouterProfiles || {}),
+      hasEnvVar: Boolean(openrouterLimits.openrouterToken(process.env))
+    };
+  });
+  ipcMain.handle('openrouter:saveProfile', async (_event, rawName, rawApiKey) => {
+    const name = openrouterLimits.openrouterProfileName(rawName);
+    const apiKey = openrouterLimits.openrouterToken({}, rawApiKey);
+    if (!name) return { ok: false, errorCode: 'invalidName' };
+    if (!apiKey) return { ok: false, errorCode: 'missingApiKey' };
+    try {
+      const provider = await openrouterLimits.fetchOpenRouterAccount(name, apiKey, {
+        env: process.env,
+        signal: AbortSignal.timeout(15_000)
+      });
+      if (provider?.status !== 'ok') {
+        return { ok: false, error: provider?.status === 'unauthorized' ? 'OpenRouter rejected the API key' : 'Could not validate the OpenRouter API key' };
+      }
+      settings.openrouterProfiles = {
+        ...(settings.openrouterProfiles || {}),
+        [name]: { apiKey, enabled: true }
+      };
+      saveSettings({ throwOnError: true });
+      void queueLimitInvalidation({ provider: 'openrouter', accountName: name }, 'profile-save');
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not validate the OpenRouter API key' };
+    }
+  });
+  ipcMain.handle('openrouter:deleteProfile', async (_event, rawName) => {
+    const name = String(rawName || '').trim();
+    const profiles = { ...(settings.openrouterProfiles || {}) };
+    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
+    delete profiles[name];
+    settings.openrouterProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenRouter profile deletion' };
+    }
+    void queueLimitInvalidation({ provider: 'openrouter', accountName: name }, 'profile-delete', {
+      clear: true,
+      refresh: false
+    });
+    return { ok: true };
+  });
+  ipcMain.handle('openrouter:renameProfile', async (_event, rawOldName, rawNewName) => {
+    const oldName = String(rawOldName || '').trim();
+    const newName = openrouterLimits.openrouterProfileName(rawNewName);
+    const profiles = { ...(settings.openrouterProfiles || {}) };
+    if (!newName || oldName === newName) return { ok: false, errorCode: 'invalidName' };
+    if (!profiles[oldName]) return { ok: false, error: 'Profile not found' };
+    if (profiles[newName]) return { ok: false, error: 'Profile name already exists' };
+    profiles[newName] = profiles[oldName];
+    delete profiles[oldName];
+    settings.openrouterProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenRouter profile rename' };
+    }
+    void queueLimitInvalidation({ provider: 'openrouter', accountName: oldName }, 'profile-rename', {
+      clear: true,
+      refresh: false
+    });
+    void queueLimitInvalidation({ provider: 'openrouter', accountName: newName }, 'profile-rename');
+    return { ok: true };
+  });
+  ipcMain.handle('openrouter:setProfileEnabled', async (_event, rawName, enabled) => {
+    const name = String(rawName || '').trim();
+    const profiles = { ...(settings.openrouterProfiles || {}) };
+    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
+    profiles[name] = { ...profiles[name], enabled: Boolean(enabled) };
+    settings.openrouterProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenRouter profile state' };
+    }
+    void queueLimitInvalidation({ provider: 'openrouter', accountName: name }, 'profile-state', {
       clear: !enabled,
       refresh: Boolean(enabled)
     });
