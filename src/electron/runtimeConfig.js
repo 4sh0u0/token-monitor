@@ -29,6 +29,7 @@ const LIMITS_RECONFIGURE_KEYS = Object.freeze([
 ]);
 const SINK_STRUCTURAL_KEYS = Object.freeze(['syncUploadIntervalMs']);
 const LIMIT_PROVIDER_SETTING_KEYS = Object.freeze({
+  claude: ['claudeWebCookie'],
   opencode: ['opencodeCookie', 'opencodeProfiles'],
   openrouter: ['openrouterProfiles'],
   deepseek: ['deepseekApiKey'],
@@ -41,7 +42,8 @@ const LIMIT_PROVIDER_SETTING_KEYS = Object.freeze({
   kimi: ['kimiApiKey', 'kimiWebAccessToken'],
   ollama: ['ollamaCookie'],
   codex: ['codexManagedAccounts'],
-  mimo: ['mimoManagedAccounts']
+  mimo: ['mimoManagedAccounts'],
+  thirdparty: ['thirdPartyProfiles']
 });
 
 function equalSetting(left, right) {
@@ -70,6 +72,9 @@ function usageConfigFromSettings(settings = {}, context = {}) {
     projectsEnabled: settings.projectsEnabled !== false,
     historyIntervalMs: context.historyIntervalMs ?? settings.historyIntervalMs,
     watchEnabled: context.watchEnabled,
+    watchUsePolling: context.watchUsePolling !== false,
+    watchTriggersCollection: context.watchTriggersCollection !== false,
+    intervalRequiresActivity: Boolean(context.intervalRequiresActivity),
     watchDebounceMs: Number(context.watchDebounceMs || 1500),
     wslScanEnabled: settings.wslScanEnabled !== false,
     onError: context.onError,
@@ -83,6 +88,10 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
     limitsEnabled: settings.limitsEnabled !== false,
     limitProviders: settings.limitProviders ?? context.defaultLimitProviders,
     limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
+    claudeWebCookie: settings.claudeWebCookie
+      || env.CLAUDE_WEB_COOKIE
+      || '',
+    claudePrepaidBalanceEnabled: settings.claudePrepaidBalanceEnabled !== false,
     opencodeCookie: settings.opencodeCookie || env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     openrouterProfiles: settings.openrouterProfiles || {},
@@ -104,7 +113,8 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
     kimiWebAccessToken: settings.kimiWebAccessToken || '',
     ollamaCookie: settings.ollamaCookie || '',
     codexManagedAccounts: context.codexManagedAccounts ?? settings.codexManagedAccounts ?? [],
-    mimoManagedAccounts: context.mimoManagedAccounts ?? settings.mimoManagedAccounts ?? []
+    mimoManagedAccounts: context.mimoManagedAccounts ?? settings.mimoManagedAccounts ?? [],
+    thirdPartyProfiles: settings.thirdPartyProfiles || {}
   };
 }
 

@@ -237,6 +237,71 @@ test('main section holds views; appearance is its own section; window holds beha
   );
 });
 
+test('settings mode choices use inline options and compact home limit rows', () => {
+  const html = readRendererFile('index.html');
+  // Each mode choice is a labelled radiogroup, not a bare cluster of inputs.
+  assert.match(html, /<div id="floatingBubbleTriggerRow" class="settings-item">/);
+  assert.match(html, /<span id="floatingBubbleTriggerLabel" class="settings-item-text">/);
+  assert.match(html, /role="radiogroup" aria-labelledby="floatingBubbleTriggerLabel"/);
+  for (const value of ['click', 'hover']) {
+    assert.match(html, new RegExp(`<input type="radio" name="floatingBubbleTrigger" value="${value}"`));
+  }
+  assert.match(html, /<span id="showLimitUsedLabel" class="settings-item-text">/);
+  assert.match(html, /role="radiogroup" aria-labelledby="showLimitUsedLabel"/);
+  for (const value of ['remaining', 'used']) {
+    assert.match(html, new RegExp(`<input type="radio" name="showLimitUsed" value="${value}"`));
+  }
+  assert.doesNotMatch(html, /id="floatingBubbleTriggerInput"/);
+  assert.doesNotMatch(html, /id="showLimitUsedInput"/);
+
+  const app = readRendererFile('app.js');
+  assert.match(app, /floatingBubbleTriggerInputs: Array\.from\(document\.querySelectorAll\('input\[name="floatingBubbleTrigger"\]'\)\)/);
+  assert.match(app, /showLimitUsedInputs: Array\.from\(document\.querySelectorAll\('input\[name="showLimitUsed"\]'\)\)/);
+  assert.match(app, /for \(const input of els\.showLimitUsedInputs \|\| \[\]\)/);
+  assert.match(app, /for \(const input of els\.floatingBubbleTriggerInputs \|\| \[\]\)/);
+
+  // Bound every declaration match to the body of the rule it names: an
+  // unbounded [\s\S]* happily matches the same property in an unrelated rule
+  // further down the file, so the assertion would survive deleting the rule.
+  const css = readRendererFile('styles.css');
+  assert.match(css, /\.settings-panel \.status-provider-interval\s*\{[^}]*display:\s*flex/);
+  assert.match(css, /\.settings-panel \.status-provider-interval select\s*\{[^}]*width:\s*auto/);
+  assert.match(css, /\.settings-panel \.home-limit-account-count-setting > input\[type="number"\]\s*\{[^}]*height:\s*20px[^}]*padding:\s*2px 8px/);
+});
+
+test('nested settings lists share one compact rhythm instead of per-list spacing', () => {
+  const app = readRendererFile('app.js');
+  const css = readRendererFile('styles.css');
+
+  // Every list nested under a view row opts into the shared class. Restyling one
+  // of them on its own is how Trends and Status drifted looser than Home.
+  for (const list of ['home-limit-provider-list', 'home-settings-list', 'trend-settings-list', 'status-provider-list']) {
+    assert.match(app, new RegExp(`wrap\\.className = 'settings-nested-list ${list}'`));
+    assert.doesNotMatch(css, new RegExp(`\\.${list}\\s*\\{`));
+  }
+
+  // Rows carry their own height, so the container must not add a gap on top.
+  assert.match(css, /\.settings-nested-list[^{}]*\{[^}]*gap: 0 !important/);
+  assert.match(css, /\.settings-panel \.settings-nested-list > \.checkbox-label,[^{}]*\{[^}]*min-height:\s*24px/);
+  assert.match(css, /\.settings-panel \.settings-nested-list > \.checkbox-label,[^{}]*\{[^}]*margin-top:\s*0/);
+  assert.match(css, /\.settings-panel \.settings-nested-list > \.settings-item\s*\{[^}]*padding:\s*2px 0/);
+  // The interval pill fills the base row, so it needs a taller one to keep the
+  // same ~4px of air between controls that the Home rows have.
+  assert.match(css, /\.settings-panel \.settings-nested-list > \.status-provider-interval\s*\{[^}]*min-height:\s*28px/);
+});
+
+test('checkbox labels keep semantics without making the whole row a hit target', () => {
+  const css = readRendererFile('styles.css');
+  assert.match(css, /\.settings-panel \.checkbox-label,\s*\.settings-panel label\.client-checkbox\s*\{[^}]*pointer-events:\s*none/);
+  assert.match(css, /\.settings-panel \.checkbox-label > input\[type="checkbox"\],[^{}]*\.settings-panel label\.client-checkbox > input\[type="checkbox"\]\s*\{[^}]*pointer-events:\s*auto/);
+  assert.match(css, /\.settings-panel \.client-checkboxes label\.client-checkbox input\[type="checkbox"\]\s*\{[^}]*cursor:\s*pointer/);
+});
+
+test('AI Tool Limits provider rows remain whole-row clickable', () => {
+  const css = readRendererFile('styles.css');
+  assert.match(css, /\.settings-panel \.limit-provider-list label\.client-checkbox\s*\{[^}]*pointer-events:\s*auto/);
+});
+
 test('theme code feedback clears when the displayed code changes', () => {
   const app = readRendererFile('app.js');
   const build = functionBody(app, 'buildAppearanceColorControls', 'renderThemePresetChips');
@@ -294,7 +359,7 @@ test('Trends has a master toggle separate from main-screen visibility', () => {
   assert.match(app, /setTrendEnabled\(true\)/);
   assert.match(app, /row\.classList\.toggle\('is-disabled'/);
   assert.match(css, /\.view-preference-row\.is-disabled/);
-  assert.match(css, /\.trend-settings-list/);
+  assert.match(app, /wrap\.className = 'settings-nested-list trend-settings-list'/);
 });
 
 test('session archive retention has its own setting separate from Trends', () => {

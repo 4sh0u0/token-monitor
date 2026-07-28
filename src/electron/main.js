@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, Notification, screen, session, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, net, Notification, screen, session, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, sharedDataDir } = require('../shared/config');
 const {
@@ -19,23 +19,38 @@ const {
 const { installSafeStdout } = require('../shared/safeStdio');
 const { appVersion } = require('../shared/appVersion');
 const { exportFileSet, exportSignature, EXPORT_FILENAMES } = require('../shared/exporter');
+const { createDefaultTrayLayout, normalizeTrayLayout } = require('../shared/trayLayout');
 const motionPreferenceApi = require('./motionPreference');
+const { createClaudeWebFetch } = require('./claudeWebFetch');
 
 // Install EPIPE suppression before anything that might log. Without this,
 // a closed parent pipe turns the next log call into an unhandled 'error'
 // event and Electron pops a "JavaScript error in the main process" dialog.
 installSafeStdout();
+const electronClaudeWebFetch = createClaudeWebFetch(net);
 const { DEFAULT_CLIENTS, KNOWN_CLIENTS, clientsCsvForSetting } = require('../shared/clientTracking');
 const { lookupModelPricing, normalizeHistoryIntervalMs } = require('../shared/collector');
 const { createDeviceRuntime } = require('../shared/deviceRuntime');
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
-const { deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken, kimiWebToken, ollamaSessionCookie } = require('../shared/limitCollector');
+const { claudeWebCookie, deepseekToken, fetchClaudeLimits, normalizeClaudeWebCookieInput, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken, kimiWebToken, ollamaSessionCookie } = require('../shared/limitCollector');
 const { fetchOllamaLimits, rememberOllamaValidation } = require('../shared/ollamaLimits');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
-const { codexAuthIdentity, hashAccountKey } = require('../shared/codexAuth');
+const {
+  codexAuthIdentity,
+  codexManagedAccountIdentityKey,
+  codexManagedAccountMatchesIdentity,
+  hashAccountKey,
+  preserveCodexManagedHydrationCollisions,
+  upgradeCodexManagedAccountIdentity
+} = require('../shared/codexAuth');
 const { codexLoginUrlFromOutput, isAllowedCodexLoginUrl } = require('../shared/codexLogin');
+const {
+  authWithSelectedCodexWorkspace,
+  listCodexWorkspaces,
+  normalizeWorkspaceId
+} = require('../shared/codexWorkspaces');
 const {
   codexAccountMatchesIdentity,
   liveCodexAuthPath,
@@ -79,6 +94,7 @@ const cursorAuth = require('../shared/cursorAuth');
 const cursorProbe = require('../shared/cursorProbe');
 const opencodeWeb = require('../shared/opencodeWeb');
 const openrouterLimits = require('../shared/openrouterLimits');
+const thirdPartyLimits = require('../shared/thirdPartyLimits');
 const semver = require('semver');
 const { normalizeCurrency, resolveEffectiveRates, configureRates } = require('../shared/currency');
 const { fetchRates, isCacheStale } = require('../shared/exchangeRates');
@@ -121,7 +137,8 @@ const {
   popoverBounds,
   reconcileCodexAccountSelection,
   sortCodexAccountsForDisplay,
-  shouldUseTemplateTrayIcon
+  shouldUseTemplateTrayIcon,
+  trayShowsTitle
 } = require('./tray');
 const {
   macActivationPolicyMode,
@@ -140,7 +157,11 @@ const {
   limitsConfigFromSettings,
   usageConfigFromSettings
 } = require('./runtimeConfig');
-const { runManualDeviceRefresh } = require('./deviceRuntimeCoordinator');
+const {
+  runLimitInvalidation,
+  runManualDeviceRefresh,
+  settingsLimitInvalidationPlan
+} = require('./deviceRuntimeCoordinator');
 const { describeWindowBehavior, normalizeWindowBehaviorSettings } = require('./windowBehavior');
 const {
   normalizeWindowToggleShortcut,
@@ -192,11 +213,17 @@ const CSP_HEADER = [
   "form-action 'none'",
   "frame-ancestors 'none'"
 ].join('; ');
-const TRAY_CONTENT_VALUES = new Set(['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon']);
+const TRAY_CONTENT_VALUES = new Set(['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'limitsAllSessions', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon', 'custom']);
 const HUB_MODE_VALUES = new Set(['local', 'client', 'host']);
 const LANGUAGE_VALUES = new Set(LANGUAGE_OPTIONS.map((option) => option.value));
-const COLLECTION_MODE_VALUES = new Set(['live', 'interval']);
+const COLLECTION_MODE_VALUES = new Set(['live', 'smart', 'interval']);
 const COLLECTION_INTERVAL_OPTIONS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000];
+// Smart mode's cadence is fixed and resolved directly in collectorIntervalMs(),
+// so it stays out of COLLECTION_INTERVAL_OPTIONS: that list validates the
+// persisted collectionIntervalMs, and admitting 10m there would let a
+// smart-mode value survive a switch back to live/interval and silently
+// change that mode's backstop interval.
+const SMART_COLLECTION_INTERVAL_MS = 10 * 60 * 1000;
 const DEFAULT_COLLECTION_INTERVAL_MS = 5 * 60 * 1000;
 const HUB_DEFAULT_PORT = 17321;
 const KNOWN_CLIENT_LIST = KNOWN_CLIENTS.split(',').map((id) => ({ id }));
@@ -208,6 +235,7 @@ let mainWindow = null;
 let dashboardWindow = null;
 let settingsPath = null;
 let settings = null;
+let claudeWebCookieMutationRevision = 0;
 let persistedSettingsSnapshot = null;
 let credentialStore = null;
 let credentialStorageErrorShown = false;
@@ -263,6 +291,7 @@ function defaultSettings() {
     floatingBubbleEnabled: false,
     floatingBubbleTrigger: 'click',
     floatingBubbleContent: 'icon',
+    floatingBubbleCustomLayout: createDefaultTrayLayout(),
     floatingBubbleBounds: null,
     lastViewState: { period: 'today', breakdown: 'tool' },
     discordRpcEnabled: false,
@@ -304,12 +333,14 @@ function defaultSettings() {
     limitsRefreshMs: normalizeLimitsRefreshMs(process.env.TOKEN_MONITOR_LIMITS_REFRESH_MS),
     showLimitSource: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_SOURCE, false),
     maskLimitAccountEmails: false,
+    claudePrepaidBalanceEnabled: parseBoolean(process.env.TOKEN_MONITOR_CLAUDE_PREPAID_BALANCE, true),
     showLimitUsed: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_USED, false),
     windowBounds: null,
     zoomFactor: 1,
     showTrayIcon: true,
     trayMode: false,
     trayContent: 'tokens',
+    trayCustomLayout: createDefaultTrayLayout(),
     showTrayProviderBadge: false,
     windowToggleShortcut: '',
     currency: normalizeCurrency(process.env.TOKEN_MONITOR_CURRENCY || 'USD'),
@@ -317,9 +348,11 @@ function defaultSettings() {
     startAtLogin: false,
     automaticAppUpdates: false,
     language: 'auto',
+    claudeWebCookie: '',
     opencodeCookie: '',
     opencodeProfiles: {},
     openrouterProfiles: {},
+    thirdPartyProfiles: {},
     deepseekApiKey: '',
     minimaxApiKey: '',
     copilotApiToken: '',
@@ -374,11 +407,27 @@ function normalizeCollectionIntervalMs(value, fallback = DEFAULT_COLLECTION_INTE
 }
 
 function collectorIntervalMs() {
-  return normalizeCollectionIntervalMs(settings?.collectionIntervalMs);
+  return normalizeCollectionMode(settings?.collectionMode) === 'smart'
+    ? SMART_COLLECTION_INTERVAL_MS
+    : normalizeCollectionIntervalMs(settings?.collectionIntervalMs);
 }
 
 function collectorWatchEnabled() {
+  return normalizeCollectionMode(settings?.collectionMode) !== 'interval';
+}
+
+// Smart mode watches with native events and never collects on the event itself;
+// the event only marks activity, and the interval decides whether to scan.
+function collectorWatchUsePolling() {
   return normalizeCollectionMode(settings?.collectionMode) === 'live';
+}
+
+function collectorWatchTriggersCollection() {
+  return normalizeCollectionMode(settings?.collectionMode) === 'live';
+}
+
+function collectorIntervalRequiresActivity() {
+  return normalizeCollectionMode(settings?.collectionMode) === 'smart';
 }
 
 function syncUploadIntervalMs() {
@@ -394,6 +443,9 @@ function electronUsageConfig(errorPrefix) {
     intervalMs: collectorIntervalMs(),
     historyIntervalMs: normalizeHistoryIntervalMs(settings.historyIntervalMs),
     watchEnabled: collectorWatchEnabled(),
+    watchUsePolling: collectorWatchUsePolling(),
+    watchTriggersCollection: collectorWatchTriggersCollection(),
+    intervalRequiresActivity: collectorIntervalRequiresActivity(),
     watchDebounceMs: 1500,
     dailyHistoryArchiveWriteEnabled: () => !isExternalAgentActive(),
     onError: (error, reason) => console.log(`[${errorPrefix}] ${reason}: ${error.message}`),
@@ -424,6 +476,39 @@ function defaultLimitProviders() {
 
 function defaultLimitProviderOrder() {
   return parseLimitProviders().join(',');
+}
+
+function normalizeClaudeWebCookie(value) {
+  return normalizeClaudeWebCookieInput(value);
+}
+
+function currentClaudeWebCookie() {
+  return settings?.claudeWebCookie || claudeWebCookie(process.env);
+}
+
+function persistClaudeWebCookieRenewal({ previousCookie, cookie } = {}) {
+  if (!settings?.claudeWebCookie) return false;
+  let expected;
+  let renewed;
+  try {
+    expected = normalizeClaudeWebCookie(previousCookie);
+    renewed = normalizeClaudeWebCookie(cookie);
+  } catch (_) {
+    return false;
+  }
+  if (!renewed || normalizeClaudeWebCookie(settings.claudeWebCookie) !== expected) return false;
+  if (settings.claudeWebCookie === renewed) return true;
+  settings.claudeWebCookie = renewed;
+  saveSettings({ throwOnError: true });
+  return true;
+}
+
+function electronLimitsDeps() {
+  return {
+    claudeWebFetch: electronClaudeWebFetch,
+    resolveConfigSnapshot: () => electronLimitsConfig(),
+    onClaudeWebCookieRenewed: persistClaudeWebCookieRenewal
+  };
 }
 
 function normalizeDeepSeekApiKey(value) {
@@ -536,8 +621,28 @@ function normalizeCopilotEnterpriseHost(value) {
 let codexLoginController = null;
 let codexLoginFlowId = '';
 let codexLoginCanCancel = false;
+let codexWorkspaceSelection = null;
+let codexWorkspaceLabelHydrationPromise = null;
 let copilotLoginController = null;
 let copilotLoginFlowId = '';
+const CODEX_WORKSPACE_LABEL_HYDRATION_CONCURRENCY = 3;
+
+// Startup label hydration is a small one-shot map. LimitsRuntime's bounded
+// executor owns lane-aware provider refresh state, so it is not reusable here.
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+  const workerCount = Math.min(items.length, Math.max(1, Math.trunc(concurrency) || 1));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
 
 function normalizeCodexManagedAccounts(value) {
   if (!Array.isArray(value)) return [];
@@ -548,15 +653,30 @@ function normalizeCodexManagedAccounts(value) {
     const id = String(account.id || '').trim();
     const homePath = String(account.homePath || '').trim();
     if (!id || !homePath) continue;
+    const email = String(account.email || '').trim().toLowerCase();
+    const workspaceAccountId = normalizeWorkspaceId(
+      account.workspaceAccountId
+      || account.providerAccountId
+    );
+    const rawWorkspaceLabel = String(account.workspaceLabel || '').trim();
+    const workspaceKind = account.workspaceKind === 'personal' ? 'personal' : '';
     const accountKey = String(account.accountKey || '').trim();
-    const dedupe = accountKey || String(account.email || '').trim().toLowerCase() || id;
+    const dedupe = codexManagedAccountIdentityKey({
+      id,
+      accountKey,
+      email,
+      workspaceAccountId
+    });
     if (seen.has(dedupe)) continue;
     seen.add(dedupe);
     accounts.push({
       id,
-      email: String(account.email || '').trim().toLowerCase(),
+      email,
       accountKey,
       accountLabel: String(account.accountLabel || '').trim(),
+      workspaceAccountId,
+      workspaceLabel: workspaceKind ? '' : rawWorkspaceLabel,
+      workspaceKind,
       homePath,
       authPath: String(account.authPath || path.join(homePath, 'auth.json')).trim(),
       addedAt: account.addedAt || new Date().toISOString(),
@@ -567,10 +687,118 @@ function normalizeCodexManagedAccounts(value) {
   return accounts;
 }
 
+function hydrateCodexManagedAccounts(value) {
+  const storedAccounts = normalizeCodexManagedAccounts(value);
+  const hydratedAccounts = storedAccounts.map((account) => {
+    try {
+      const auth = JSON.parse(readRegularFileNoFollow(account.authPath, {
+        fs,
+        description: 'Managed Codex auth',
+        encoding: 'utf8'
+      }));
+      return upgradeCodexManagedAccountIdentity(account, codexAuthIdentity(auth));
+    } catch (_) {
+      return account;
+    }
+  });
+  const resolvedAccounts = preserveCodexManagedHydrationCollisions(storedAccounts, hydratedAccounts);
+  if (resolvedAccounts.some((account, index) => account !== hydratedAccounts[index])) {
+    console.warn('[codex] Managed account identity hydration found a collision; preserved stored identities.');
+  }
+  return resolvedAccounts;
+}
+
+function hydrateCodexManagedWorkspaceLabels() {
+  if (codexWorkspaceLabelHydrationPromise) return codexWorkspaceLabelHydrationPromise;
+  if (
+    settings?.limitsEnabled === false
+    || !parseLimitProviders(settings?.limitProviders).includes('codex')
+  ) return Promise.resolve(false);
+  const candidates = normalizeCodexManagedAccounts(settings?.codexManagedAccounts)
+    .filter((account) => (
+      account.enabled !== false
+      && account.workspaceAccountId
+      && !account.workspaceLabel
+      && !account.workspaceKind
+    ));
+  if (candidates.length === 0) return Promise.resolve(false);
+
+  const task = mapWithConcurrency(
+    candidates,
+    CODEX_WORKSPACE_LABEL_HYDRATION_CONCURRENCY,
+    async (account) => {
+      try {
+        const auth = JSON.parse(readRegularFileNoFollow(account.authPath, {
+          fs,
+          description: 'Managed Codex auth',
+          encoding: 'utf8'
+        }));
+        const workspaces = await listCodexWorkspaces(auth, { env: process.env });
+        const workspace = workspaces.find((entry) => entry.id === account.workspaceAccountId);
+        return workspace
+          ? {
+              id: account.id,
+              workspaceAccountId: account.workspaceAccountId,
+              label: workspace.label,
+              workspaceKind: workspace.workspaceKind
+            }
+          : null;
+      } catch (_) {
+        return null;
+      }
+    }
+  ).then((results) => {
+    const labels = new Map(
+      results.filter(Boolean).map((result) => [result.id, result])
+    );
+    if (labels.size === 0) return false;
+    let changed = false;
+    const accounts = normalizeCodexManagedAccounts(settings?.codexManagedAccounts).map((account) => {
+      const resolved = labels.get(account.id);
+      if (
+        !resolved
+        || account.workspaceLabel
+        || account.workspaceKind
+        || account.enabled === false
+        || account.workspaceAccountId !== resolved.workspaceAccountId
+      ) return account;
+      changed = true;
+      return {
+        ...account,
+        workspaceLabel: resolved.label,
+        workspaceKind: resolved.workspaceKind,
+        updatedAt: new Date().toISOString()
+      };
+    });
+    if (!changed) return false;
+    settings.codexManagedAccounts = accounts;
+    saveSettings();
+    pushSettingsToRenderer();
+    void queueLimitInvalidation({ provider: 'codex' }, 'workspace-label-hydrated');
+    return true;
+  });
+
+  codexWorkspaceLabelHydrationPromise = task.finally(() => {
+    codexWorkspaceLabelHydrationPromise = null;
+  });
+  return codexWorkspaceLabelHydrationPromise;
+}
+
 function codexAccountsForRenderer() {
   return normalizeCodexManagedAccounts(settings?.codexManagedAccounts).map(({
-    id, email, accountKey, accountLabel, addedAt, updatedAt, enabled
-  }) => ({ id, email, accountKey, accountLabel, addedAt, updatedAt, enabled }));
+    id, email, accountKey, accountLabel, workspaceAccountId, workspaceLabel, workspaceKind, addedAt, updatedAt, enabled
+  }) => ({
+    id,
+    email,
+    accountKey,
+    accountLabel,
+    workspaceAccountId,
+    workspaceLabel,
+    workspaceKind,
+    addedAt,
+    updatedAt,
+    enabled
+  }));
 }
 
 function codexManagedAccountsForCollector() {
@@ -739,18 +967,8 @@ function codexManagedHomePath(accountId) {
   return resolvedHome;
 }
 
-function codexEmailDerivedAccountKey(account, identity) {
-  const email = String(identity.email || account.email || '').trim().toLowerCase();
-  return Boolean(email && String(account.accountKey || '').trim() === hashAccountKey(email));
-}
-
 function findExistingCodexAccount(accounts, identity) {
-  return accounts.find((account) => {
-    if (identity.accountKey && account.accountKey && !codexEmailDerivedAccountKey(account, identity)) {
-      return account.accountKey === identity.accountKey;
-    }
-    return Boolean(identity.email && account.email === identity.email);
-  });
+  return accounts.find((account) => codexManagedAccountMatchesIdentity(account, identity));
 }
 
 function codexAccountId(identity, existing) {
@@ -780,6 +998,9 @@ function commitCodexManagedAccount(identity, homePath, existing, options = {}) {
     email: identity.email,
     accountKey: identity.accountKey || hashAccountKey(identity.email || id),
     accountLabel: identity.accountLabel,
+    workspaceAccountId: identity.workspaceAccountId || identity.providerAccountId || '',
+    workspaceLabel: String(identity.workspaceLabel || '').trim(),
+    workspaceKind: identity.workspaceKind === 'personal' ? 'personal' : '',
     homePath,
     authPath: path.join(homePath, 'auth.json'),
     addedAt: existing?.addedAt || now,
@@ -884,6 +1105,55 @@ async function rollbackCodexManagedHome(homePath, backupHomePath, movedToFinal) 
   if (backupHomePath) await fs.promises.rename(backupHomePath, homePath);
 }
 
+async function resolveCodexWorkspaceAfterLogin(auth, homePath, options = {}) {
+  const initialIdentity = codexAuthIdentity(auth);
+  let workspaces;
+  try {
+    workspaces = await listCodexWorkspaces(auth, {
+      env: process.env,
+      signal: options.signal
+    });
+  } catch (error) {
+    if (options.signal?.aborted) return { cancelled: true };
+    console.warn('Could not list Codex workspaces after sign-in:', error?.message || error);
+    return { auth, identity: initialIdentity };
+  }
+  if (options.signal?.aborted) return { cancelled: true };
+  if (workspaces.length === 0) return { auth, identity: initialIdentity };
+
+  const currentWorkspaceId = normalizeWorkspaceId(initialIdentity.workspaceAccountId);
+  let selected;
+  if (workspaces.length === 1) {
+    selected = workspaces[0];
+  } else if (typeof options.selectWorkspace === 'function') {
+    const selectedId = normalizeWorkspaceId(await options.selectWorkspace({
+      email: initialIdentity.email,
+      currentWorkspaceId,
+      workspaces
+    }));
+    if (!selectedId || options.signal?.aborted) return { cancelled: true };
+    selected = workspaces.find((workspace) => workspace.id === selectedId) || null;
+    if (!selected) throw new Error('The selected Codex workspace is no longer available.');
+  } else {
+    selected = workspaces.find((workspace) => workspace.id === currentWorkspaceId) || null;
+  }
+  if (!selected) return { auth, identity: initialIdentity };
+
+  const selectedAuth = authWithSelectedCodexWorkspace(auth, selected.id);
+  await writeCodexAuthFile(
+    path.join(homePath, 'auth.json'),
+    `${JSON.stringify(selectedAuth, null, 2)}\n`
+  );
+  return {
+    auth: selectedAuth,
+    identity: {
+      ...codexAuthIdentity(selectedAuth),
+      workspaceLabel: selected.label,
+      workspaceKind: selected.workspaceKind
+    }
+  };
+}
+
 // Best practice: each account gets its own OAuth grant via an isolated
 // `codex login` (CodexBar/tokscale model), so it never shares a refresh-token
 // lineage with the user's live Codex CLI login.
@@ -906,7 +1176,10 @@ async function addCodexManagedAccount(onOutput, options = {}) {
     } catch (_) {
       return { ok: false, error: 'Sign-in finished but no Codex credentials were written.' };
     }
-    const identity = codexAuthIdentity(auth);
+    const workspaceResult = await resolveCodexWorkspaceAfterLogin(auth, tempHome, options);
+    if (workspaceResult.cancelled) return cancelledCodexLoginResult();
+    auth = workspaceResult.auth;
+    const identity = workspaceResult.identity;
     if (!identity.accountKey && !identity.email) {
       return { ok: false, error: 'Could not identify the Codex account after sign-in.' };
     }
@@ -1236,7 +1509,17 @@ function floatingBubblePayload() {
 function ensureSettingsLoaded() {
   if (settings) return settings;
   settings = readSettings();
+  const persistedCodexAccounts = settings.codexManagedAccounts;
+  const hydratedCodexAccounts = hydrateCodexManagedAccounts(persistedCodexAccounts);
   persistedSettingsSnapshot = cloneSettingsSnapshot(settings);
+  if (JSON.stringify(hydratedCodexAccounts) !== JSON.stringify(persistedCodexAccounts)) {
+    settings.codexManagedAccounts = hydratedCodexAccounts;
+    if (!saveSettings()) {
+      // Keep the runtime identity coherent even if the migration cannot be
+      // persisted yet; the next ordinary settings save will retry it.
+      settings.codexManagedAccounts = hydratedCodexAccounts;
+    }
+  }
   rendererViewState = normalizeInitialRendererViewState(settings.lastViewState, rendererViewState);
   return settings;
 }
@@ -1680,6 +1963,8 @@ function readSettings() {
     delete merged.edgeDrawerEnabled;
     merged.floatingBubbleTrigger = merged.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
     merged.floatingBubbleContent = normalizeTrayContent(merged.floatingBubbleContent, 'icon');
+    merged.floatingBubbleCustomLayout = normalizeTrayLayout(merged.floatingBubbleCustomLayout);
+    merged.trayCustomLayout = normalizeTrayLayout(merged.trayCustomLayout);
     merged.showTrayProviderBadge = parseBoolean(merged.showTrayProviderBadge, false);
     merged.windowToggleShortcut = normalizeWindowToggleShortcut(merged.windowToggleShortcut);
     // 如果设置了 opencodeCookie 但没有 profiles，自动迁移
@@ -1972,7 +2257,9 @@ function limitInvalidationKey(scope) {
   return account ? `${provider}:${account}` : `${provider}:*`;
 }
 
-function rememberPendingLimitInvalidation(scope, reason, clear = false, refresh = true) {
+function rememberPendingLimitInvalidation(scope, reason, options = {}) {
+  const clear = options.clear === true;
+  const refresh = options.refresh !== false;
   const normalized = { ...scope, provider: String(scope?.provider || '').trim().toLowerCase() };
   const key = limitInvalidationKey(normalized);
   if (key.endsWith(':*')) {
@@ -1987,24 +2274,19 @@ function queueLimitInvalidation(scope, reason = 'credential-change', options = {
   const clear = options.clear === true;
   const refresh = options.refresh !== false;
   if (!deviceRuntimeHandle) {
-    rememberPendingLimitInvalidation(scope, reason, clear, refresh);
+    rememberPendingLimitInvalidation(scope, reason, { clear, refresh });
     return Promise.resolve({ queued: true });
   }
-  if (clear) deviceRuntimeHandle.clearLimits(scope, reason);
-  if (!refresh) return Promise.resolve({ cleared: true });
-  return Promise.resolve(deviceRuntimeHandle.refreshLimits(scope, reason));
+  return runLimitInvalidation(deviceRuntimeHandle, scope, reason, { clear, refresh });
 }
 
 function drainPendingLimitInvalidations(runtime) {
   const pending = [...pendingLimitInvalidations.values()];
   pendingLimitInvalidations.clear();
   for (const entry of pending) {
-    if (entry.clear) runtime.clearLimits(entry.scope, entry.reason);
-    if (entry.refresh) {
-      void Promise.resolve(runtime.refreshLimits(entry.scope, entry.reason)).catch((error) => {
-        console.log(`[limits-runtime] pending refresh failed: ${error.message}`);
-      });
-    }
+    void runLimitInvalidation(runtime, entry.scope, entry.reason, entry).catch((error) => {
+      console.log(`[limits-runtime] pending refresh failed: ${error.message}`);
+    });
   }
 }
 
@@ -2189,7 +2471,7 @@ function startSyncCollector() {
     sink,
     onError: (error, reason) => console.log(`[sync-collector] ${reason}: ${error.message}`)
   }, {
-    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
+    limitsDeps: electronLimitsDeps()
   });
   drainPendingRuntimeActions(deviceRuntimeHandle);
 }
@@ -2233,7 +2515,7 @@ function startHostCollector() {
     sink,
     onError: (error, reason) => console.log(`[host-collector] ${reason}: ${error.message}`)
   }, {
-    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
+    limitsDeps: electronLimitsDeps()
   });
   drainPendingRuntimeActions(deviceRuntimeHandle);
 }
@@ -2375,14 +2657,15 @@ function updateTrayDisplay() {
   // while the current stats still have quota text; otherwise it can outlive
   // the provider data that generated it.
   const trayImageMode = mode === 'limitsAllSessions' && Boolean(limitText) && providerTrayIcons[mode];
-  const text = trayImageMode ? '' : limitText;
-  if (process.platform === 'darwin') tray.setTitle(text);
+  const customImageMode = mode === 'custom' && providerTrayIcons.custom;
+  const text = trayImageMode || customImageMode ? '' : limitText;
+  if (trayShowsTitle(process.platform)) tray.setTitle(text);
   // Tooltip always shows a useful summary, even in icon-only mode where setTitle is blank.
   const tip = formatTrayText(latestStats, 'both', currency);
   tray.setToolTip(`Token Monitor - ${tip}`);
   // Icon: rendered bars image in bar modes, otherwise the app icon.
   let icon = null;
-  if (barsImageMode || trayImageMode) {
+  if (barsImageMode || trayImageMode || customImageMode) {
     icon = providerTrayIcons[mode];
   } else {
     const usageIconId = pickUsageTrayIconId(latestStats, mode, Object.keys(providerTrayIcons));
@@ -2427,7 +2710,7 @@ function startLocalCollector() {
     },
     onError: (error, reason) => sendStatus(false, { reason: `${reason}:${error.message}` })
   }, {
-    limitsDeps: { resolveConfigSnapshot: () => electronLimitsConfig() }
+    limitsDeps: electronLimitsDeps()
   });
   drainPendingRuntimeActions(deviceRuntimeHandle);
 }
@@ -2568,14 +2851,49 @@ function redactOpencodeProfilesForRenderer(profiles) {
 
 function redactOpenRouterProfilesForRenderer(profiles) {
   if (!profiles || typeof profiles !== 'object') return profiles;
-  const out = {};
+  const out = Object.create(null);
   for (const [name, profile] of Object.entries(profiles)) {
     out[name] = { enabled: profile?.enabled !== false, apiKey: profile?.apiKey ? 'set' : '' };
   }
   return out;
 }
 
+function redactThirdPartyProfilesForRenderer(profiles) {
+  if (!profiles || typeof profiles !== 'object') return profiles;
+  const out = Object.create(null);
+  for (const [name, profile] of Object.entries(profiles)) {
+    const adapter = thirdPartyLimits.normalizeAdapterId(profile?.adapter);
+    out[name] = {
+      enabled: profile?.enabled !== false,
+      adapter,
+      baseUrl: thirdPartyLimits.normalizeThirdPartyBaseUrl(profile?.baseUrl, {
+        stripTerminalV1: adapter !== thirdPartyLimits.CUSTOM_BALANCE_ADAPTER
+      }),
+      userId: String(profile?.userId || '').trim(),
+      ...(adapter === thirdPartyLimits.CUSTOM_BALANCE_ADAPTER
+        ? {
+            endpointPath: thirdPartyLimits.normalizeCustomEndpointPath(profile?.endpointPath),
+            authMode: thirdPartyLimits.normalizeCustomAuthMode(profile?.authMode),
+            remainingPath: thirdPartyLimits.normalizeCustomJsonPath(profile?.remainingPath),
+            usedPath: thirdPartyLimits.normalizeCustomJsonPath(profile?.usedPath),
+            totalPath: thirdPartyLimits.normalizeCustomJsonPath(profile?.totalPath),
+            currency: thirdPartyLimits.normalizeCustomCurrency(profile?.currency),
+            divisor: thirdPartyLimits.normalizeCustomDivisor(profile?.divisor)
+          }
+        : {}),
+      accessToken: profile?.accessToken ? 'set' : '',
+      apiKey: profile?.apiKey ? 'set' : ''
+    };
+  }
+  return out;
+}
+
 function settingsForRenderer() {
+  const claudeWebCookieSource = settings?.claudeWebCookie
+    ? 'settings'
+    : claudeWebCookie(process.env)
+      ? 'env'
+      : '';
   const deepseekApiKeySource = settings?.deepseekApiKey
     ? 'settings'
     : deepseekToken(process.env)
@@ -2639,6 +2957,7 @@ function settingsForRenderer() {
     zaiTeamOrganizationId: settings?.zaiTeamOrganizationId ? 'set' : '',
     zaiTeamProjectId: settings?.zaiTeamProjectId ? 'set' : '',
     volcengineAccessKeyId: settings?.volcengineAccessKeyId ? 'set' : '',
+    claudeWebCookie: settings?.claudeWebCookie ? 'set' : '',
     qoderCookie: settings?.qoderCookie ? 'set' : '',
     ollamaCookie: settings?.ollamaCookie ? 'set' : '',
     // Never ship OpenCode session cookies to the renderer; the UI only needs to
@@ -2650,9 +2969,15 @@ function settingsForRenderer() {
     ...(settings?.openrouterProfiles
       ? { openrouterProfiles: redactOpenRouterProfilesForRenderer(settings.openrouterProfiles) }
       : {}),
+    ...(settings?.thirdPartyProfiles
+      ? { thirdPartyProfiles: redactThirdPartyProfilesForRenderer(settings.thirdPartyProfiles) }
+      : {}),
     openrouterEnvConfigured: Boolean(openrouterLimits.openrouterToken(process.env)),
+    thirdPartyEnvConfigured: thirdPartyLimits.configuredAccounts({}, { env: process.env }).length > 0,
     codexManagedAccounts: codexAccountsForRenderer(),
     mimoManagedAccounts: mimoAccountsForRenderer(),
+    claudeWebCookieConfigured: Boolean(currentClaudeWebCookie()),
+    claudeWebCookieSource,
     deepseekApiKeyConfigured: Boolean(currentDeepSeekApiKey()),
     deepseekApiKeySource,
     minimaxApiKeyConfigured: Boolean(currentMinimaxApiKey()),
@@ -3466,7 +3791,9 @@ function installDownloadedAppUpdate() {
     latest
   })) return deriveAppUpdateState();
   quitRequested = true;
-  autoUpdater.quitAndInstall(false, true);
+  // isSilent: skip the NSIS installer UI on Windows so the update feels seamless
+  // (per-user install needs no elevation); isForceRunAfter relaunches the app.
+  autoUpdater.quitAndInstall(true, true);
   return deriveAppUpdateState();
 }
 
@@ -3481,6 +3808,7 @@ function isAllowedExternalUrl(value) {
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/junhoyeo/tokscale')) return true;
   if (parsed.hostname === 'www.npmjs.com' && parsed.pathname.startsWith('/package/@tokscale/')) return true;
   if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/Javis603/token-monitor')) return true;
+  if (parsed.hostname === 'claude.ai' && parsed.pathname.startsWith('/settings')) return true;
   if ((parsed.hostname === 'cursor.com' || parsed.hostname === 'www.cursor.com') && parsed.pathname.startsWith('/settings')) return true;
   if (parsed.hostname === 'opencode.ai' || parsed.hostname === 'www.opencode.ai') return true;
   if (parsed.hostname === 'openrouter.ai' && parsed.pathname.startsWith('/settings/keys')) return true;
@@ -3839,6 +4167,7 @@ app.whenReady().then(() => {
   if (settings.trayMode) enterTrayMode();
   regenerateTokscalePricing();
   startMode();
+  void hydrateCodexManagedWorkspaceLabels();
   if (settings.discordRpcEnabled) startDiscordRpc();
   rateCache = readRateCache();
   applyEffectiveRates();                 // use cache/defaults immediately, avoid first-paint gap
@@ -3868,6 +4197,7 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle('settings:update', (_event, patch) => {
+    if (patch?.claudeWebCookie !== undefined) claudeWebCookieMutationRevision += 1;
     const previousSettingsState = settings;
     const previousRuntimeSettings = JSON.parse(JSON.stringify(settings));
     const previousNativeMaterial = nativeBlurEnabled();
@@ -3877,6 +4207,8 @@ app.whenReady().then(() => {
     const previousShowTrayIcon = settings.showTrayIcon;
     const previousTrayMode = settings.trayMode;
     const previousTrayContent = settings.trayContent;
+    const previousTrayCustomLayout = JSON.stringify(settings.trayCustomLayout || {});
+    const previousFloatingBubbleCustomLayout = JSON.stringify(settings.floatingBubbleCustomLayout || {});
     const previousShowTrayProviderBadge = settings.showTrayProviderBadge;
     const previousCurrency = settings.currency;
     const previousStartAtLogin = settings.startAtLogin;
@@ -3887,8 +4219,10 @@ app.whenReady().then(() => {
     delete normalizedPatch.codexManagedAccounts;
     delete normalizedPatch.mimoManagedAccounts;
     delete normalizedPatch.openrouterProfiles;
+    delete normalizedPatch.thirdPartyProfiles;
     delete normalizedPatch.customModelPricing;
     if (patch.clients !== undefined) normalizedPatch.clients = clientsCsvForSetting(patch.clients, '');
+    if (patch.claudeWebCookie !== undefined) normalizedPatch.claudeWebCookie = normalizeClaudeWebCookie(patch.claudeWebCookie);
     if (patch.deepseekApiKey !== undefined) normalizedPatch.deepseekApiKey = normalizeDeepSeekApiKey(patch.deepseekApiKey);
     if (patch.minimaxApiKey !== undefined) normalizedPatch.minimaxApiKey = normalizeMinimaxApiKey(patch.minimaxApiKey);
     if (patch.copilotApiToken !== undefined) normalizedPatch.copilotApiToken = normalizeCopilotApiToken(patch.copilotApiToken);
@@ -3960,6 +4294,7 @@ app.whenReady().then(() => {
       limitsRefreshMs: normalizeLimitsRefreshMs(patch.limitsRefreshMs ?? settings.limitsRefreshMs),
       showLimitSource: parseBoolean(patch.showLimitSource ?? settings.showLimitSource, false),
       maskLimitAccountEmails: parseBoolean(patch.maskLimitAccountEmails ?? settings.maskLimitAccountEmails, false),
+      claudePrepaidBalanceEnabled: parseBoolean(patch.claudePrepaidBalanceEnabled ?? settings.claudePrepaidBalanceEnabled, true),
       showLimitUsed: parseBoolean(patch.showLimitUsed ?? settings.showLimitUsed, false),
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),
       ...normalizeTrayModeSettings({
@@ -3967,14 +4302,19 @@ app.whenReady().then(() => {
         trayMode: patch.trayMode ?? settings.trayMode
       }),
       trayContent: normalizeTrayContent(patch.trayContent ?? settings.trayContent),
+      trayCustomLayout: normalizeTrayLayout(patch.trayCustomLayout ?? settings.trayCustomLayout),
       showTrayProviderBadge: parseBoolean(patch.showTrayProviderBadge ?? settings.showTrayProviderBadge, false),
       floatingBubbleContent: normalizeTrayContent(patch.floatingBubbleContent ?? settings.floatingBubbleContent, 'icon'),
+      floatingBubbleCustomLayout: normalizeTrayLayout(patch.floatingBubbleCustomLayout ?? settings.floatingBubbleCustomLayout),
       windowToggleShortcut: normalizeWindowToggleShortcut(patch.windowToggleShortcut ?? settings.windowToggleShortcut),
       currency: normalizedCurrency,
       currencyRates: patch.currencyRates !== undefined ? normalizeCurrencyOverrides(patch.currencyRates) : normalizeCurrencyOverrides(settings.currencyRates),
       language: patch.language !== undefined ? normalizeLanguageSetting(patch.language, settings.language) : normalizeLanguageSetting(settings.language),
       startAtLogin: loginItemEnabledHere() ? parseBoolean(patch.startAtLogin ?? settings.startAtLogin, false) : false,
       automaticAppUpdates: parseBoolean(patch.automaticAppUpdates ?? settings.automaticAppUpdates, false),
+      claudeWebCookie: patch.claudeWebCookie !== undefined
+        ? normalizeClaudeWebCookie(patch.claudeWebCookie)
+        : (settings.claudeWebCookie || ''),
       deepseekApiKey: patch.deepseekApiKey !== undefined ? normalizeDeepSeekApiKey(patch.deepseekApiKey) : (settings.deepseekApiKey || ''),
       minimaxApiKey: patch.minimaxApiKey !== undefined ? normalizeMinimaxApiKey(patch.minimaxApiKey) : (settings.minimaxApiKey || ''),
       copilotApiToken: patch.copilotApiToken !== undefined ? normalizeCopilotApiToken(patch.copilotApiToken) : (settings.copilotApiToken || ''),
@@ -4034,22 +4374,23 @@ app.whenReady().then(() => {
       applyNativeMaterial();
     }
     const runtimeChange = classifySettingsChange(previousRuntimeSettings, settings);
+    const limitInvalidations = settingsLimitInvalidationPlan(runtimeChange);
     if (runtimeChange.modeStructural) {
-      for (const scope of runtimeChange.limitScopes) {
-        rememberPendingLimitInvalidation(scope, 'settings-change');
+      for (const { scope, reason, options } of limitInvalidations) {
+        rememberPendingLimitInvalidation(scope, reason, options);
       }
       startMode();
     } else if (runtimeChange.usageStructural || runtimeChange.sinkStructural) {
-      for (const scope of runtimeChange.limitScopes) {
-        rememberPendingLimitInvalidation(scope, 'settings-change');
+      for (const { scope, reason, options } of limitInvalidations) {
+        rememberPendingLimitInvalidation(scope, reason, options);
       }
       restartDeviceRuntimeForMode();
     } else {
       if (runtimeChange.limitsReconfigure && deviceRuntimeHandle) {
         deviceRuntimeHandle.reconfigureLimits(electronLimitsConfig());
       }
-      for (const scope of runtimeChange.limitScopes) {
-        void queueLimitInvalidation(scope, 'settings-change').catch((error) => {
+      for (const { scope, reason, options } of limitInvalidations) {
+        void queueLimitInvalidation(scope, reason, options).catch((error) => {
           console.log(`[limits-runtime] settings refresh failed: ${error.message}`);
         });
       }
@@ -4063,6 +4404,8 @@ app.whenReady().then(() => {
       else exitTrayMode();
     } else if (
       settings.trayContent !== previousTrayContent ||
+      JSON.stringify(settings.trayCustomLayout || {}) !== previousTrayCustomLayout ||
+      JSON.stringify(settings.floatingBubbleCustomLayout || {}) !== previousFloatingBubbleCustomLayout ||
       settings.showTrayProviderBadge !== previousShowTrayProviderBadge ||
       settings.currency !== previousCurrency
     ) {
@@ -4275,6 +4618,65 @@ app.whenReady().then(() => {
       return { ok: true, email: probeResult.user.email };
     } catch (err) {
       return { ok: false, error: err.message };
+    }
+  });
+  ipcMain.handle('claude:saveCookie', async (_event, raw) => {
+    const requestRevision = ++claudeWebCookieMutationRevision;
+    let cookie;
+    try {
+      cookie = normalizeClaudeWebCookie(raw);
+    } catch (error) {
+      return {
+        ok: false,
+        status: 'invalid',
+        errorCode: error?.code || 'INVALID_CLAUDE_WEB_SESSION_KEY'
+      };
+    }
+    if (!cookie) {
+      return {
+        ok: false,
+        status: 'notConfigured',
+        errorCode: 'INVALID_CLAUDE_WEB_SESSION_KEY'
+      };
+    }
+    try {
+      let cookieToPersist = cookie;
+      const provider = await fetchClaudeLimits(
+        { claudeWebCookie: cookie },
+        {
+          claudeWebFetch: electronClaudeWebFetch,
+          providerRuntimeState: new Map(),
+          onClaudeWebCookieRenewed: ({ cookie: renewedCookie }) => {
+            cookieToPersist = renewedCookie;
+          }
+        }
+      );
+      if (provider?.status !== 'ok') {
+        return {
+          ok: false,
+          status: provider?.status || 'error'
+        };
+      }
+      if (claudeWebCookieMutationRevision !== requestRevision) {
+        return {
+          ok: false,
+          status: 'superseded',
+          superseded: true
+        };
+      }
+      settings.claudeWebCookie = cookieToPersist;
+      saveSettings({ throwOnError: true });
+      void queueLimitInvalidation({ provider: 'claude' }, 'login', { clear: true });
+      return {
+        ok: true,
+        status: 'ok'
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        status: error?.status || 'error',
+        errorCode: error?.code || ''
+      };
     }
   });
   ipcMain.handle('ollama:validateCookie', async (_event, raw) => {
@@ -4581,6 +4983,145 @@ app.whenReady().then(() => {
     });
     return { ok: true };
   });
+  ipcMain.handle('thirdparty:getProfiles', async () => {
+    return {
+      profiles: redactThirdPartyProfilesForRenderer(settings.thirdPartyProfiles || {}),
+      hasEnvVar: thirdPartyLimits.configuredAccounts({}, { env: process.env }).length > 0
+    };
+  });
+  ipcMain.handle('thirdparty:saveProfile', async (_event, rawProfile = {}) => {
+    const name = thirdPartyLimits.thirdPartyProfileName(rawProfile.name);
+    const adapter = thirdPartyLimits.normalizeAdapterId(rawProfile.adapter);
+    const customAdapter = adapter === thirdPartyLimits.CUSTOM_BALANCE_ADAPTER;
+    const baseUrl = thirdPartyLimits.normalizeThirdPartyBaseUrl(rawProfile.baseUrl, {
+      stripTerminalV1: !customAdapter
+    });
+    if (!name) return { ok: false, errorCode: 'invalidName' };
+    if (!adapter) return { ok: false, errorCode: 'invalidAdapter' };
+    if (!baseUrl) return { ok: false, errorCode: 'invalidBaseUrl' };
+    if (
+      adapter === thirdPartyLimits.NEWAPI_ACCOUNT_ADAPTER
+      && !thirdPartyLimits.newapiAccessToken({}, rawProfile.accessToken)
+    ) return { ok: false, errorCode: 'missingAccessToken' };
+    if (
+      [thirdPartyLimits.NEWAPI_TOKEN_ADAPTER, thirdPartyLimits.CUSTOM_BALANCE_ADAPTER].includes(adapter)
+      && !thirdPartyLimits.newapiApiKey({}, rawProfile.apiKey)
+    ) return { ok: false, errorCode: 'missingApiKey' };
+    if (
+      customAdapter
+      && !thirdPartyLimits.normalizeCustomEndpointPath(rawProfile.endpointPath)
+    ) return { ok: false, errorCode: 'invalidEndpointPath' };
+    if (
+      customAdapter
+      && !thirdPartyLimits.normalizeCustomAuthMode(rawProfile.authMode)
+    ) return { ok: false, errorCode: 'invalidAuthMode' };
+    if (
+      customAdapter
+      && (
+        !thirdPartyLimits.normalizeCustomJsonPath(rawProfile.remainingPath)
+        || (
+          String(rawProfile.usedPath || '').trim()
+          && !thirdPartyLimits.normalizeCustomJsonPath(rawProfile.usedPath)
+        )
+        || (
+          String(rawProfile.totalPath || '').trim()
+          && !thirdPartyLimits.normalizeCustomJsonPath(rawProfile.totalPath)
+        )
+      )
+    ) return { ok: false, errorCode: 'invalidJsonPath' };
+    if (
+      customAdapter
+      && !thirdPartyLimits.normalizeCustomCurrency(rawProfile.currency)
+    ) return { ok: false, errorCode: 'invalidCurrency' };
+    if (
+      customAdapter
+      && thirdPartyLimits.normalizeCustomDivisor(rawProfile.divisor) === null
+    ) return { ok: false, errorCode: 'invalidDivisor' };
+    const profile = thirdPartyLimits.normalizeThirdPartyProfile({
+      ...rawProfile,
+      adapter,
+      baseUrl,
+      enabled: true
+    });
+    if (!profile) return { ok: false, errorCode: 'invalidCredential' };
+    try {
+      const provider = await thirdPartyLimits.fetchThirdPartyAccount({ name, ...profile }, {
+        env: process.env,
+        signal: AbortSignal.timeout(15_000)
+      });
+      if (provider?.status !== 'ok') {
+        return {
+          ok: false,
+          errorCode: provider?.status === 'unauthorized' ? 'invalidCredential' : 'unavailable'
+        };
+      }
+      settings.thirdPartyProfiles = {
+        ...(settings.thirdPartyProfiles || {}),
+        [name]: profile
+      };
+      saveSettings({ throwOnError: true });
+      void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-save');
+      return { ok: true };
+    } catch (_) {
+      return { ok: false, errorCode: 'unavailable' };
+    }
+  });
+  ipcMain.handle('thirdparty:deleteProfile', async (_event, rawName) => {
+    const name = String(rawName || '').trim();
+    const profiles = { ...(settings.thirdPartyProfiles || {}) };
+    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
+    delete profiles[name];
+    settings.thirdPartyProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist third-party API profile deletion' };
+    }
+    void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-delete', {
+      clear: true,
+      refresh: false
+    });
+    return { ok: true };
+  });
+  ipcMain.handle('thirdparty:renameProfile', async (_event, rawOldName, rawNewName) => {
+    const oldName = String(rawOldName || '').trim();
+    const newName = thirdPartyLimits.thirdPartyProfileName(rawNewName);
+    const profiles = { ...(settings.thirdPartyProfiles || {}) };
+    if (!newName || oldName === newName) return { ok: false, errorCode: 'invalidName' };
+    if (!profiles[oldName]) return { ok: false, error: 'Profile not found' };
+    if (profiles[newName]) return { ok: false, error: 'Profile name already exists' };
+    profiles[newName] = profiles[oldName];
+    delete profiles[oldName];
+    settings.thirdPartyProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist third-party API profile rename' };
+    }
+    void queueLimitInvalidation({ provider: 'thirdparty', accountName: oldName }, 'profile-rename', {
+      clear: true,
+      refresh: false
+    });
+    void queueLimitInvalidation({ provider: 'thirdparty', accountName: newName }, 'profile-rename');
+    return { ok: true };
+  });
+  ipcMain.handle('thirdparty:setProfileEnabled', async (_event, rawName, enabled) => {
+    const name = String(rawName || '').trim();
+    const profiles = { ...(settings.thirdPartyProfiles || {}) };
+    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
+    profiles[name] = { ...profiles[name], enabled: Boolean(enabled) };
+    settings.thirdPartyProfiles = profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist third-party API profile state' };
+    }
+    void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-state', {
+      clear: !enabled,
+      refresh: Boolean(enabled)
+    });
+    return { ok: true };
+  });
   ipcMain.handle('codex:accounts', () => codexAccountsForRenderer());
   ipcMain.handle('codex:setAccountEnabled', (_event, id, enabled) => setCodexManagedAccountEnabled(id, enabled));
   ipcMain.handle('codex:addAccount', async (event, request = {}) => {
@@ -4610,6 +5151,28 @@ app.whenReady().then(() => {
         });
       }, {
         signal: controller.signal,
+        selectWorkspace: ({ email, currentWorkspaceId, workspaces }) => new Promise((resolve) => {
+          const finish = (workspaceId) => {
+            if (codexWorkspaceSelection?.controller === controller) codexWorkspaceSelection = null;
+            controller.signal.removeEventListener('abort', onAbort);
+            resolve(workspaceId);
+          };
+          const onAbort = () => finish('');
+          codexWorkspaceSelection = {
+            controller,
+            flowId,
+            webContentsId: event.sender.id,
+            workspaceIds: new Set(workspaces.map((workspace) => workspace.id)),
+            finish
+          };
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+          sendStatus({
+            phase: 'workspaceSelection',
+            email,
+            currentWorkspaceId,
+            workspaces: workspaces.map(({ id, label, workspaceKind }) => ({ id, label, workspaceKind }))
+          });
+        }),
         onCommit: () => {
           if (codexLoginController === controller) codexLoginCanCancel = false;
         }
@@ -4620,11 +5183,24 @@ app.whenReady().then(() => {
       return { ...result, flowId };
     } finally {
       if (codexLoginController === controller) {
+        if (codexWorkspaceSelection?.controller === controller) codexWorkspaceSelection.finish('');
         codexLoginController = null;
         codexLoginFlowId = '';
         codexLoginCanCancel = false;
       }
     }
+  });
+  ipcMain.handle('codex:selectWorkspace', (event, request = {}) => {
+    const flowId = String(request?.flowId || '').trim();
+    const workspaceId = normalizeWorkspaceId(request?.workspaceId);
+    const pending = codexWorkspaceSelection;
+    if (!pending || pending.webContentsId !== event.sender.id) return { ok: false, stale: true };
+    if (flowId && pending.flowId && flowId !== pending.flowId) return { ok: false, stale: true };
+    if (!workspaceId || !pending.workspaceIds.has(workspaceId)) {
+      return { ok: false, error: 'Unknown Codex workspace.' };
+    }
+    pending.finish(workspaceId);
+    return { ok: true };
   });
   ipcMain.handle('codex:cancelLogin', (_event, request = {}) => {
     const flowId = String(request?.flowId || '').trim();

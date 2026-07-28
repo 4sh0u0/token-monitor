@@ -17,6 +17,7 @@ const {
   limitProviderCompactWindowPeriodLabel,
   limitProviderCompactWindows,
   limitProviderMainDeviceLabel,
+  namedApiProfileStatus,
   limitProviderProvenance,
   limitResetRemainingMs,
   limitProviderSettingsTags
@@ -151,6 +152,10 @@ function readRendererFile(name) {
   return fs.readFileSync(path.join(rendererDir, name), 'utf8');
 }
 
+function readSharedFile(name) {
+  return fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'shared', name), 'utf8');
+}
+
 function functionBody(source, name, nextName) {
   const start = source.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `${name} function should exist`);
@@ -192,7 +197,7 @@ test('Limits and Home share reset expiry while preserving the existing reset cop
 });
 
 test('capability tags explain how each provider is collected in settings', () => {
-  assert.deepEqual(limitProviderCapabilityTags('claude'), ['Auto', 'OAuth/CLI']);
+  assert.deepEqual(limitProviderCapabilityTags('claude'), ['Auto', 'OAuth/CLI', 'Web']);
   assert.deepEqual(limitProviderCapabilityTags('codex'), ['Auto', 'App/CLI RPC']);
   assert.deepEqual(limitProviderCapabilityTags('cursor'), ['Manual login', 'Web']);
   assert.deepEqual(limitProviderCapabilityTags('antigravity'), ['App/CLI must be open', 'RPC']);
@@ -248,6 +253,44 @@ test('API key account status distinguishes pending checks from completed failure
   assert.equal(apiKeyAccountStatus({ status: 'disabled' }, true), 'notChecked');
 });
 
+test('named API profile status prioritizes provider and profile disablement over pending checks', () => {
+  assert.equal(namedApiProfileStatus(null), 'checking');
+  assert.equal(namedApiProfileStatus(null, { providerEnabled: false }), 'hidden');
+  assert.equal(namedApiProfileStatus(null, { profileEnabled: false }), 'disabled');
+  assert.equal(namedApiProfileStatus({ status: 'ok' }), 'linked');
+  assert.equal(namedApiProfileStatus({ status: 'ok' }, { providerEnabled: false }), 'hidden');
+  assert.equal(namedApiProfileStatus({ status: 'ok' }, { profileEnabled: false }), 'disabled');
+  assert.equal(
+    namedApiProfileStatus({ status: 'ok' }, { providerEnabled: false, profileEnabled: false }),
+    'disabled'
+  );
+  assert.equal(namedApiProfileStatus({ status: 'unauthorized' }), 'invalid');
+});
+
+test('named API profile rows hide global disablement while the group preserves configured account count', () => {
+  const app = readRendererFile('app.js');
+  const updater = functionBody(app, 'updateNamedApiProfilesStatus', 'updateOpenRouterProfilesStatus');
+
+  assert.match(app, /if \(status === 'hidden'\) return '';/);
+  assert.match(updater, /const providerEnabled = limitProviderEnabled\(providerId\)/);
+  assert.match(updater, /statusText\(byName\.get\(name\), \{\s*providerEnabled,\s*profileEnabled: profile\?\.enabled !== false\s*\}\)/);
+  assert.match(updater, /statusText\(byName\.get\('environment'\), \{ providerEnabled \}\)/);
+  assert.match(updater, /!providerEnabled\s*\? t\(`settings\.\$\{providerId\}\.nAccounts`, \{ count: total \}\)/);
+  assert.match(updater, /: t\(`settings\.\$\{providerId\}\.connected`, \{ linked, total \}\)/);
+});
+
+test('named API profile toggles update immediately and roll back failed persistence', () => {
+  const app = readRendererFile('app.js');
+  const row = functionBody(app, 'appendNamedApiProfileRow', 'renderNamedApiProfiles');
+  const optimisticUpdate = row.indexOf('profile.enabled = toggle.checked;');
+  const save = row.indexOf('await api.setProfileEnabled(name, toggle.checked);');
+
+  assert.ok(optimisticUpdate >= 0 && optimisticUpdate < save);
+  assert.match(row, /profile\.enabled = toggle\.checked;\s*toggle\.disabled = true;\s*updateStatus\(\)/);
+  assert.match(row, /toggle\.checked = previousEnabled;\s*profile\.enabled = previousEnabled;\s*updateStatus\(\)/);
+  assert.match(row, /finally \{\s*toggle\.disabled = false;\s*renderSettingsSummaries\(\)/);
+});
+
 test('undetected settings tags include status and supported collection hints', () => {
   // Antigravity's "App/CLI must be open" capability restates the notConfigured
   // status ("Open app or CLI"), so it is dropped to avoid a duplicate tag.
@@ -275,6 +318,11 @@ test('undetected settings tags include status and supported collection hints', (
 });
 
 test('detected settings tags show only current source after status', () => {
+  assert.deepEqual(
+    limitProviderSettingsTags({ provider: 'claude', status: 'ok', source: 'web' })
+      .map((tag) => tag.label),
+    ['Linked', 'Web']
+  );
   assert.deepEqual(
     limitProviderSettingsTags({ provider: 'cursor', status: 'ok', source: 'web' })
       .map((tag) => tag.label),
@@ -439,12 +487,37 @@ test('Codex limits render as one provider group with account subrows', () => {
   const app = readRendererFile('app.js');
   const styles = readRendererFile('styles.css');
   const renderLimits = functionBody(app, 'renderLimits', 'serviceStatusLabel');
+  const renderGroup = functionBody(app, 'renderCodexAccountGroup', 'renderClaudeAccountGroup');
 
   assert.match(renderLimits, /providersByLimitProviderId\(state\.stats\?\.limits\?\.providers \|\| \[\]\)/);
   assert.match(renderLimits, /renderCodexAccountGroup\(/);
+  assert.match(renderGroup, /planText: t\('settings\.codex\.nAccounts', \{ count: providers\.length \}\)/);
   assert.doesNotMatch(renderLimits, /new Map\(\(state\.stats\?\.limits\?\.providers \|\| \[\]\)\.map\(\(provider\) => \[provider\.provider, provider\]\)\)/);
   assert.match(styles, /\.limit-account-list\s*\{/);
   assert.match(styles, /\.limit-account-row\s*\{/);
+});
+
+test('Claude limits render as one provider group with account subrows', () => {
+  const app = readRendererFile('app.js');
+  const renderLimits = functionBody(app, 'renderLimits', 'serviceStatusLabel');
+  const renderGroup = functionBody(app, 'renderClaudeAccountGroup', 'mimoSettingsAccountTitle');
+
+  assert.match(renderLimits, /renderClaudeAccountGroup\(/);
+  assert.match(renderGroup, /limitAccountTitle\('claude', provider, index, providers\)/);
+  assert.match(renderGroup, /planText: t\('settings\.claude\.nAccounts', \{ count: providers\.length \}\)/);
+  assert.match(renderGroup, /accountRow: true/);
+  assert.match(renderGroup, /showIcon: false/);
+});
+
+test('every multi-account Limits group uses its provider-localized account count', () => {
+  const app = readRendererFile('app.js');
+  for (const provider of ['claude', 'codex', 'mimo', 'opencode', 'openrouter', 'thirdparty']) {
+    assert.match(
+      app,
+      new RegExp(`settings\\.${provider}\\.nAccounts`)
+    );
+  }
+  assert.doesNotMatch(app, /settings\.limits\.nAccounts|accountCountText/);
 });
 
 test('tray primary-limit modes use the shared provider-aware resolver', () => {
@@ -456,8 +529,8 @@ test('tray primary-limit modes use the shared provider-aware resolver', () => {
 
   assert.match(pickConfigured, /pickConfiguredLimitProviders\(stats/);
   assert.match(pickSession, /pickLimitProviderByKindPriority\(stats, \['session', 'weekly'\]\)/);
-  assert.match(renderBars, /primaryWindow/);
-  assert.match(renderBars, /secondaryWindow/);
+  assert.match(renderBars, /selection\.primaryPercent/);
+  assert.match(renderBars, /selection\.secondaryPercent/);
   assert.doesNotMatch(renderBars, /\.find\(\(w\) => w\.kind/);
   assert.match(renderAllSessions, /trayBarsLayout\(height, \{ contentOnly: true \}\)/);
   assert.match(renderAllSessions, /function renderAllSessionsIcon\(stats, height = 44, configOrder, colors = \{\}, options = \{\}\)/);
@@ -476,8 +549,8 @@ test('limit percent tray mode renders provider icons into a generated tray image
   assert.match(renderLimitSessionsIcon, /trayBarsLayout\(height/);
   assert.match(renderLimitSessionsIcon, /layout\.iconSize/);
   assert.match(renderLimitSessionsIcon, /picks\.length === 1/);
-  assert.match(renderLimitSessionsIcon, /primaryWindow/);
-  assert.match(renderLimitSessionsIcon, /secondaryWindow/);
+  assert.match(renderLimitSessionsIcon, /picks\[0\]\.percent/);
+  assert.match(renderLimitSessionsIcon, /picks\[0\]\.secondaryPercent/);
   assert.match(renderLimitSessionsIcon, /trayProviderImages\[pick\.providerRecord\.provider\]/);
   assert.match(renderLimitSessionsIcon, /drawProviderImage\(ctx, entry\.image/);
   assert.match(drawProviderImage, /shadowColor/);
@@ -490,7 +563,10 @@ test('limit percent tray mode renders provider icons into a generated tray image
   assert.match(app, /function applyThemeColors\(overrides\)[\s\S]*renderFloatingBubbleContent\(\);/);
   assert.match(app, /function resolvedThemeColor\(key\)[\s\S]*appliedThemeOverrides\[key\]/);
   assert.match(renderLimitSessionsIcon, /`500 \$\{fontSize\}px/);
-  assert.match(renderLimitSessionsIcon, /formatPercent\(limitFillPercent/);
+  // The picker already resolved and mode-adjusted these, including for balance
+  // windows that carry no wire percentage of their own.
+  assert.match(renderLimitSessionsIcon, /formatPercent\(pick\.percent\)/);
+  assert.doesNotMatch(renderLimitSessionsIcon, /limitFillPercent/);
   assert.match(renderLimitSessionsIcon, /·/);
   assert.match(maybeUpdateBarsIcon, /TokenMonitorTrayText\.isGeneratedTrayIconMode\(mode\)/);
   assert.match(maybeUpdateBarsIcon, /trayDataUrlForMode\(mode, 44\)/);
@@ -523,6 +599,9 @@ test('provider tray badges are opt-in and keep monochrome assets visible', () =>
   assert.match(providerImage, /if \(!showBadge\) return canvas\.toDataURL\('image\/png'\)/);
   assert.match(providerImage, /shadowColor = 'rgba\(255, 255, 255, 0\.95\)'/);
   assert.match(providerImage, /shadowBlur = Math\.max/);
+  assert.match(app, /function drawCustomTrayProviderImage/);
+  assert.match(app, /showProviderBadge: state\.settings\?\.showTrayProviderBadge === true/);
+  assert.match(app, /globalCompositeOperation = 'destination-out'/);
 });
 
 test('Grok renders its single Monthly billing window full-width instead of an empty session/weekly pair', () => {
@@ -722,7 +801,7 @@ test('Home uses explicit billing labels so Copilot Premium and Chat stay distinc
   const homeLabel = functionBody(app, 'homeLimitWindowLabel', 'renderHomeLimitModule');
   const homeRows = functionBody(app, 'homeLimitRows', 'homeLimitWindowLabel');
   const homeModule = functionBody(app, 'renderHomeLimitModule', 'renderHomeModelModule');
-  const valueFormatter = functionBody(app, 'formatHomeLimitWindowValue', 'balanceRemainingWindow');
+  const valueFormatter = functionBody(app, 'formatHomeLimitWindowValue', 'mimoTokenPlanWindowFromBalance');
 
   assert.match(homeLabel, /if \(window\?\.kind === 'billing'\) \{/);
   assert.match(homeLabel, /limitProviderCompactWindowLabel\(providerId, window, visibleWindows\)/);
@@ -730,12 +809,16 @@ test('Home uses explicit billing labels so Copilot Premium and Chat stay distinc
   assert.match(homeLabel, /const label = String\(window\?\.label \|\| ''\)\.trim\(\);/);
   assert.match(homeLabel, /if \(label\) return label;/);
   assert.match(homeLabel, /billing: 'home\.limit\.billing'/);
-  assert.match(homeLabel, /if \(window\?\.kind === 'balance'\) return 'Balance';/);
+  // Balance windows arrive as real `billing` windows carrying their own label
+  // ('Balance' / 'Token quota'), so the label branch above already covers them
+  // and no synthesized 'balance' kind is left to special-case.
+  assert.doesNotMatch(homeLabel, /kind === 'balance'/);
   assert.match(homeModule, /const showUsed = Boolean\(state\.settings\?\.showLimitUsed\);/);
   assert.match(homeModule, /value\.textContent = window\.value \|\| formatHomeLimitWindowValue\(window, showUsed\);/);
   assert.match(homeModule, /limitProviderCompactWindowPeriodLabel\(row\.providerId, window, row\.windows\)/);
   assert.match(homeModule, /`\$\{periodLabel\} · \$\{resetLabel\}`/);
-  assert.match(valueFormatter, /`\$\{formatMoney\(window\.amount, window\.currency\)\} left`/);
+  assert.match(valueFormatter, /if \(window\?\.metric === 'credits'\) \{/);
+  assert.match(valueFormatter, /return formatCompactMoney\(window\.remaining, window\.currency\);/);
   assert.match(valueFormatter, /`\$\{formatPercent\(percent\)\} \$\{limitModeSuffix\(showUsed\)\}`/);
   assert.doesNotMatch(i18n, /home\.limit\.(balance|leftPercent|leftAmount)/);
 });
@@ -744,8 +827,11 @@ test('tray bars draw the resolved primary window on top and preserve an empty lo
   const app = readRendererFile('app.js');
   const renderBarsIcon = functionBody(app, 'renderBarsIcon', 'renderAllSessionsIcon');
 
-  assert.match(renderBarsIcon, /primaryWindow\?\.remainingPercent/);
-  assert.match(renderBarsIcon, /secondaryWindow\?\.remainingPercent/);
+  // Resolved percentages, not raw windows: a balance window carries no wire
+  // percentage and re-deriving from it draws a fabricated empty bar.
+  assert.match(renderBarsIcon, /drawBar\(layout\.barsStartY, selection\.primaryPercent\)/);
+  assert.match(renderBarsIcon, /selection\.secondaryPercent\)/);
+  assert.doesNotMatch(renderBarsIcon, /Window\?\.remainingPercent/);
   assert.equal((renderBarsIcon.match(/drawBar\(/g) || []).length, 3);
   assert.doesNotMatch(renderBarsIcon, /\.find\(\(w\) => w\.kind/);
 });
@@ -753,17 +839,29 @@ test('tray bars draw the resolved primary window on top and preserve an empty lo
 test('DeepSeek main Limits row preserves the intentional month-spend balance meter', () => {
   const app = readRendererFile('app.js');
   const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
-  const balanceWindow = functionBody(app, 'balanceRemainingWindow', 'mimoTokenPlanWindowFromBalance');
+  const balanceWindow = readSharedFile('limitBalanceDisplay.js');
   const styles = readRendererFile('styles.css');
 
-  assert.match(renderProviderWindows, /const balanceNode = limitWindowNode\('Balance', balanceRemainingWindow\(balance\), color, 0\.95,/);
+  assert.match(renderProviderWindows, /\{ remainingPercent: creditsMeterPercent\(provider, null\) \},/);
   assert.match(renderProviderWindows, /balanceNode\.classList\.add\('limit-window-wide', 'limit-window-no-reset'\);/);
   assert.match(renderProviderWindows, /const spendNode = limitWindowNode\('Spend', \{ showMeter: false \}, color, 0\.6,/);
   assert.doesNotMatch(renderProviderWindows, /Month \(since tracking\)/);
   assert.doesNotMatch(renderProviderWindows, /monthSinceTracking \? 'Month \(since tracking\)' : 'Month'/);
-  assert.match(balanceWindow, /remainingPercent/);
-  assert.match(balanceWindow, /amount \+ spend/);
+  // The month-spend denominator now lives in the shared balance module.
+  assert.match(balanceWindow, /funds \+ spend/);
+  assert.match(balanceWindow, /provider\?\.balance\?\.monthSpend/);
+  assert.doesNotMatch(renderProviderWindows, /formatMoney\(balance\.amount, currency\)\} left/);
   assert.match(styles, /\.limit-window-no-reset \.limit-reset\s*\{/);
+});
+
+test('Balance and token quota values omit the redundant left suffix', () => {
+  const app = readRendererFile('app.js');
+  const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
+
+  assert.match(renderProviderWindows, /'Balance',\s*\{ \.\.\.balanceWindow, label: 'Balance' \},\s*color,\s*0\.95,\s*formatMoney\(balanceAmount, currency\)/);
+  assert.match(renderProviderWindows, /\{ \.\.\.\(quotaWindow \|\| \{ showMeter: false \}\), label: balanceLabel \},\s*color,\s*0\.95,\s*balanceValue/);
+  assert.doesNotMatch(renderProviderWindows, /`\$\{formatMoney\(balanceAmount, currency\)\} left`/);
+  assert.doesNotMatch(renderProviderWindows, /`\$\{balanceValue\} left`/);
 });
 
 test('MiMo main Limits row falls back to balance plan fields for Token Plan', () => {
@@ -848,7 +946,7 @@ test('settings provider status waits for stats and refreshes when stats arrive',
     assert.match(statsPush, new RegExp(`${fn}\\(\\);`), `${fn} missing from onStatsPush`);
     assert.match(syncSettings, new RegExp(`${fn}\\(\\);`), `${fn} missing from syncSettingsForm`);
   }
-  for (const provider of ['zai', 'volcengine', 'qoder', 'kimi', 'ollama']) {
+  for (const provider of ['claude', 'zai', 'volcengine', 'qoder', 'kimi', 'ollama']) {
     assert.match(refreshStats, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from refreshStats`);
     assert.match(statsPush, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from onStatsPush`);
     assert.match(syncSettings, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from syncSettingsForm`);
@@ -971,12 +1069,13 @@ test('Copilot env token is documented in env example, not the README overview', 
   assert.doesNotMatch(readmeTw, /COPILOT_API_TOKEN|GITHUB_COPILOT_TOKEN/);
 });
 
-test('Accounts summary counts all managed account groups including OpenRouter, MiMo, and Ollama', () => {
+test('Accounts summary counts all managed account groups including Claude Web and Third-party API', () => {
   const app = readRendererFile('app.js');
   const mimoLinkedBody = functionBody(app, 'mimoAccountLinked', 'renderMimoStatus');
   const summaryBody = functionBody(app, 'settingsSectionSummary', 'renderSettingsSummaries');
 
   assert.match(mimoLinkedBody, /return \(state\.settings\?\.mimoManagedAccounts \|\| \[\]\)\.length > 0;/);
+  assert.match(summaryBody, /const claudeLinked = externalProviderAccountLinked\('claude'\);/);
   assert.match(summaryBody, /const minimaxLinked = minimaxAccountLinked\(\);/);
   assert.match(summaryBody, /const zaiLinked = externalProviderAccountLinked\('zai'\);/);
   assert.match(summaryBody, /const zaiteamLinked = externalProviderAccountLinked\('zaiteam'\);/);
@@ -985,9 +1084,11 @@ test('Accounts summary counts all managed account groups including OpenRouter, M
   assert.match(summaryBody, /const kimiLinked = externalProviderAccountLinked\('kimi'\);/);
   assert.match(summaryBody, /const ollamaLinked = externalProviderAccountLinked\('ollama'\);/);
   assert.match(summaryBody, /const openrouterCount = state\.openrouterProfileCount \|\| 0;/);
+  assert.match(summaryBody, /const thirdpartyCount = state\.thirdPartyProfileCount \|\| 0;/);
   assert.match(summaryBody, /const mimoLinked = mimoAccountLinked\(\);/);
   assert.match(summaryBody, /const copilotLinked = copilotAccountLinked\(\);/);
   assert.match(summaryBody, /\(minimaxLinked \? 1 : 0\)/);
+  assert.match(summaryBody, /\(claudeLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(zaiLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(zaiteamLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(volcengineLinked \? 1 : 0\)/);
@@ -995,9 +1096,10 @@ test('Accounts summary counts all managed account groups including OpenRouter, M
   assert.match(summaryBody, /\(kimiLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(ollamaLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(openrouterCount > 0 \? 1 : 0\)/);
+  assert.match(summaryBody, /\(thirdpartyCount > 0 \? 1 : 0\)/);
   assert.match(summaryBody, /\(mimoLinked \? 1 : 0\)/);
   assert.match(summaryBody, /\(copilotLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /total: 14/);
+  assert.match(summaryBody, /total: 16/);
 });
 
 test('account validation does not use a remote aggregate when the local device lacks the provider', () => {
@@ -1112,6 +1214,19 @@ test('OpenRouter uses API-key setup copy and pay-as-you-go capability tags', () 
   assert.deepEqual(
     presentation.limitProviderStatusLabel({ provider: 'openrouter', status: 'unauthorized' }),
     { label: 'Update API key', tone: 'setup' }
+  );
+});
+
+test('third-party API uses credential setup copy and relay capability tags', () => {
+  assert.equal(presentation.limitProviderSourceLabel({ provider: 'thirdparty', source: 'api' }), 'API');
+  assert.deepEqual(presentation.limitProviderCapabilityTags('thirdparty'), ['Relay', 'API']);
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'thirdparty', status: 'notConfigured' }),
+    { label: 'Add credential', tone: 'setup' }
+  );
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'thirdparty', status: 'unauthorized' }),
+    { label: 'Update credential', tone: 'setup' }
   );
 });
 

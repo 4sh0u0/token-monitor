@@ -429,6 +429,22 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
 }
 .settings-panel label, .settings-field { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 11px; }
 .settings-field-label { min-width: 0; }
+/* Keep checkbox labels semantic for assistive technology, but make the visual
+   switch itself the only pointer hit target. Row whitespace and copy should not
+   toggle settings accidentally in the compact desktop panel. */
+.settings-panel .checkbox-label,
+.settings-panel label.client-checkbox {
+  pointer-events: none;
+}
+.settings-panel .checkbox-label > input[type="checkbox"],
+.settings-panel label.client-checkbox > input[type="checkbox"] {
+  pointer-events: auto;
+}
+/* The AI Tool Limits provider matrix is intentionally row-clickable: its
+   compact provider rows are easier to scan and select as a whole. */
+.settings-panel .limit-provider-list label.client-checkbox {
+  pointer-events: auto;
+}
 .settings-panel .checkbox-label {
   display: flex;
   align-items: center;
@@ -769,23 +785,18 @@ span.settings-note.settings-item-desc {
 }
 
 /* Convert Grid Gaps to animatable margins for accordion containers */
-.settings-group, .settings-subgroup, .presence-feature, .tool-preference-list, .home-settings-list, .home-limit-provider-list, .cursor-settings-details-inner, .hub-mode-fields > .accordion-animation-inner {
+.settings-group, .settings-subgroup, .presence-feature, .tool-preference-list, .settings-nested-list, .cursor-settings-details-inner, .hub-mode-fields > .accordion-animation-inner {
   gap: 0 !important;
 }
 .settings-group > * + *,
 .settings-subgroup > * + *,
 .presence-feature > * + *,
-.home-settings-list > * + *,
-.home-limit-provider-list > * + *,
 .cursor-settings-details-inner > * + *,
 .hub-mode-fields > .accordion-animation-inner > * + * {
   margin-top: 8px;
 }
-.tool-preference-list > * + * {
-  margin-top: 6px;
-}
-.home-settings-list > * + *,
-.home-limit-provider-list > * + * {
+.tool-preference-list > * + *,
+.settings-nested-list > * + * {
   margin-top: 6px;
 }
 .accordion-animation-inner {
@@ -968,6 +979,27 @@ span.settings-note.settings-item-desc {
   gap: 6px;
 }
 .managed-account-list:empty { display: none; }
+.codex-workspace-selection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+.codex-workspace-selection.hidden { display: none; }
+.codex-workspace-selection label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+.codex-workspace-selection button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
 .managed-account-row {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) auto;
@@ -1012,7 +1044,7 @@ span.settings-note.settings-item-desc {
   min-width: 0;
 }
 .managed-account-info {
-  max-width: 72px;
+  max-width: 112px;
   overflow: hidden;
   color: var(--muted);
   font-size: 9px;
@@ -1354,6 +1386,7 @@ span.settings-note.settings-item-desc {
   flex: 0 0 auto;
   width: auto;
   margin: 0;
+  cursor: pointer;
   accent-color: var(--accent);
 }
 .settings-panel .client-checkboxes label.client-checkbox > span {
@@ -1623,6 +1656,29 @@ span.settings-note.settings-item-desc {
 }
 .settings-panel .limit-provider-row label.client-checkbox {
   min-width: 0;
+}
+/* The disclosure and the drag handle share one cell, so a provider without
+   options keeps its handle in line with every other row. */
+.limit-provider-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* Provider options hang under their own row, spanning the full width beneath
+   both the label and the actions. The row's spacing is a column gap only: a row
+   gap cannot animate away, so a collapsed panel would still push the row taller.
+   Vertical space comes from the container's own margin, which the accordion
+   already zeroes while hidden. */
+.settings-panel .limit-provider-row {
+  column-gap: 8px;
+  row-gap: 0;
+}
+.settings-panel .limit-provider-row > .accordion-animated-container {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+.settings-panel .limit-provider-settings-list {
+  margin-left: 22px;
 }
 .settings-panel .limit-provider-toggle {
   align-items: flex-start;
@@ -2702,6 +2758,7 @@ html.is-windows .settings-panel select option {
 .row-icon-volcengine     { -webkit-mask-image: url(../../../assets/icons/volcengine.svg);        mask-image: url(../../../assets/icons/volcengine.svg); }
 .row-icon-qoder      { -webkit-mask-image: url(../../../assets/icons/qoder.svg);         mask-image: url(../../../assets/icons/qoder.svg); }
 .row-icon-ollama     { -webkit-mask-image: url(../../../assets/icons/ollama.svg);        mask-image: url(../../../assets/icons/ollama.svg); }
+.row-icon-thirdparty { -webkit-mask-image: url(../../../assets/icons/newapi.svg);         mask-image: url(../../../assets/icons/newapi.svg); }
 .row-icon-os-apple   { -webkit-mask-image: url(../../../assets/icons/os-apple.svg);      mask-image: url(../../../assets/icons/os-apple.svg); }
 .row-icon-os-linux   { -webkit-mask-image: url(../../../assets/icons/os-linux.svg);      mask-image: url(../../../assets/icons/os-linux.svg); }
 .row-icon-os-windows { -webkit-mask-image: url(../../../assets/icons/os-windows.svg);    mask-image: url(../../../assets/icons/os-windows.svg); }
@@ -2790,6 +2847,10 @@ html.is-windows .settings-panel select option {
 .limit-icon-mimo {
   -webkit-mask-image: url(../../../assets/icons/xiaomi.svg);
   mask-image: url(../../../assets/icons/xiaomi.svg);
+}
+.limit-icon-thirdparty {
+  -webkit-mask-image: url(../../../assets/icons/newapi.svg);
+  mask-image: url(../../../assets/icons/newapi.svg);
 }
 .row-label {
   display: grid;
@@ -3097,9 +3158,11 @@ html.is-windows .settings-panel select option {
 .limit-row-group {
   gap: 8px;
 }
+/* Spacing lives on the rows, not here, so each account can carry its own
+   separator rule in the gap it opens above itself. */
 .limit-account-list {
   display: grid;
-  gap: 10px;
+  gap: 0;
 }
 .limit-live-badge {
   flex: 0 0 auto;
@@ -3247,12 +3310,47 @@ html.is-windows .limit-live-badge {
   padding: 0;
   border-bottom: 0;
 }
+/* Accounts sit one tier below providers, so they get their own separator that
+   reads as weaker than the provider rule: half its alpha, and feathered at both
+   ends instead of hard full-bleed. The feathering is what actually carries the
+   tier — halved alpha on a 1px line is barely perceptible on the dark gradient,
+   whereas "no hard edge" is unmistakable next to the provider rule. 0.06 is
+   this stylesheet's floor for a hairline that survives the light theme, so the
+   weight can't go lower. Twice the within-account gap (.limit-row) carries the
+   grouping on its own; the rule just pins it. `+` keeps it strictly between
+   accounts. */
+.limit-account-row + .limit-account-row {
+  position: relative;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.limit-account-row + .limit-account-row::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  /* Percentage stops, not px: the window is resizable, and a fixed feather
+     collapses into a near-hard edge once the panel is wide. Fade stops use
+     rgba(…, 0) rather than `transparent` so only alpha ramps — `transparent`
+     is rgba(0, 0, 0, 0) and would drag the hue toward black. */
+  background: linear-gradient(
+    to right,
+    rgba(var(--line-rgb), 0) 0,
+    rgba(var(--line-rgb), 0.075) 22%,
+    rgba(var(--line-rgb), 0.075) 78%,
+    rgba(var(--line-rgb), 0) 100%
+  );
+  content: '';
+}
 .limit-account-row .limit-head {
   gap: 10px;
 }
+/* The account title heads its own block, so it must not be dimmer than the
+   numbers underneath it — the meta line below stays muted to rank under it. */
 .limit-account-row .limit-name {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text);
 }
 .limit-account-row .limit-windows {
   gap: 8px;
@@ -3874,6 +3972,7 @@ html.is-windows .limit-live-badge {
   .service-status-panel { display: none; }
 }
 
+#claudeManualPanel.hidden,
 #cursorManualPanel.hidden,
 #opencodeManualPanel.hidden,
 #deepseekManualPanel.hidden,
@@ -3889,6 +3988,13 @@ html.is-windows .limit-live-badge {
 #copilotManualDetails.hidden,
 #cursorErrorMessage.hidden,
 #opencodeErrorMessage.hidden,
+#openrouterErrorMessage.hidden,
+#thirdpartyErrorMessage.hidden,
+#thirdpartyAccessTokenRow.hidden,
+#thirdpartyUserIdRow.hidden,
+#thirdpartyApiKeyRow.hidden,
+#thirdpartyModeField.hidden,
+#thirdpartyCustomConfig.hidden,
 #deepseekErrorMessage.hidden,
 #minimaxErrorMessage.hidden,
 #zaiErrorMessage.hidden,
@@ -3899,6 +4005,7 @@ html.is-windows .limit-live-badge {
 #kimiErrorMessage.hidden,
 #copilotErrorMessage.hidden,
 #copilotLoginStatus.hidden { display: none; }
+#claudeManualPanel,
 #cursorManualPanel,
 #opencodeManualPanel,
 #deepseekManualPanel,
@@ -3913,6 +4020,7 @@ html.is-windows .limit-live-badge {
 #copilotManualPanel {
   min-width: 0;
 }
+#claudeManualPanel > .accordion-animation-inner,
 #cursorManualPanel > .accordion-animation-inner,
 #opencodeManualPanel > .accordion-animation-inner,
 #deepseekManualPanel > .accordion-animation-inner,
@@ -3928,9 +4036,23 @@ html.is-windows .limit-live-badge {
   min-width: 0;
   gap: 8px;
 }
+#claudeManualPanel textarea,
 #cursorManualPanel textarea,
 #opencodeManualPanel textarea,
 #openrouterApiKeyInput,
+#thirdpartyPlatformInput,
+#thirdpartyModeInput,
+#thirdpartyAuthModeInput,
+#thirdpartyBaseUrlInput,
+#thirdpartyAccessTokenInput,
+#thirdpartyUserIdInput,
+#thirdpartyApiKeyInput,
+#thirdpartyEndpointPathInput,
+#thirdpartyRemainingPathInput,
+#thirdpartyUsedPathInput,
+#thirdpartyTotalPathInput,
+#thirdpartyCurrencyInput,
+#thirdpartyDivisorInput,
 #deepseekManualPanel input,
 #minimaxManualPanel input,
 #zaiManualPanel input,
@@ -3947,9 +4069,20 @@ html.is-windows .limit-live-badge {
   width: 100%;
   font-size: 12px;
 }
+#claudeManualPanel textarea,
 #cursorManualPanel textarea,
 #opencodeManualPanel textarea,
 #openrouterApiKeyInput,
+#thirdpartyBaseUrlInput,
+#thirdpartyAccessTokenInput,
+#thirdpartyUserIdInput,
+#thirdpartyApiKeyInput,
+#thirdpartyEndpointPathInput,
+#thirdpartyRemainingPathInput,
+#thirdpartyUsedPathInput,
+#thirdpartyTotalPathInput,
+#thirdpartyCurrencyInput,
+#thirdpartyDivisorInput,
 #deepseekManualPanel input,
 #minimaxManualPanel input,
 #zaiManualPanel input,
@@ -4041,26 +4174,33 @@ html.is-windows .limit-live-badge {
   outline: 2px solid rgba(var(--accent-rgb), 0.35);
   outline-offset: 1px;
 }
-.status-provider-list {
-  display: grid;
-  gap: 6px;
-  margin: 2px 0 6px 14px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(var(--line-rgb), 0.14);
-}
-.trend-settings-list {
-  display: grid;
-  gap: 6px;
-  margin: 2px 0 6px 14px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(var(--line-rgb), 0.14);
-}
-.home-settings-list {
+/* Every list nested under a view row (Home modules, Home limit providers,
+   Trends, Status) shares one rhythm: 24 px rows sitting flush, matching the
+   density of the view list they hang off. Rows carry their own padding, so the
+   container must not add a gap on top of it. */
+.settings-nested-list {
   display: grid;
   min-width: 0;
   margin: 2px 0 6px 14px;
-  padding-left: 8px;
+  padding: 0 0 0 8px;
   border-left: 1px solid rgba(var(--line-rgb), 0.14);
+}
+.settings-panel .settings-nested-list > .checkbox-label,
+.settings-panel .settings-nested-list > .settings-item,
+.settings-panel .settings-nested-list > .status-provider-interval,
+.settings-panel .settings-nested-list > .status-provider-row {
+  min-height: 24px;
+  margin-top: 0;
+}
+/* .settings-item ships a roomier 5 px padding for top-level rows; nested rows
+   trade it for the compact rhythm. */
+.settings-panel .settings-nested-list > .settings-item {
+  padding: 2px 0;
+}
+/* The interval pill is as tall as the base row, so at 24 px it would touch the
+   control above it. Give it the same ~2 px of air the switches and inputs get. */
+.settings-panel .settings-nested-list > .status-provider-interval {
+  min-height: 28px;
 }
 .home-settings-note {
   margin: 0;
@@ -4081,12 +4221,11 @@ html.is-windows .limit-live-badge {
 .home-module-preference-row:has(.view-subgroup-toggle) {
   grid-template-columns: minmax(0, 1fr) repeat(3, 22px);
 }
-.home-limit-provider-list {
-  display: grid;
-  min-width: 0;
-  margin: 2px 0 4px 14px;
-  padding: 0 0 0 8px;
-  border-left: 1px solid rgba(var(--line-rgb), 0.14);
+.settings-panel .home-limit-account-count-setting > input[type="number"] {
+  height: 20px;
+  min-height: 20px;
+  padding: 2px 8px;
+  line-height: 15px;
 }
 .home-activity-settings {
   display: flex;
@@ -4097,13 +4236,10 @@ html.is-windows .limit-live-badge {
   margin: 2px 0 4px 14px;
   padding: 2px 0 2px 8px;
   border-left: 1px solid rgba(var(--line-rgb), 0.14);
-  color: var(--muted);
+  color: var(--text);
   font-size: 11px;
 }
 .home-limit-provider-header { margin-bottom: 1px; }
-.home-limit-status-setting {
-  min-height: 24px;
-}
 .home-limit-provider-names-copy {
   display: grid;
   gap: 2px;
@@ -4116,9 +4252,6 @@ html.is-windows .limit-live-badge {
 }
 .home-limit-provider-row {
   grid-template-columns: minmax(0, 1fr) repeat(2, 22px);
-}
-.trend-settings-row {
-  padding: 2px 0;
 }
 .status-provider-header { margin-bottom: 2px; }
 .status-provider-row {
@@ -4133,16 +4266,21 @@ html.is-windows .limit-live-badge {
   color: var(--muted);
   font-size: 11px;
 }
-.status-provider-interval {
+.settings-panel .status-provider-interval {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 4px;
-  color: var(--muted);
+  min-width: 0;
+  color: var(--text);
   font-size: 11px;
 }
-.status-provider-interval select { font-size: 11px; }
+.settings-panel .status-provider-interval select {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 58%;
+  font-size: 11px;
+}
 .status-provider-interval.hidden { display: none; }
 
 .trends-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding-right: 2px; overflow: hidden; }
@@ -4409,12 +4547,17 @@ html.is-windows .limit-live-badge {
   padding: 0;
 }
 .opencode-profile-item .profile-name-box {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr);
+  grid-template-areas:
+    "name rename ."
+    "detail detail detail";
   align-items: center;
-  gap: 4px;
+  gap: 1px 4px;
   min-width: 0;
 }
 .opencode-profile-item .profile-name {
+  grid-area: name;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4423,11 +4566,22 @@ html.is-windows .limit-live-badge {
   font-size: 11px;
   line-height: 1.2;
 }
+.opencode-profile-item .profile-detail {
+  grid-area: detail;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.2;
+}
 .opencode-profile-item .profile-name.hidden,
 .opencode-profile-item .profile-name-input.hidden {
   display: none;
 }
 .opencode-profile-item .profile-name-input {
+  grid-area: name;
   min-width: 60px;
   font-size: 11px;
   line-height: 1.2;
@@ -4439,6 +4593,7 @@ html.is-windows .limit-live-badge {
   outline: none;
 }
 .opencode-profile-item .profile-rename-btn {
+  grid-area: rename;
   flex: 0 0 auto;
   background: none;
   border: none;
@@ -4452,6 +4607,10 @@ html.is-windows .limit-live-badge {
 }
 .opencode-profile-item:hover .profile-rename-btn {
   opacity: 0.6;
+}
+.opencode-profile-item .profile-rename-btn:focus-visible,
+.opencode-profile-item .profile-delete:focus-visible {
+  opacity: 1;
 }
 .opencode-profile-item .profile-rename-btn:hover {
   opacity: 1;
@@ -4565,4 +4724,724 @@ html.is-windows .limit-live-badge {
   box-sizing: border-box;
   font-family: monospace;
   font-size: 12px;
+}
+
+.thirdparty-add-body {
+  gap: 9px;
+}
+.thirdparty-add-body .thirdparty-intro {
+  line-height: 1.45;
+}
+.thirdparty-choice-grid,
+.thirdparty-credential-grid,
+.thirdparty-custom-request-grid,
+.thirdparty-custom-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+.thirdparty-choice-grid.single-field,
+.thirdparty-credential-grid.single-field {
+  grid-template-columns: minmax(0, 1fr);
+}
+.thirdparty-field {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.thirdparty-field label {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
+.thirdparty-field :is(input, select) {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  box-sizing: border-box;
+  font-size: 11px;
+}
+.thirdparty-mode-hint {
+  min-height: 30px;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
+  border-radius: 5px;
+  background: rgba(var(--accent-rgb), 0.055);
+  line-height: 1.4;
+}
+#thirdpartyApiKeyRow {
+  grid-column: 1 / -1;
+}
+.thirdparty-custom-config {
+  display: grid;
+  gap: 8px;
+}
+.thirdparty-custom-mapping {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(var(--overlay-rgb), 0.025);
+}
+.thirdparty-custom-mapping-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text);
+  font-size: 10px;
+}
+.thirdparty-custom-mapping-heading span:last-child {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Custom tray/bubble composer ------------------------------------------------
+   The preview is deliberately a menu-bar-like recessed strip. Its children
+   are real canvas renders from the same path used by Electron's tray icon. */
+.tray-composer {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 0 4px;
+}
+.tray-composer.hidden { display: none; }
+.tray-composer-heading {
+  display: flex;
+  /* Holds either a drag hint or a Customize button depending on the mode; a
+     fixed height keeps the block from jumping when the surface switches. */
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 22px;
+  color: var(--text);
+  font-size: 11px;
+}
+.tray-composer-heading > span:last-child {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-composer-strip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 3px 5px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.035), transparent 55%),
+    rgba(var(--sunken-rgb), 0.72);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.24);
+}
+.tray-composer-items {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.5px;
+  min-width: 0;
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+.tray-composer-items::-webkit-scrollbar { display: none; }
+.tray-composer-empty {
+  flex: 1 1 auto;
+  padding-inline: 4px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-composer-item,
+.tray-composer-add,
+.tray-composer-customize,
+.tray-composer-close,
+.tray-composer-picker,
+.tray-composer-picker-option,
+.tray-composer-gallery-choice,
+.tray-composer-secondary,
+.tray-composer-danger {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.tray-composer-item {
+  display: grid;
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 22px;
+  padding: 2px 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  transform: translateX(calc(var(--drag-x, 0px) + var(--drag-shift, 0px)));
+  transition:
+    transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 120ms ease,
+    background 120ms ease,
+    opacity 120ms ease;
+}
+.tray-composer-item:hover,
+.tray-composer-item:focus-visible {
+  background: rgba(var(--overlay-rgb), 0.055);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.tray-composer-item.selected {
+  background: rgba(var(--accent-rgb), 0.1);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.5);
+}
+.tray-composer-item.dragging {
+  z-index: 2;
+  background: rgba(var(--panel-rgb), 0.96);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.62);
+  cursor: grabbing;
+  opacity: 0.94;
+  scale: 1.04;
+  transition:
+    box-shadow 120ms ease,
+    background 120ms ease,
+    opacity 120ms ease;
+  will-change: transform;
+}
+.tray-composer-item.is-spacer {
+  min-width: 6px;
+  margin-inline: -2px;
+}
+.tray-composer.drag-active .tray-composer-item:not(.dragging) { opacity: 0.78; }
+.tray-composer-preview-image {
+  display: block;
+  width: auto;
+  max-width: 132px;
+  height: 22px;
+  object-fit: contain;
+  pointer-events: none;
+}
+.tray-composer-item .tray-composer-preview-image {
+  max-width: 108px;
+  height: 18px;
+}
+.tray-composer-live-preview {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 28px;
+  padding-inline: 5px;
+}
+.tray-composer-live-preview.is-text {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-composer-live-preview .tray-composer-preview-image {
+  max-width: 210px;
+  /* Matches .floating-bubble-tab span.bars img so the preview is the size the
+     bubble actually draws; the tray surface overrides this to its own 20px. */
+  height: 24px;
+}
+.tray-composer[data-surface="tray"]:not(.is-editing) .tray-composer-live-preview {
+  justify-content: flex-start;
+}
+.tray-composer[data-surface="tray"]:not(.is-editing) .tray-composer-live-preview .tray-composer-preview-image {
+  max-width: 100%;
+  height: 20px;
+}
+.tray-composer[data-surface="tray"]:not(.is-editing) .tray-composer-live-preview.is-menubar {
+  gap: 4px;
+  min-height: 20px;
+  padding-block: 4px;
+}
+.tray-composer-menubar-generated {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: 20px;
+  object-fit: contain;
+  pointer-events: none;
+}
+.tray-composer-menubar-title {
+  overflow: hidden;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-composer-customize {
+  flex: 0 0 auto;
+  /* Same 22px as the panel's other compact buttons (.tool-visibility-button). */
+  min-height: 22px;
+  padding: 2px 7px;
+  border-color: var(--line);
+  border-radius: 6px;
+  background: rgba(var(--overlay-rgb), 0.045);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1;
+}
+.tray-composer-customize:hover,
+.tray-composer-customize:focus-visible {
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: rgba(var(--accent-rgb), 0.09);
+  color: var(--accent);
+}
+.tray-composer[data-surface="floatingBubble"]:not(.is-editing) .tray-composer-strip {
+  justify-content: center;
+  min-height: 42px;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.tray-composer[data-surface="floatingBubble"]:not(.is-editing) .tray-composer-items {
+  flex: 0 1 auto;
+}
+.tray-composer[data-surface="floatingBubble"]:not(.is-editing) .tray-composer-live-preview {
+  flex: 0 1 auto;
+  min-width: 34px;
+  min-height: 34px;
+  padding-inline: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--floating-bubble-radius);
+  background: var(--glass);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+.tray-composer-add {
+  display: grid;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  border-color: var(--line);
+  border-radius: 7px;
+  background: rgba(var(--overlay-rgb), 0.045);
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1;
+}
+.tray-composer-add:hover,
+.tray-composer-add:focus-visible {
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: rgba(var(--accent-rgb), 0.09);
+  color: var(--accent);
+}
+.tray-composer-popover {
+  position: fixed;
+  inset: auto;
+  z-index: 1000;
+  width: min(310px, calc(100vw - 20px));
+  max-height: min(620px, calc(100vh - 20px));
+  margin: 0;
+  padding: 10px;
+  overflow: hidden auto;
+  border: 1px solid rgba(var(--line-rgb), 0.22);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), 0.76);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: normal;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(var(--overlay-rgb), 0.1);
+  -webkit-backdrop-filter: blur(28px) saturate(115%);
+  backdrop-filter: blur(28px) saturate(115%);
+}
+.tray-composer-popover::backdrop { background: transparent; }
+.tray-composer-popover-head {
+  position: sticky;
+  z-index: 2;
+  top: -10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 35px;
+  margin: -10px -10px 7px;
+  padding: 8px 8px 6px 11px;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), 0.94);
+  font-size: 12px;
+}
+.tray-composer-close {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  place-items: center;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+}
+.tray-composer-close:hover,
+.tray-composer-close:focus-visible {
+  border-color: var(--line);
+  background: rgba(var(--overlay-rgb), 0.055);
+  color: var(--text);
+}
+.tray-composer-popover-note {
+  margin: 0 2px 9px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+.tray-composer-gallery-group + .tray-composer-gallery-group {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+.tray-composer-gallery-group h4,
+.tray-composer-source-editor h4 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.tray-composer-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.tray-composer-gallery-choice {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  min-height: 61px;
+  padding: 5px;
+  text-align: left;
+  border-color: var(--line);
+  border-radius: 8px;
+  background: rgba(var(--overlay-rgb), 0.03);
+}
+.tray-composer-gallery-choice:hover,
+.tray-composer-gallery-choice:focus-visible {
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: rgba(var(--accent-rgb), 0.07);
+}
+.tray-composer-gallery-preview,
+.tray-composer-editor-preview {
+  display: grid;
+  min-width: 0;
+  min-height: 31px;
+  padding: 2px 5px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: rgba(var(--sunken-rgb), 0.72);
+}
+.tray-composer-gallery-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-composer-editor-preview {
+  min-height: 42px;
+  margin-bottom: 8px;
+}
+.tray-composer-editor-preview .tray-composer-preview-image {
+  max-width: 210px;
+  height: 31px;
+}
+.tray-composer-field {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(82px, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border-bottom: 1px solid var(--line);
+}
+.tray-composer-field-label {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-composer-picker {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 27px;
+  padding: 3px 7px;
+  border-color: var(--line);
+  border-radius: 7px;
+  background: rgba(var(--overlay-rgb), 0.045);
+  font-size: 10.5px;
+}
+.tray-composer-picker:hover,
+.tray-composer-picker:focus-visible,
+.tray-composer-picker[aria-expanded="true"] {
+  border-color: rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.07);
+}
+.tray-composer-text-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 27px;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(var(--overlay-rgb), 0.045);
+  color: var(--text);
+  font: inherit;
+  font-size: 10.5px;
+}
+.tray-composer-text-input:hover,
+.tray-composer-text-input:focus {
+  border-color: rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.07);
+  outline: none;
+}
+.tray-composer-text-input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+.tray-composer-picker-icon {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+}
+.tray-composer-picker-value {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-composer-picker-chevron { color: var(--muted); }
+.tray-composer-picker-menu {
+  position: fixed;
+  inset: auto;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  max-height: var(--picker-max-height, 260px);
+  margin: 0;
+  padding: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--line-rgb), 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), 0.76);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: normal;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(var(--overlay-rgb), 0.1);
+  -webkit-backdrop-filter: blur(28px) saturate(115%);
+  backdrop-filter: blur(28px) saturate(115%);
+}
+.tray-composer-picker-search {
+  min-height: 27px;
+  margin: 0 0 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  outline: 0;
+  background: rgba(var(--sunken-rgb), 0.72);
+  color: var(--text);
+  font: inherit;
+}
+.tray-composer-picker-search:focus {
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.12);
+}
+.tray-composer-picker-search::placeholder { color: var(--muted); }
+.tray-composer-picker-list {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden auto;
+}
+.tray-composer-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 29px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 10px;
+  text-align: left;
+}
+.tray-composer-picker-option:hover:not(:disabled),
+.tray-composer-picker-option:focus-visible:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+.tray-composer-picker-option[aria-selected="true"] { color: var(--accent); }
+.tray-composer-picker-option:disabled { cursor: default; opacity: 0.48; }
+.tray-composer-picker-option-copy {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 1px;
+  overflow: hidden;
+  font-size: 9px;
+}
+.tray-composer-picker-option-copy > span,
+.tray-composer-picker-option-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-composer-picker-option-copy small { color: var(--muted); font-size: 8px; }
+.tray-composer-picker-preview {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 50px;
+  height: 18px;
+  object-fit: contain;
+}
+.tray-composer-picker-check { flex: 0 0 auto; }
+.tray-composer-picker-empty {
+  margin: auto;
+  padding: 18px 8px;
+  color: var(--muted);
+  text-align: center;
+}
+.tray-composer-source-editor {
+  display: grid;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+.tray-composer-editor-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+.tray-composer-secondary,
+.tray-composer-danger {
+  min-height: 29px;
+  padding: 4px 7px;
+  border-color: var(--line);
+  border-radius: 7px;
+  background: rgba(var(--overlay-rgb), 0.04);
+  font-size: 9px;
+}
+.tray-composer-secondary:hover,
+.tray-composer-secondary:focus-visible {
+  border-color: rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.07);
+}
+.tray-composer-danger { color: var(--red); }
+.tray-composer-danger:hover,
+.tray-composer-danger:focus-visible {
+  border-color: rgba(244, 119, 136, 0.45);
+  background: rgba(244, 119, 136, 0.08);
+}
+.tray-composer-editor {
+  width: min(276px, calc(100vw - 20px));
+  max-height: min(520px, calc(100vh - 20px));
+  padding: 7px 8px 8px;
+}
+.tray-composer-editor .tray-composer-popover-head {
+  top: -7px;
+  min-height: 28px;
+  margin: -7px -8px 5px;
+  padding: 4px 6px 4px 8px;
+  font-size: 10.5px;
+}
+.tray-composer-editor .tray-composer-close {
+  width: 22px;
+  height: 22px;
+  font-size: 15px;
+}
+.tray-composer-editor .tray-composer-editor-preview {
+  min-height: 31px;
+  margin-bottom: 4px;
+  padding-block: 1px;
+}
+.tray-composer-editor .tray-composer-editor-preview .tray-composer-preview-image {
+  max-width: 180px;
+  height: 22px;
+}
+.tray-composer-editor .tray-composer-field {
+  grid-template-columns: minmax(68px, 0.72fr) minmax(0, 1.28fr);
+  gap: 6px;
+  min-height: 30px;
+}
+.tray-composer-editor .tray-composer-field-label {
+  font-size: 9.5px;
+}
+.tray-composer-editor .tray-composer-picker {
+  min-height: 24px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+.tray-composer-editor .tray-composer-text-input {
+  min-height: 24px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+.tray-composer-editor .tray-composer-picker-icon {
+  width: 14px;
+  height: 14px;
+}
+.tray-composer-editor .tray-composer-picker-option {
+  min-height: 25px;
+  padding: 3px 5px;
+}
+.tray-composer-editor .tray-composer-source-editor {
+  margin-top: 5px;
+  padding-top: 5px;
+}
+.tray-composer-editor .tray-composer-source-editor h4 {
+  margin-bottom: 3px;
+  font-size: 8.5px;
+}
+.tray-composer-editor .tray-composer-editor-actions {
+  gap: 5px;
+  margin-top: 7px;
+}
+.tray-composer-editor .tray-composer-secondary,
+.tray-composer-editor .tray-composer-danger {
+  min-height: 26px;
+  padding: 3px 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tray-composer-item { transition: none; }
 }

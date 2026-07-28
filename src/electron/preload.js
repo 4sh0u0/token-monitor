@@ -106,6 +106,9 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     logout: () => ipcRenderer.invoke('cursor:logout'),
     status: () => ipcRenderer.invoke('cursor:status')
   },
+  claude: {
+    saveCookie: (cookie) => ipcRenderer.invoke('claude:saveCookie', cookie)
+  },
   ollama: {
     validateCookie: (cookie) => ipcRenderer.invoke('ollama:validateCookie', cookie)
   },
@@ -126,9 +129,17 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     renameProfile: (oldName, newName) => ipcRenderer.invoke('openrouter:renameProfile', oldName, newName),
     setProfileEnabled: (name, enabled) => ipcRenderer.invoke('openrouter:setProfileEnabled', name, enabled)
   },
+  thirdparty: {
+    getProfiles: () => ipcRenderer.invoke('thirdparty:getProfiles'),
+    saveProfile: (profile) => ipcRenderer.invoke('thirdparty:saveProfile', profile),
+    deleteProfile: (name) => ipcRenderer.invoke('thirdparty:deleteProfile', name),
+    renameProfile: (oldName, newName) => ipcRenderer.invoke('thirdparty:renameProfile', oldName, newName),
+    setProfileEnabled: (name, enabled) => ipcRenderer.invoke('thirdparty:setProfileEnabled', name, enabled)
+  },
   codex: {
     accounts: () => ipcRenderer.invoke('codex:accounts'),
     addAccount: (options = {}) => ipcRenderer.invoke('codex:addAccount', options),
+    selectWorkspace: (options = {}) => ipcRenderer.invoke('codex:selectWorkspace', options),
     cancelLogin: (options = {}) => ipcRenderer.invoke('codex:cancelLogin', options),
     removeAccount: (id) => ipcRenderer.invoke('codex:removeAccount', id),
     setAccountEnabled: (id, enabled) => ipcRenderer.invoke('codex:setAccountEnabled', id, enabled),

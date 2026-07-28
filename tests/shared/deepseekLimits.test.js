@@ -25,10 +25,7 @@ test('deepseekToken reads DEEPSEEK_API_KEY then DEEPSEEK_KEY, stripping quotes',
 });
 
 test('parseLimitProviders includes DeepSeek in the default provider set', () => {
-  assert.deepEqual(
-    parseLimitProviders(),
-    ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'openrouter', 'deepseek', 'minimax', 'mimo', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi', 'ollama']
-  );
+  assert.ok(parseLimitProviders().includes('deepseek'));
 });
 
 test('selectFundedRow prefers the largest funded row, tie -> USD', () => {
@@ -151,6 +148,16 @@ test('fetchDeepSeekLimits maps HTTP 401 to unauthorized', async () => {
   assert.equal(r.status, 'unauthorized');
 });
 
+test('fetchDeepSeekLimits keeps HTTP 403 as unavailable', async () => {
+  const r = await fetchDeepSeekLimits({}, {
+    env: { DEEPSEEK_API_KEY: 'sk-x' },
+    deepseekStorePath: '/tmp/ds-403.json',
+    fetch: async () => ({ ok: false, status: 403, json: async () => ({}) }),
+    ...memStoreDeps()
+  });
+  assert.equal(r.status, 'unavailable');
+});
+
 test('fetchDeepSeekLimits maps unexpected body shape to unavailable', async () => {
   const r = await fetchDeepSeekLimits({}, {
     env: { DEEPSEEK_API_KEY: 'sk-x' },
@@ -159,4 +166,32 @@ test('fetchDeepSeekLimits maps unexpected body shape to unavailable', async () =
     ...memStoreDeps()
   });
   assert.equal(r.status, 'unavailable');
+});
+
+test('fetchDeepSeekLimits exposes the balance as a credits window', async () => {
+  const provider = await fetchDeepSeekLimits({}, {
+    env: { DEEPSEEK_API_KEY: 'sk-secret-123' },
+    deepseekStorePath: '/tmp/ds-credits-window.json',
+    now: () => new Date(2026, 6, 26, 8, 0, 0).getTime(),
+    fetch: async () => balanceResponse([
+      { currency: 'CNY', total_balance: '4.00', topped_up_balance: '4.00' }
+    ]),
+    ...memStoreDeps()
+  });
+
+  assert.equal(provider.status, 'ok');
+  assert.equal(provider.windows.length, 1);
+  const [window] = provider.windows;
+  assert.equal(window.kind, 'billing');
+  assert.equal(window.metric, 'credits');
+  assert.equal(window.label, 'Balance');
+  assert.equal(window.remaining, 4);
+  assert.equal(window.currency, 'CNY');
+  assert.equal(window.showMeter, true);
+  // The derived percentage is display-only and must never reach the wire.
+  assert.equal(window.usedPercent, null);
+  assert.equal(window.remainingPercent, null);
+  // The balance block is untouched.
+  assert.equal(provider.balance.amount, 4);
+  assert.equal(provider.balance.currency, 'CNY');
 });

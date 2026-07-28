@@ -18,7 +18,7 @@
   };
 
   const PROVIDER_SOURCE_LABELS = {
-    claude: { oauth: 'OAuth', cli: 'CLI' },
+    claude: { oauth: 'OAuth', cli: 'CLI', web: 'Web' },
     codex: { rpc: 'RPC' },
     cursor: { web: 'Web' },
     antigravity: { rpc: 'RPC' },
@@ -35,7 +35,8 @@
     volcengine: { api: 'API' },
     qoder: { web: 'Web' },
     kimi: { api: 'API', web: 'Web' },
-    ollama: { web: 'Web' }
+    ollama: { web: 'Web' },
+    thirdparty: { api: 'API' }
   };
 
   const CODEX_RPC_DETAIL_LABELS = {
@@ -46,7 +47,7 @@
   };
 
   const CAPABILITY_TAGS = {
-    claude: ['Auto', 'OAuth/CLI'],
+    claude: ['Auto', 'OAuth/CLI', 'Web'],
     codex: ['Auto', 'App/CLI RPC'],
     cursor: ['Manual login', 'Web'],
     antigravity: ['App/CLI must be open', 'RPC'],
@@ -63,7 +64,8 @@
     volcengine: ['Coding Plan', 'API key'],
     qoder: ['Manual login', 'Web'],
     kimi: ['Membership/Coding Plan', 'Web/API'],
-    ollama: ['Manual login', 'Web']
+    ollama: ['Manual login', 'Web'],
+    thirdparty: ['Relay', 'API']
   };
 
   // Capability hint -> the status label it would duplicate. When that status is
@@ -235,7 +237,8 @@
   function isLinkedStatus(provider) {
     const providerName = providerId(provider);
     const source = sourceId(provider);
-    return providerName === 'cursor'
+    return (providerName === 'claude' && source === 'web')
+      || providerName === 'cursor'
       || (providerName === 'opencode' && source === 'web')
       || (providerName === 'mimo' && source === 'web');
   }
@@ -250,6 +253,7 @@
     if (status === 'noSyncedData') return { label: 'No synced data', tone: 'sync' };
     if (status === 'unauthorized') {
       if (providerName === 'kimi') return { label: 'Update credential', tone: 'setup' };
+      if (providerName === 'thirdparty') return { label: 'Update credential', tone: 'setup' };
       return providerName === 'openrouter' || providerName === 'deepseek' || providerName === 'minimax' || providerName === 'copilot' || providerName === 'zai' || providerName === 'zaiteam' || providerName === 'volcengine' || providerName === 'kimi'
         ? { label: 'Update API key', tone: 'setup' }
         : providerName === 'qoder'
@@ -266,6 +270,7 @@
       if (providerName === 'kimi') return { label: 'Add credential', tone: 'setup' };
       if (providerName === 'antigravity') return { label: 'Open app or CLI', tone: 'setup' };
       if (providerName === 'cursor' || providerName === 'copilot' || providerName === 'qoder' || providerName === 'ollama') return { label: 'Sign in', tone: 'setup' };
+      if (providerName === 'thirdparty') return { label: 'Add credential', tone: 'setup' };
       if (providerName === 'openrouter' || providerName === 'deepseek' || providerName === 'minimax' || providerName === 'zai' || providerName === 'zaiteam' || providerName === 'volcengine' || providerName === 'kimi') return { label: 'Add API key', tone: 'setup' };
       if (providerName === 'grok') return { label: 'Run grok login', tone: 'setup' };
       if (providerName === 'kiro') return { label: 'Run kiro-cli login', tone: 'setup' };
@@ -286,6 +291,14 @@
     if (status === 'disabled' || status === 'noSyncedData') return 'notChecked';
     if (status === 'notConfigured') return 'notConfigured';
     return 'error';
+  }
+
+  function namedApiProfileStatus(provider, options = {}) {
+    const providerEnabled = options.providerEnabled !== false;
+    const profileEnabled = options.profileEnabled !== false;
+    if (!profileEnabled) return 'disabled';
+    if (!providerEnabled) return 'hidden';
+    return apiKeyAccountStatus(provider, true, true);
   }
 
   function usableProviderCandidate(provider) {
@@ -401,6 +414,7 @@
     limitProviderCompactWindows,
     limitProviderDisplayLabel,
     limitProviderMainDeviceLabel,
+    namedApiProfileStatus,
     limitProviderProvenance,
     limitResetRemainingMs,
     limitProviderSourceLabel,
