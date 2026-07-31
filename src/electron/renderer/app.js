@@ -2142,7 +2142,12 @@ function codexResetCreditExpiryDetailLabel(date) {
 
 // Shared by Codex reset credits and Claude prepaid grants.
 function expiryDateLabel(date) {
-  return new Intl.DateTimeFormat(currentLocale(), { month: 'numeric', day: 'numeric' }).format(date);
+  return new Intl.DateTimeFormat(currentLocale(), {
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
 }
 
 function limitDetailTooltipShouldHoldRender() {
@@ -2203,9 +2208,10 @@ function codexResetCreditsNode(resetCredits) {
       timeline.append(time);
     });
     expiryGroup.append(timeline);
-    if (expirationDates.length > 1) {
+    if (expirationDates.length > 0) {
       // A date paired with a bare duration doesn't read as `<name>: <value>`, so
-      // the spoken label is supplied rather than derived from the cells.
+      // the spoken label is supplied rather than derived from the cells. Keep
+      // this detail available for a single reset as well as multiple resets.
       const infoNode = limitDetailInfoNode(
         expirationDates.map((date) => [expiryDateLabel(date), codexResetCreditExpiryLabel(date)]),
         '',
@@ -4333,16 +4339,18 @@ function renderHomeLimitModule() {
       line.append(label, value);
       metric.append(line);
       const resetAt = formatReset(window.resetsAt);
-      const resetText = document.createElement('span');
-      resetText.className = 'home-limit-reset';
       const resetLabel = window.resetsAt
-        ? resetAt || '\u00a0'
+        ? resetAt || ''
         : window.resetDescription
         ? t('home.reset', { value: window.resetDescription })
-        : '\u00a0';
-      const periodLabel = limitProviderPresentationApi.limitProviderCompactWindowPeriodLabel(row.providerId, window, row.windows);
-      resetText.textContent = periodLabel && resetLabel !== '\u00a0' ? `${periodLabel} · ${resetLabel}` : resetLabel;
-      metric.append(resetText);
+        : '';
+      if (resetLabel) {
+        const resetText = document.createElement('span');
+        resetText.className = 'home-limit-reset';
+        const periodLabel = limitProviderPresentationApi.limitProviderCompactWindowPeriodLabel(row.providerId, window, row.windows);
+        resetText.textContent = periodLabel ? `${periodLabel} · ${resetLabel}` : resetLabel;
+        metric.append(resetText);
+      }
       windows.append(metric);
     }
     item.append(account, windows);
@@ -8524,10 +8532,11 @@ els.openWebsiteButton?.addEventListener('click', () => window.tokenMonitor.openE
 els.reportIssueButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_ISSUES_URL));
 els.refreshButton.addEventListener('click', () => {
   if (state.breakdown === 'status') refreshStatusViewManually().catch(() => {});
-  // Only this button asks for a history rescan: `{ force: true }` is used all over the
-  // settings/account flows, and folding history into it would re-run the expensive
-  // `tokscale graph` on every one of them.
-  else refreshStats({ force: true, forceHistory: true, feedback: true });
+  // Only this button asks for a history rescan and a self-sync: `{ force: true }` is
+  // used all over the settings/account flows, and folding those into it would re-run
+  // the expensive `tokscale graph`, plus the Cursor and Antigravity sync subprocesses,
+  // on every one of them.
+  else refreshStats({ force: true, forceHistory: true, forceSelfSync: true, feedback: true });
 });
 els.minButton.addEventListener('click', () => window.tokenMonitor.minimize());
 els.closeButton.addEventListener('click', () => window.tokenMonitor.close());
