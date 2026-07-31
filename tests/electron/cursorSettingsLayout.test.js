@@ -794,15 +794,10 @@ test('Claude Web account panel stores a redacted cookie and opens only the usage
   assert.match(allowlist, /parsed\.hostname === 'claude\.ai' && parsed\.pathname\.startsWith\('\/settings'\)/);
 });
 
-test('DeepSeek account linked state requires a validated API key', () => {
+test('DeepSeek account pill keeps its validated API key state after moving into Limits', () => {
   const app = readRendererFile('app.js');
-  const summaryBody = functionBody(app, 'settingsSectionSummary', 'renderSettingsSummaries');
-  assert.match(summaryBody, /const deepseekLinked = deepseekAccountLinked\(\);/);
-  assert.doesNotMatch(
-    summaryBody,
-    /const deepseekLinked = Boolean\(state\.settings\?\.deepseekApiKeyConfigured\);/,
-    'the account summary should not count an unverified stored API key as linked'
-  );
+  assert.match(app, /deepseek: 'deepseekAccountGroup'/);
+  assert.match(app, /deepseek: 'deepseekApiKeyStatus'/);
 
   const linkedBody = functionBody(app, 'deepseekAccountLinked', 'deepseekProviderStatus');
   assert.match(linkedBody, /Boolean\(state\.settings\?\.deepseekApiKeyConfigured\)/);
@@ -1158,6 +1153,7 @@ test('sync upload interval setting is exposed in the Multi-device Sync panel', (
 
 test('main settings normalize collection cadence and restart only the device runtime when it changes', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
+  const collector = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'shared', 'collector.js'), 'utf8');
   assert.match(main, /function normalizeCollectionMode/);
   assert.match(main, /function normalizeCollectionIntervalMs/);
   assert.match(main, /COLLECTION_MODE_VALUES = new Set\(\[[^\]]*'smart'/);
@@ -1173,12 +1169,19 @@ test('main settings normalize collection cadence and restart only the device run
   const usageConfig = functionBody(main, 'electronUsageConfig', 'electronLimitsConfig');
   assert.match(usageConfig, /intervalMs: collectorIntervalMs\(\)/);
   assert.match(usageConfig, /watchEnabled: collectorWatchEnabled\(\)/);
-  assert.match(usageConfig, /watchUsePolling: collectorWatchUsePolling\(\)/);
   assert.match(usageConfig, /watchTriggersCollection: collectorWatchTriggersCollection\(\)/);
   assert.match(usageConfig, /intervalRequiresActivity: collectorIntervalRequiresActivity\(\)/);
 
-  // Smart mode keeps watching (native events) but never scans on the event itself.
-  assert.match(main, /function collectorWatchUsePolling[\s\S]*?=== 'live'/);
+  // Every mode watches with native events on every platform, so the widget must
+  // state no preference at all: the moment it passes one it can drift from the
+  // headless agent, which passes none. The shared resolver owns the default and
+  // the TOKEN_MONITOR_WATCH_POLLING override, and degrades to polling itself
+  // when the kernel refuses watch descriptors. Behaviour is covered in
+  // tests/shared/collectorLoadGuards.test.js.
+  assert.doesNotMatch(usageConfig, /^\s*watchUsePolling:/m);
+  assert.doesNotMatch(main, /function collectorWatchUsePolling/);
+  assert.match(collector, /const watchUsePolling = resolveWatchUsePolling\(options\.watchUsePolling\)/);
+  assert.match(collector, /function resolveWatchUsePolling[\s\S]*?TOKEN_MONITOR_WATCH_POLLING/);
   assert.match(main, /function collectorIntervalRequiresActivity[\s\S]*?=== 'smart'/);
 
   const updateHandler = main.slice(main.indexOf("ipcMain.handle('settings:update'"), main.indexOf("ipcMain.handle('appearance:preview'"));

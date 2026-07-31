@@ -49,9 +49,14 @@ test('OpenRouter account statuses settle when refreshed stats arrive', () => {
     app.indexOf('window.tokenMonitor.onStatsPush?.'),
     app.indexOf('function pickWorstProvider(')
   );
+  const statsRender = app.slice(
+    app.indexOf('function renderStatsUpdate()'),
+    app.indexOf('const statsRenderScheduler =')
+  );
 
-  assert.match(refreshStats, /updateOpenRouterProfilesStatus\(\)/);
-  assert.match(statsPush, /updateOpenRouterProfilesStatus\(\)/);
+  assert.match(refreshStats, /statsRenderScheduler\.request\(\)/);
+  assert.match(statsPush, /statsRenderScheduler\.request\(\)/);
+  assert.match(statsRender, /updateOpenRouterProfilesStatus\(\)/);
 });
 
 test('OpenRouter credentials stay in the main process and renderer receives configured state only', () => {
@@ -88,15 +93,17 @@ test('OpenRouter Limits presentation shows a real balance meter and compact spen
     app,
     /if \(id === 'openrouter' && Array\.isArray\(visibleProviders\) && visibleProviders\.length > 1\) \{\s*nodes\.push\(renderOpenRouterAccountGroup\(label, visibleProviders, color\)\);\s*continue;\s*\}/
   );
-  assert.match(app, /function openrouterSpendEntries\(balance\)/);
+  assert.match(app, /function providerSpendEntries\(balance\)/);
   assert.match(app, /\['Week', optionalFiniteNumber\(balance\?\.weekSpend\)\]/);
   assert.match(app, /\['All time', optionalFiniteNumber\(balance\?\.allTimeSpend\)\]/);
-  assert.match(app, /summary\.className = 'limit-spend-summary'/);
-  assert.match(app, /function limitDetailInfoNode\(entries, extraClass = ''\)/);
-  assert.match(app, /tooltip\.className = 'limit-detail-tooltip'/);
+  assert.match(app, /summaryNode\.className = 'limit-spend-summary'/);
+  assert.match(app, /function limitDetailInfoNode\(entries, extraClass = '', ariaLabel = ''\)/);
+  assert.match(app, /function limitNoteRowNode\(\{ label, summary = '', detailEntries = null, ariaParts = \[\] \}\)/);
+  assert.match(app, /tooltip\.className = \['limit-detail-tooltip', columns > 2 \? 'limit-detail-tooltip-triple' : ''\]/);
   assert.match(app, /info\.tabIndex = 0/);
   assert.match(app, /const release = \(\) => \{\s*requestAnimationFrame\(\(\) => \{\s*if \(limitDetailTooltipShouldHoldRender\(\)\) return;/);
   assert.match(app, /entries\.map\(\(\[entryLabel, value\]\) => \[entryLabel, formatMoney\(value, currency\)\]\)/);
+  assert.match(app, /const spendNode = providerSpendNode\(balance\)/);
   assert.match(app, /function openrouterCreditsWindow\(provider\)/);
   assert.match(app, /windows\.find\(\(window\) => window\?\.metric === 'credits'\)/);
   assert.match(app, /windows\.find\(\(window\) => !window\?\.metric && window\?\.label === 'Credits'\)/);

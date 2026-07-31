@@ -149,13 +149,59 @@ test('Claude Web source takes precedence and carries stable account metadata', a
   assert.equal(first.requests.length, 4);
   assert.equal(first.requests[3].url.endsWith('/prepaid/credits'), true);
   assert.equal(first.requests[0].options.headers.cookie, 'sessionKey=sk-ant-first-cookie');
+  // This collector runs on undici, so it carries the browser agent. Pinned
+  // verbatim: Cloudflare challenges every non-browser user-agent on this host, so
+  // swapping in the honest `token-monitor/<version>` agent would 403 the whole
+  // provider on the headless agent.
   assert.deepEqual(first.requests[0].options.headers, {
     accept: 'application/json',
+    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
     cookie: 'sessionKey=sk-ant-first-cookie'
   });
+  // Cloudflare challenges per request, so every hop needs the agent, not just the
+  // first one that happens to be asserted above.
+  assert.equal(
+    first.requests.every(({ options }) => /Chrome\/[\d.]+ Safari/.test(options.headers['user-agent'] || '')),
+    true,
+    'every Claude Web request should carry the browser user-agent'
+  );
   assert.equal(first.requests[0].url.endsWith('/api/organizations'), true);
   assert.equal(first.requests[1].url.endsWith('/api/organizations/organization-web/usage'), true);
   assert.equal(first.requests[2].url.endsWith('/api/account'), true);
+});
+
+test('Claude Web leaves the user-agent to Chromium when the widget supplies the transport', async () => {
+  const requests = [];
+  await fetchClaudeLimits({ claudeWebCookie: 'sessionKey=sk-ant-widget' }, {
+    now: () => Date.parse('2026-07-25T00:00:00Z'),
+    stat: async () => {
+      throw new Error('OAuth credentials must not be read when Web is configured');
+    },
+    fetch: async () => {
+      throw new Error('the widget transport must be used when one is supplied');
+    },
+    claudeWebFetch: async (url, options) => {
+      requests.push({ url, options });
+      if (url.endsWith('/api/organizations')) {
+        return { ok: true, json: async () => [{ uuid: 'organization-web', name: 'Example Workspace' }] };
+      }
+      if (url.endsWith('/prepaid/credits')) {
+        return { ok: true, json: async () => ({ amount: 0, currency: 'USD' }) };
+      }
+      if (url.endsWith('/api/account')) {
+        return { ok: true, json: async () => ({ email_address: 'owner@example.com' }) };
+      }
+      return { ok: true, json: async () => ({ five_hour: { utilization: 10 } }) };
+    }
+  });
+
+  // Electron's net.request already sends a browser agent that tracks the bundled
+  // Chromium; setting one here would pin the widget to a stale version instead.
+  assert.ok(requests.length > 0);
+  for (const { url, options } of requests) {
+    assert.equal(options.headers['user-agent'], undefined, `${url} should carry no user-agent`);
+  }
+  assert.equal(requests[0].options.headers.cookie, 'sessionKey=sk-ant-widget');
 });
 
 test('Claude Web follows a renewed sessionKey across sequential requests and reports it for persistence', async () => {
@@ -1513,6 +1559,174 @@ test('an exhausted prepaid pool still reports a zero balance', async () => {
   assert.equal(credits.length, 1);
   assert.equal(credits[0].remaining, 0);
   assert.equal(credits[0].showMeter, false);
+});
+
+function fakeClaudeWebIdentityFetch(organization, account) {
+  return async (url) => {
+    const headers = { get: () => '', getSetCookie: () => [] };
+    if (url.endsWith('/api/organizations')) {
+      return { ok: true, status: 200, headers, json: async () => [organization] };
+    }
+    if (url.endsWith('/api/account')) {
+      return { ok: true, status: 200, headers, json: async () => account };
+    }
+    if (url.includes('/prepaid/credits')) {
+      return { ok: true, status: 200, headers, json: async () => ({ amount: 0, currency: 'USD' }) };
+    }
+    return { ok: true, status: 200, headers, json: async () => CREDITS_OFF };
+  };
+}
+
+// What claude.ai actually returns for a personal subscription: the plan is
+// nowhere on the membership, only in the organization's capability list.
+const PERSONAL_ACCOUNT = {
+  uuid: 'account-personal',
+  email_address: 'owner@example.com',
+  memberships: [{
+    role: 'admin',
+    seat_tier: null,
+    organization: { uuid: 'org-personal', name: 'Personal' }
+  }]
+};
+
+async function personalPlanLabel(organization) {
+  const provider = await fetchClaudeLimits(
+    { claudeWebCookie: 'sessionKey=sk-ant-sid01-plan' },
+    {
+      providerRuntimeState: new Map(),
+      claudeWebFetch: fakeClaudeWebIdentityFetch(organization, PERSONAL_ACCOUNT)
+    }
+  );
+  return provider.accountLabel;
+}
+
+test('a personal Pro account takes its plan from the organization capabilities', async () => {
+  assert.equal(await personalPlanLabel({
+    uuid: 'org-personal',
+    name: 'Personal',
+    capabilities: ['chat', 'claude_pro'],
+    rate_limit_tier: 'default_claude_ai'
+  }), 'Pro');
+});
+
+test('a personal Max account keeps the rate limit tier refinement', async () => {
+  assert.equal(await personalPlanLabel({
+    uuid: 'org-personal',
+    name: 'Personal',
+    capabilities: ['chat', 'claude_max'],
+    rate_limit_tier: 'default_claude_max_20x'
+  }), 'Max 20x');
+});
+
+test('a membership from another organization never supplies the plan', async () => {
+  const provider = await fetchClaudeLimits(
+    { claudeWebCookie: 'sessionKey=sk-ant-sid01-multi' },
+    {
+      providerRuntimeState: new Map(),
+      claudeWebFetch: fakeClaudeWebIdentityFetch(
+        {
+          uuid: 'org-selected',
+          name: 'Selected Max Org',
+          capabilities: ['chat', 'claude_max'],
+          rate_limit_tier: 'default_claude_max_20x'
+        },
+        {
+          uuid: 'account-multi',
+          email_address: 'owner@example.com',
+          // The account is a member of a different organization than the one
+          // usage was resolved for, so nothing here may describe the plan.
+          memberships: [{
+            seat_tier: 'team',
+            rate_limit_tier: 'default_claude_ai',
+            organization: { uuid: 'org-other', name: 'Unrelated Org', capabilities: ['chat', 'raven'] }
+          }]
+        }
+      )
+    }
+  );
+  assert.equal(provider.accountLabel, 'Max 20x');
+  assert.equal(provider.accountName, 'Selected Max Org');
+});
+
+test('the Max variant comes from the rate limit tier, not the capability', async () => {
+  // There is no `claude_max_5x` capability: claude.ai reports plain `claude_max`
+  // for both variants and separates them on `rate_limit_tier`.
+  assert.equal(await personalPlanLabel({
+    uuid: 'org-personal',
+    name: 'Personal',
+    capabilities: ['chat', 'claude_max'],
+    rate_limit_tier: 'default_claude_max_5x'
+  }), 'Max 5x');
+});
+
+async function planLabelFor(organization, seatTier) {
+  const provider = await fetchClaudeLimits(
+    { claudeWebCookie: 'sessionKey=sk-ant-sid01-seat' },
+    {
+      providerRuntimeState: new Map(),
+      claudeWebFetch: fakeClaudeWebIdentityFetch(
+        { uuid: 'org-1', name: 'Org', ...organization },
+        {
+          uuid: 'account-seat',
+          email_address: 'owner@example.com',
+          memberships: [{ seat_tier: seatTier, organization: { uuid: 'org-1', name: 'Org' } }]
+        }
+      )
+    }
+  );
+  return provider.accountLabel;
+}
+
+const TEAM_ORG = { capabilities: ['chat', 'raven'], raven_type: 'team', rate_limit_tier: 'default_claude_ai' };
+
+test('a team organization is recognized by its raven capability and type', async () => {
+  // `raven` covers Team and Enterprise together, and `raven_type` separates
+  // them. There is no team-specific rate limit tier, so this is the only signal.
+  assert.equal(await planLabelFor(TEAM_ORG, null), 'Team');
+  assert.equal(
+    await planLabelFor({ capabilities: ['chat', 'raven'], raven_type: 'enterprise', rate_limit_tier: 'default_raven' }, null),
+    'Enterprise'
+  );
+});
+
+test('a seat level never outranks the plan its organization states', async () => {
+  // A seat says which seat someone holds, not which plan the organization is on.
+  assert.equal(await planLabelFor(TEAM_ORG, 'standard'), 'Team');
+  // `unassigned` is what claude.ai substitutes for a member holding no seat.
+  assert.equal(await planLabelFor(TEAM_ORG, 'unassigned'), 'Team');
+  // And when the two disagree outright, the organization wins: claude.ai
+  // resolves the plan from the organization alone and never from the seat.
+  assert.equal(await planLabelFor(TEAM_ORG, 'enterprise_standard'), 'Team');
+});
+
+test('a seat tier reports its plan when the organization states none', async () => {
+  // Anthropic documents seat tiers as fully qualified `<plan>_<seat level>`
+  // identifiers, of which `enterprise_standard` and `enterprise_tier_1` are two.
+  // OAuth reports a bare `enterprise` and renders "Enterprise"; keeping the seat
+  // level here would render "Enterprise Standard" for the same account.
+  const unnamed = { capabilities: ['chat', 'raven'], raven_type: null, rate_limit_tier: 'default_raven' };
+  assert.equal(await planLabelFor(unnamed, 'enterprise_standard'), 'Enterprise');
+  assert.equal(await planLabelFor(unnamed, 'enterprise_tier_1'), 'Enterprise');
+});
+
+test('nothing is claimed when no source names a plan', async () => {
+  // A bare seat level, an organization whose raven type is missing, and the
+  // `default_raven` tier itself all describe something other than the plan.
+  const unnamed = { capabilities: ['chat', 'raven'], raven_type: null, rate_limit_tier: 'default_raven' };
+  assert.equal(await planLabelFor(unnamed, 'standard'), '');
+  assert.equal(await planLabelFor(unnamed, null), '');
+  assert.equal(await planLabelFor({ capabilities: ['chat'], rate_limit_tier: 'default_claude_ai' }, 'bespoke_thing'), '');
+});
+
+test('a billing type is never mistaken for a plan', async () => {
+  // `apple_subscription` is how the subscription is paid for, not what it is.
+  assert.equal(await personalPlanLabel({
+    uuid: 'org-personal',
+    name: 'Personal',
+    capabilities: ['chat'],
+    rate_limit_tier: 'default_claude_ai',
+    billing_type: 'apple_subscription'
+  }), '');
 });
 
 test('the prepaid TTL follows the limits refresh interval at twice its length', async () => {

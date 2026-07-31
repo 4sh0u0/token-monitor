@@ -21,8 +21,12 @@ function freshCollector() {
   return require(collectorPath);
 }
 
+// realpath the base: a real os.homedir() is already canonical, but os.tmpdir()
+// is an 8.3 short path on the Windows CI runner. Without this the fixture home
+// differs from the canonical root the collector watches, so the synthetic event
+// paths below would stop mapping back to their client on Windows only.
 function withTmpHome(prepare) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-home-'));
+  const tmp = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'token-monitor-home-'));
   for (const dir of prepare) fs.mkdirSync(path.join(tmp, dir), { recursive: true });
   return tmp;
 }
@@ -544,6 +548,45 @@ test('cursor sync runs at most once per throttle window across ticks', async () 
   }
 });
 
+test('a targeted tick does not sync an unrelated self-synced client', async () => {
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  childProcess.spawn = recordingSpawn([]);
+  const cursorAuth = require('../../src/shared/cursorAuth');
+  const originalReadActiveAccount = cursorAuth.readActiveAccount;
+  const originalRunCursorSync = cursorAuth.runCursorSync;
+  let syncCalls = 0;
+  cursorAuth.readActiveAccount = () => ({ accessToken: 'token' });
+  cursorAuth.runCursorSync = async () => { syncCalls += 1; };
+  try {
+    const { collectUsageOnce, localTodayKey } = freshCollector();
+    const claude = emptyPeriod();
+    const cursor = emptyPeriod();
+    await collectUsageOnce({
+      clients: 'claude,cursor',
+      targetClients: ['claude'],
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      limitsEnabled: false,
+      todayOnlyAnchor: {
+        dateKey: localTodayKey(),
+        today: emptyPeriod(),
+        month: emptyPeriod(),
+        allTime: emptyPeriod(),
+        todayPartitions: { claude, cursor }
+      }
+    });
+    assert.equal(syncCalls, 0);
+  } finally {
+    childProcess.spawn = originalSpawn;
+    cursorAuth.readActiveAccount = originalReadActiveAccount;
+    cursorAuth.runCursorSync = originalRunCursorSync;
+    delete require.cache[collectorPath];
+  }
+});
+
 test('collectUsageOnce runs the three tokscale scans serially, not concurrently', async () => {
   const childProcess = require('node:child_process');
   const originalSpawn = childProcess.spawn;
@@ -683,6 +726,152 @@ test('a watch event during an in-flight tick re-arms the debounce instead of coa
   }
 });
 
+test('live watch events scan only changed clients and preserve the other client partitions', async () => {
+  const tmp = withTmpHome([
+    path.join('.claude', 'projects'),
+    path.join('.codex', 'sessions')
+  ]);
+  const originalHomedir = os.homedir;
+  const originalSharedDir = process.env.TOKEN_MONITOR_SHARED_DIR;
+  os.homedir = () => tmp;
+  process.env.TOKEN_MONITOR_SHARED_DIR = tmp;
+
+  const chokidar = require('chokidar');
+  const originalWatch = chokidar.watch;
+  let watchHandler = null;
+  chokidar.watch = () => {
+    const watcher = {
+      on(event, handler) {
+        if (event === 'all') watchHandler = handler;
+        return watcher;
+      },
+      close() {}
+    };
+    return watcher;
+  };
+
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const calls = [];
+  let codexDeleted = false;
+  let codexUnattributed = false;
+  childProcess.spawn = (_bin, args) => {
+    calls.push(args);
+    const selected = String(args[args.indexOf('--client') + 1] || '').split(',').filter(Boolean);
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { end: () => {} };
+    child.kill = () => {};
+    setImmediate(() => {
+      const entries = codexUnattributed && selected.length === 1 && selected[0] === 'codex'
+        ? [{ model: 'unknown', totalTokens: 99 }]
+        : selected.filter((client) => !(codexDeleted && client === 'codex')).map((client) => {
+            const tokens = client === 'codex' && selected.length === 1 ? 30 : (client === 'codex' ? 20 : 10);
+            return {
+              client,
+              sessionId: `${client}-session`,
+              model: `${client}-model`,
+              totalTokens: tokens,
+              input: tokens,
+              cacheRead: tokens,
+              output: tokens,
+              cost: tokens / 100
+            };
+          });
+      child.stdout.emit('data', Buffer.from(JSON.stringify({
+        entries
+      })));
+      child.emit('close', 0);
+    });
+    return child;
+  };
+
+  let handle = null;
+  try {
+    const { startCollector } = freshCollector();
+    const updates = [];
+    handle = startCollector({
+      clients: 'claude,codex',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      intervalMs: 60 * 60 * 1000,
+      watchEnabled: true,
+      watchUsePolling: false,
+      watchTriggersCollection: true,
+      watchDebounceMs: 10,
+      limitsEnabled: false,
+      historyEnabled: false,
+      onUpdate: (summary, reason) => updates.push({ summary, reason })
+    });
+
+    await waitForCondition(() => updates.length === 1);
+    assert.equal(calls.length, 3, 'startup still performs one serial full scan');
+    assert.ok(watchHandler, 'watcher handler captured');
+
+    watchHandler('change', path.join(tmp, '.codex', 'sessions', 'active.jsonl'));
+    await waitForCondition(() => updates.length === 2);
+
+    const targeted = calls[3];
+    assert.equal(targeted[targeted.indexOf('--client') + 1], 'codex');
+    assert.ok(targeted.includes('--today'));
+    assert.equal(updates[1].summary.today.totalTokens, 40);
+    assert.equal(updates[1].summary.today.clients.claude, 10);
+    assert.equal(updates[1].summary.today.clients.codex, 30);
+    assert.equal(updates[1].summary.today.models['claude-model'], 10);
+    assert.equal(updates[1].summary.today.models['codex-model'], 30);
+    assert.equal(updates[1].summary.today.cacheReadTokens, 40);
+    assert.equal(updates[1].summary.month.totalTokens, 40);
+    assert.equal(updates[1].summary.allTime.totalTokens, 40);
+
+    // Multiple clients changing inside one debounce window become one targeted
+    // scan containing the union, not two subprocesses or an all-client fallback.
+    watchHandler('change', path.join(tmp, '.claude', 'projects', 'a.jsonl'));
+    watchHandler('change', path.join(tmp, '.codex', 'sessions', 'b.jsonl'));
+    await waitForCondition(() => updates.length === 3);
+    const union = calls[4];
+    assert.equal(union[union.indexOf('--client') + 1], 'claude,codex');
+    assert.equal(calls.length, 5);
+
+    watchHandler('change', path.join(tmp, 'unmapped', 'unknown.jsonl'));
+    await waitForCondition(() => updates.length === 4);
+    const fallback = calls[5];
+    assert.equal(fallback[fallback.indexOf('--client') + 1], 'claude,codex');
+
+    codexUnattributed = true;
+    watchHandler('change', path.join(tmp, '.codex', 'sessions', 'unattributed.jsonl'));
+    await waitForCondition(() => updates.length === 5);
+    assert.equal(calls[6][calls[6].indexOf('--client') + 1], 'codex');
+    assert.equal(calls[7][calls[7].indexOf('--client') + 1], 'claude,codex');
+    assert.equal(updates[4].summary.today.totalTokens, 30);
+
+    // A targeted scan that returns no rows replaces that client's partition
+    // with empty usage, so deletes do not leave stale totals behind.
+    codexUnattributed = false;
+    codexDeleted = true;
+    watchHandler('unlink', path.join(tmp, '.codex', 'sessions', 'active.jsonl'));
+    await waitForCondition(() => updates.length === 6);
+    const deletion = calls[8];
+    assert.equal(deletion[deletion.indexOf('--client') + 1], 'codex');
+    assert.equal(updates[5].summary.today.totalTokens, 10);
+    assert.equal(updates[5].summary.today.clients.claude, 10);
+    assert.equal(updates[5].summary.today.clients.codex, undefined);
+    assert.equal(updates[5].summary.month.totalTokens, 10);
+    assert.equal(updates[5].summary.allTime.totalTokens, 10);
+  } finally {
+    if (handle) handle.stop();
+    childProcess.spawn = originalSpawn;
+    chokidar.watch = originalWatch;
+    os.homedir = originalHomedir;
+    if (originalSharedDir === undefined) delete process.env.TOKEN_MONITOR_SHARED_DIR;
+    else process.env.TOKEN_MONITOR_SHARED_DIR = originalSharedDir;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('smart collection uses native watching and skips idle intervals after startup', async () => {
   const tmp = withTmpHome([path.join('.claude', 'projects')]);
   const originalHomedir = os.homedir;
@@ -744,8 +933,11 @@ test('smart collection uses native watching and skips idle intervals after start
   }
 });
 
-test('smart collection coalesces watch events into one interval scan', async () => {
-  const tmp = withTmpHome([path.join('.claude', 'projects')]);
+test('smart collection coalesces watch events into one targeted interval scan', async () => {
+  const tmp = withTmpHome([
+    path.join('.claude', 'projects'),
+    path.join('.codex', 'sessions')
+  ]);
   const originalHomedir = os.homedir;
   const originalSharedDir = process.env.TOKEN_MONITOR_SHARED_DIR;
   os.homedir = () => tmp;
@@ -769,7 +961,7 @@ test('smart collection coalesces watch events into one interval scan', async () 
     const { startCollector } = freshCollector();
     const updates = [];
     handle = startCollector({
-      clients: 'claude',
+      clients: 'claude,codex,cursor',
       allTimeSince: '2024-01-01',
       commandTimeoutMs: 1000,
       deviceId: 'test-device',
@@ -785,14 +977,15 @@ test('smart collection coalesces watch events into one interval scan', async () 
     });
 
     await waitForCondition(() => updates.length === 1);
-    watchHandler('change', '/fake/one.jsonl');
-    watchHandler('change', '/fake/two.jsonl');
-    watchHandler('change', '/fake/three.jsonl');
+    watchHandler('change', path.join(tmp, '.claude', 'projects', 'one.jsonl'));
+    watchHandler('change', path.join(tmp, '.claude', 'projects', 'two.jsonl'));
+    watchHandler('change', path.join(tmp, '.claude', 'projects', 'three.jsonl'));
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(calls.length, 3, 'watch events never scan immediately in smart mode');
 
     await waitForCondition(() => updates.length === 2);
     assert.equal(calls.length, 4, 'one today-only scan acknowledges the event batch');
+    assert.equal(calls[3][calls[3].indexOf('--client') + 1], 'claude,cursor');
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.equal(calls.length, 4, 'the acknowledged batch does not repeat');
   } finally {
@@ -881,7 +1074,10 @@ test('smart collection keeps events received during a scan pending', async () =>
 });
 
 test('smart collection retries a failed activity scan on the next interval', async () => {
-  const tmp = withTmpHome([path.join('.claude', 'projects')]);
+  const tmp = withTmpHome([
+    path.join('.claude', 'projects'),
+    path.join('.codex', 'sessions')
+  ]);
   const originalHomedir = os.homedir;
   const originalSharedDir = process.env.TOKEN_MONITOR_SHARED_DIR;
   os.homedir = () => tmp;
@@ -920,7 +1116,7 @@ test('smart collection retries a failed activity scan on the next interval', asy
     const updates = [];
     const errors = [];
     handle = startCollector({
-      clients: 'claude',
+      clients: 'claude,codex,cursor',
       allTimeSince: '2024-01-01',
       commandTimeoutMs: 1000,
       deviceId: 'test-device',
@@ -938,10 +1134,490 @@ test('smart collection retries a failed activity scan on the next interval', asy
 
     await waitForCondition(() => updates.length === 1);
     failNext = true;
-    watchHandler('change', '/fake/session.jsonl');
+    watchHandler('change', path.join(tmp, '.claude', 'projects', 'session.jsonl'));
     await waitForCondition(() => errors.length === 1);
     await waitForCondition(() => updates.length === 2);
     assert.equal(calls.length, 5, 'failed and successful activity attempts each spawn once');
+    assert.equal(calls[3][calls[3].indexOf('--client') + 1], 'claude,cursor');
+    assert.equal(
+      calls[4][calls[4].indexOf('--client') + 1],
+      'claude,codex,cursor',
+      'a failed targeted scan retries all clients instead of acknowledging partial data'
+    );
+  } finally {
+    if (handle) handle.stop();
+    childProcess.spawn = originalSpawn;
+    chokidar.watch = originalWatch;
+    os.homedir = originalHomedir;
+    if (originalSharedDir === undefined) delete process.env.TOKEN_MONITOR_SHARED_DIR;
+    else process.env.TOKEN_MONITOR_SHARED_DIR = originalSharedDir;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('TOKEN_MONITOR_WATCH_POLLING overrides the native watch default', () => {
+  const { resolveWatchUsePolling } = freshCollector();
+
+  // Default is native events, and it is deliberately not platform-dependent:
+  // chokidar 4 has one backend for every platform.
+  assert.equal(resolveWatchUsePolling(undefined, {}), false);
+  // A caller that states a preference wins over the default.
+  assert.equal(resolveWatchUsePolling(true, {}), true);
+  // The escape hatch beats both, in both directions — its whole purpose is
+  // rescuing a filesystem whose native events never arrive.
+  assert.equal(resolveWatchUsePolling(false, { TOKEN_MONITOR_WATCH_POLLING: '1' }), true);
+  assert.equal(resolveWatchUsePolling(true, { TOKEN_MONITOR_WATCH_POLLING: '0' }), false);
+  // Unset must stay tri-state: an empty value is not "false".
+  assert.equal(resolveWatchUsePolling(false, { TOKEN_MONITOR_WATCH_POLLING: '' }), false);
+  assert.equal(resolveWatchUsePolling(true, { TOKEN_MONITOR_WATCH_POLLING: '' }), true);
+});
+
+test('watch-descriptor exhaustion degrades to polling and stays there', async () => {
+  const tmp = withTmpHome([path.join('.claude', 'projects')]);
+  const originalHomedir = os.homedir;
+  const originalSharedDir = process.env.TOKEN_MONITOR_SHARED_DIR;
+  os.homedir = () => tmp;
+  process.env.TOKEN_MONITOR_SHARED_DIR = tmp;
+
+  const chokidar = require('chokidar');
+  const originalWatch = chokidar.watch;
+  const watchOptions = [];
+  const errorHandlers = [];
+  let closed = 0;
+  chokidar.watch = (_dirs, options) => {
+    watchOptions.push(options);
+    return {
+      on: (event, handler) => { if (event === 'error') errorHandlers.push(handler); },
+      close: () => { closed += 1; }
+    };
+  };
+
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const calls = [];
+  childProcess.spawn = recordingSpawn(calls);
+
+  let handle = null;
+  const logs = [];
+  try {
+    const { startCollector } = freshCollector();
+    handle = startCollector({
+      clients: 'claude',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      intervalMs: 60 * 1000,
+      watchEnabled: true,
+      limitsEnabled: false,
+      historyEnabled: false,
+      logger: (line) => logs.push(line),
+      onUpdate: () => {}
+    });
+
+    await waitForCondition(() => errorHandlers.length === 1);
+    assert.equal(watchOptions[0].usePolling, false, 'starts on native events');
+
+    // inotify exhaustion is reported asynchronously on the watcher; without the
+    // fallback the watch simply stops delivering events.
+    const enospc = new Error('ENOSPC: System limit for number of file watchers reached');
+    enospc.code = 'ENOSPC';
+    errorHandlers[0](enospc);
+
+    await waitForCondition(() => watchOptions.length === 2);
+    assert.equal(watchOptions[1].usePolling, true, 'rebuilds the watcher with polling');
+    assert.equal(watchOptions[1].interval, 2000);
+    assert.equal(closed, 1, 'the exhausted native watcher is closed');
+    assert.ok(logs.some((line) => line.includes('ENOSPC')));
+
+    // A later rebuild (a client gaining a data directory) must not retry native
+    // events — the budget that failed is machine-wide, not ours to reclaim.
+    fs.mkdirSync(path.join(tmp, '.claude', 'transcripts'), { recursive: true });
+    await handle.tick('manual');
+    await waitForCondition(() => watchOptions.length === 3);
+    assert.equal(watchOptions[2].usePolling, true, 'the fallback is sticky');
+  } finally {
+    if (handle) handle.stop();
+    childProcess.spawn = originalSpawn;
+    chokidar.watch = originalWatch;
+    os.homedir = originalHomedir;
+    if (originalSharedDir === undefined) delete process.env.TOKEN_MONITOR_SHARED_DIR;
+    else process.env.TOKEN_MONITOR_SHARED_DIR = originalSharedDir;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// The two tests below need a home that is definitely NOT its own canonical
+// path, because that is the only input under which canonicalWatchPath() does
+// anything observable. Simply skipping realpath would not do it: that only
+// works while os.tmpdir() happens to be non-canonical, which is true today
+// (macOS /var -> /private/var, an 8.3 short path on the Windows runner) but is
+// a property of the runner image rather than of this test. A fixture that can
+// stop being able to fail when an image changes is exactly what this file
+// refuses to rely on elsewhere.
+//
+// So build the real home under a canonicalised base and hand back an alias to
+// it. Junction rather than symlink on Windows: junctions need neither elevation
+// nor developer mode, and a junction is one of the two things
+// canonicalWatchPath() exists to resolve.
+function withAliasedTmpHome(prepare) {
+  const base = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'token-monitor-alias-'));
+  const real = path.join(base, 'real-home');
+  const alias = path.join(base, 'alias-home');
+  fs.mkdirSync(real, { recursive: true });
+  for (const dir of prepare) fs.mkdirSync(path.join(real, dir), { recursive: true });
+  fs.symlinkSync(real, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  // Guard the fixture itself: if the alias ever stopped being non-canonical the
+  // tests below would silently lose their teeth, which is the failure mode this
+  // whole approach exists to avoid.
+  assert.notEqual(alias, fs.realpathSync.native(alias));
+  return { base, alias, real };
+}
+
+test('watch roots reach chokidar canonicalised on Windows and untouched elsewhere', async () => {
+  const { base, alias, real } = withAliasedTmpHome([path.join('.claude', 'projects')]);
+  const originalHomedir = os.homedir;
+  const originalSharedDir = process.env.TOKEN_MONITOR_SHARED_DIR;
+  os.homedir = () => alias;
+  process.env.TOKEN_MONITOR_SHARED_DIR = alias;
+
+  const chokidar = require('chokidar');
+  const originalWatch = chokidar.watch;
+  let watchedDirs = null;
+  chokidar.watch = (dirs) => {
+    watchedDirs = dirs;
+    return { on: () => {}, close: () => {} };
+  };
+
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const calls = [];
+  childProcess.spawn = recordingSpawn(calls);
+
+  let handle = null;
+  try {
+    const { startCollector } = freshCollector();
+    handle = startCollector({
+      clients: 'claude',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      intervalMs: 60 * 1000,
+      watchEnabled: true,
+      limitsEnabled: false,
+      historyEnabled: false,
+      onUpdate: () => {}
+    });
+
+    await waitForCondition(() => Array.isArray(watchedDirs) && watchedDirs.length > 0);
+    if (process.platform === 'win32') {
+      // The junction must have been resolved away. Handing libuv a path it will
+      // report events under in a different form is what fires the fs-event
+      // assert, and that abort is not something the watcher can recover from.
+      assert.deepEqual(watchedDirs, [path.join(real, '.claude', 'projects')]);
+    } else {
+      // Off Windows this must be identity: resolving here would make the watch
+      // roots disagree with the paths tokscale is pointed at.
+      assert.deepEqual(watchedDirs, [path.join(alias, '.claude', 'projects')]);
+    }
+  } finally {
+    if (handle) handle.stop();
+    childProcess.spawn = originalSpawn;
+    chokidar.watch = originalWatch;
+    os.homedir = originalHomedir;
+    if (originalSharedDir === undefined) delete process.env.TOKEN_MONITOR_SHARED_DIR;
+    else process.env.TOKEN_MONITOR_SHARED_DIR = originalSharedDir;
+    delete require.cache[collectorPath];
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('the ignore matcher agrees with the roots chokidar was actually handed', async () => {
+  // The dangerous half of the invariant: chokidar reports events under the root
+  // it was handed, so canonicalising the roots without canonicalising the
+  // matcher would leave it comparing against a path no event ever carries. The
+  // watch would keep working while the Hermes runtime silently stopped being
+  // pruned (issue #38, 150k+ files).
+  //
+  // Both halves are read back off the same chokidar.watch call rather than
+  // recomputed here, which is what makes this hold on every platform: it asserts
+  // that the two agree, not which form they agree on.
+  const { base, alias } = withAliasedTmpHome([]);
+  const originalHomedir = os.homedir;
+  const originalSharedDir = process.env.TOKEN_MONITOR_SHARED_DIR;
+  const originalHermesHome = process.env.HERMES_HOME;
+  os.homedir = () => alias;
+  process.env.TOKEN_MONITOR_SHARED_DIR = alias;
+  const hermesHome = path.join(alias, '.hermes');
+  fs.mkdirSync(hermesHome, { recursive: true });
+  process.env.HERMES_HOME = hermesHome;
+
+  const chokidar = require('chokidar');
+  const originalWatch = chokidar.watch;
+  let watchedDirs = null;
+  let ignored = null;
+  chokidar.watch = (dirs, options) => {
+    watchedDirs = dirs;
+    ignored = options?.ignored;
+    return { on: () => {}, close: () => {} };
+  };
+
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const calls = [];
+  childProcess.spawn = recordingSpawn(calls);
+
+  let handle = null;
+  try {
+    const { startCollector } = freshCollector();
+    handle = startCollector({
+      clients: 'hermes',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      intervalMs: 60 * 1000,
+      watchEnabled: true,
+      limitsEnabled: false,
+      historyEnabled: false,
+      onUpdate: () => {}
+    });
+
+    await waitForCondition(() => Array.isArray(watchedDirs) && watchedDirs.length > 0);
+    assert.equal(typeof ignored, 'function', 'a Hermes watch must carry the prune matcher');
+    const watchedHome = watchedDirs[0];
+    assert.equal(
+      ignored(path.join(watchedHome, 'node_modules', 'anything.js')),
+      true,
+      'runtime files under the watched Hermes root must be pruned'
+    );
+    assert.equal(ignored(watchedHome), false, 'the root itself stays watched');
+    assert.equal(ignored(path.join(watchedHome, 'state.db-wal')), false, 'db sidecars stay watched');
+  } finally {
+    if (handle) handle.stop();
+    childProcess.spawn = originalSpawn;
+    chokidar.watch = originalWatch;
+    os.homedir = originalHomedir;
+    if (originalSharedDir === undefined) delete process.env.TOKEN_MONITOR_SHARED_DIR;
+    else process.env.TOKEN_MONITOR_SHARED_DIR = originalSharedDir;
+    if (originalHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = originalHermesHome;
+    delete require.cache[collectorPath];
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('TOKEN_MONITOR_WATCH_POLLING=0 opts out of the descriptor fallback', async () => {
+  const tmp = withTmpHome([path.join('.claude', 'projects')]);
+  const originalHomedir = os.homedir;
+  const originalSharedDir = process.env.TOKEN_MONITOR_SHARED_DIR;
+  const originalPolling = process.env.TOKEN_MONITOR_WATCH_POLLING;
+  os.homedir = () => tmp;
+  process.env.TOKEN_MONITOR_SHARED_DIR = tmp;
+  process.env.TOKEN_MONITOR_WATCH_POLLING = '0';
+
+  const chokidar = require('chokidar');
+  const originalWatch = chokidar.watch;
+  const watchOptions = [];
+  const errorHandlers = [];
+  chokidar.watch = (_dirs, options) => {
+    watchOptions.push(options);
+    return {
+      on: (event, handler) => { if (event === 'error') errorHandlers.push(handler); },
+      close: () => {}
+    };
+  };
+
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const calls = [];
+  childProcess.spawn = recordingSpawn(calls);
+
+  let handle = null;
+  try {
+    const { startCollector } = freshCollector();
+    handle = startCollector({
+      clients: 'claude',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      intervalMs: 60 * 1000,
+      watchEnabled: true,
+      limitsEnabled: false,
+      historyEnabled: false,
+      onUpdate: () => {}
+    });
+
+    await waitForCondition(() => errorHandlers.length === 1);
+    const enospc = new Error('ENOSPC: System limit for number of file watchers reached');
+    enospc.code = 'ENOSPC';
+    errorHandlers[0](enospc);
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(watchOptions.length, 1, 'an explicit "never poll" must survive descriptor exhaustion');
+  } finally {
+    if (handle) handle.stop();
+    childProcess.spawn = originalSpawn;
+    chokidar.watch = originalWatch;
+    os.homedir = originalHomedir;
+    if (originalSharedDir === undefined) delete process.env.TOKEN_MONITOR_SHARED_DIR;
+    else process.env.TOKEN_MONITOR_SHARED_DIR = originalSharedDir;
+    if (originalPolling === undefined) delete process.env.TOKEN_MONITOR_WATCH_POLLING;
+    else process.env.TOKEN_MONITOR_WATCH_POLLING = originalPolling;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('a non-descriptor watch error is logged without degrading to polling', async () => {
+  const tmp = withTmpHome([path.join('.claude', 'projects')]);
+  const originalHomedir = os.homedir;
+  const originalSharedDir = process.env.TOKEN_MONITOR_SHARED_DIR;
+  os.homedir = () => tmp;
+  process.env.TOKEN_MONITOR_SHARED_DIR = tmp;
+
+  const chokidar = require('chokidar');
+  const originalWatch = chokidar.watch;
+  const watchOptions = [];
+  const errorHandlers = [];
+  chokidar.watch = (_dirs, options) => {
+    watchOptions.push(options);
+    return {
+      on: (event, handler) => { if (event === 'error') errorHandlers.push(handler); },
+      close: () => {}
+    };
+  };
+
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const calls = [];
+  childProcess.spawn = recordingSpawn(calls);
+
+  let handle = null;
+  const logs = [];
+  try {
+    const { startCollector } = freshCollector();
+    handle = startCollector({
+      clients: 'claude',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      intervalMs: 60 * 1000,
+      watchEnabled: true,
+      limitsEnabled: false,
+      historyEnabled: false,
+      logger: (line) => logs.push(line),
+      onUpdate: () => {}
+    });
+
+    await waitForCondition(() => errorHandlers.length === 1);
+    const transient = new Error('EACCES: permission denied');
+    transient.code = 'EACCES';
+    errorHandlers[0](transient);
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(watchOptions.length, 1, 'a permission error must not cost every user native events');
+    assert.ok(logs.some((line) => line.includes('EACCES')));
+  } finally {
+    if (handle) handle.stop();
+    childProcess.spawn = originalSpawn;
+    chokidar.watch = originalWatch;
+    os.homedir = originalHomedir;
+    if (originalSharedDir === undefined) delete process.env.TOKEN_MONITOR_SHARED_DIR;
+    else process.env.TOKEN_MONITOR_SHARED_DIR = originalSharedDir;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('live collection retries all clients after a failed targeted watch scan', async () => {
+  const tmp = withTmpHome([
+    path.join('.claude', 'projects'),
+    path.join('.codex', 'sessions')
+  ]);
+  const originalHomedir = os.homedir;
+  const originalSharedDir = process.env.TOKEN_MONITOR_SHARED_DIR;
+  os.homedir = () => tmp;
+  process.env.TOKEN_MONITOR_SHARED_DIR = tmp;
+
+  const chokidar = require('chokidar');
+  const originalWatch = chokidar.watch;
+  let watchHandler = null;
+  chokidar.watch = () => ({
+    on: (event, handler) => { if (event === 'all') watchHandler = handler; },
+    close: () => {}
+  });
+
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const calls = [];
+  let failNext = false;
+  childProcess.spawn = (_bin, args) => {
+    calls.push(args);
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { end: () => {} };
+    child.kill = () => {};
+    setImmediate(() => {
+      if (!failNext) child.stdout.emit('data', Buffer.from(JSON.stringify({ entries: [] })));
+      child.emit('close', failNext ? 1 : 0);
+      failNext = false;
+    });
+    return child;
+  };
+
+  let handle = null;
+  try {
+    const { startCollector } = freshCollector();
+    const updates = [];
+    const errors = [];
+    handle = startCollector({
+      clients: 'claude,codex',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      // Long enough that the interval reconciliation cannot be what recovers
+      // the failed client: only the next watch event may do it.
+      intervalMs: 60000,
+      watchEnabled: true,
+      watchDebounceMs: 10,
+      watchUsePolling: false,
+      watchTriggersCollection: true,
+      intervalRequiresActivity: false,
+      limitsEnabled: false,
+      historyEnabled: false,
+      onUpdate: (_summary, reason) => updates.push(reason),
+      onError: (error) => errors.push(error.message)
+    });
+
+    await waitForCondition(() => updates.length === 1);
+    const afterStartup = calls.length;
+
+    failNext = true;
+    watchHandler('change', path.join(tmp, '.claude', 'projects', 'session.jsonl'));
+    await waitForCondition(() => errors.length === 1);
+
+    // An unrelated client changes next. Without an unconditional full-scan
+    // flag this tick targets only codex, leaving claude on the stale anchor
+    // partition until the 5–30 minute interval — the live-mode gap.
+    watchHandler('change', path.join(tmp, '.codex', 'sessions', 'rollout.jsonl'));
+    await waitForCondition(() => calls.length === afterStartup + 2);
+
+    const failed = calls[afterStartup];
+    const recovery = calls[afterStartup + 1];
+    assert.equal(failed[failed.indexOf('--client') + 1], 'claude');
+    assert.equal(
+      recovery[recovery.indexOf('--client') + 1],
+      'claude,codex',
+      'a failed live targeted scan retries every client on the next watch event'
+    );
   } finally {
     if (handle) handle.stop();
     childProcess.spawn = originalSpawn;

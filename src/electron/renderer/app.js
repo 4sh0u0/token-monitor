@@ -6,6 +6,7 @@ const motionPreferenceApi = window.TokenMonitorMotionPreference;
 const windowsGlassApi = window.TokenMonitorWindowsGlass;
 const glassRenderingApi = window.TokenMonitorGlassRendering;
 const wslStatusPresentationApi = window.TokenMonitorWslStatusPresentation;
+const statsRenderSchedulerApi = window.TokenMonitorStatsRenderScheduler;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const clientsWithIcon = new Set([
   'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma',
@@ -87,6 +88,47 @@ const LIMIT_PROVIDERS = [
   { id: 'ollama', label: 'Ollama' },
   { id: 'thirdparty', label: 'Third-party APIs' }
 ];
+const LIMIT_PROVIDER_ACCOUNT_GROUP_IDS = {
+  claude: 'claudeAccountGroup',
+  codex: 'codexAccountGroup',
+  opencode: 'opencodeCookieGroup',
+  cursor: 'cursorAccountGroup',
+  kimi: 'kimiAccountGroup',
+  copilot: 'copilotAccountGroup',
+  mimo: 'mimoAccountGroup',
+  zai: 'zaiAccountGroup',
+  zaiteam: 'zaiteamAccountGroup',
+  deepseek: 'deepseekAccountGroup',
+  openrouter: 'openrouterAccountGroup',
+  minimax: 'minimaxAccountGroup',
+  volcengine: 'volcengineAccountGroup',
+  qoder: 'qoderAccountGroup',
+  ollama: 'ollamaAccountGroup',
+  thirdparty: 'thirdpartyAccountGroup'
+};
+const LIMIT_PROVIDER_ACCOUNT_STATUS_IDS = {
+  claude: 'claudeAccountStatus',
+  codex: 'codexAccountStatus',
+  opencode: 'opencodeCookieStatus',
+  cursor: 'cursorAccountStatus',
+  kimi: 'kimiAccountStatus',
+  copilot: 'copilotApiTokenStatus',
+  mimo: 'mimoAccountStatus',
+  zai: 'zaiAccountStatus',
+  zaiteam: 'zaiteamAccountStatus',
+  deepseek: 'deepseekApiKeyStatus',
+  openrouter: 'openrouterStatus',
+  minimax: 'minimaxApiKeyStatus',
+  volcengine: 'volcengineAccountStatus',
+  qoder: 'qoderAccountStatus',
+  ollama: 'ollamaAccountStatus',
+  thirdparty: 'thirdpartyStatus'
+};
+const LIMIT_PROVIDER_CONNECTION_DETAIL_KEYS = {
+  antigravity: 'settings.limits.connection.antigravity',
+  grok: 'settings.limits.connection.grok',
+  kiro: 'settings.limits.connection.kiro'
+};
 const TRAY_ICON_VARIANTS = [
   { id: 'claude-brand', label: 'Claude', after: 'claude' },
   { id: 'chatgpt', label: 'ChatGPT', after: 'codex' }
@@ -117,6 +159,7 @@ const clientDisplayPreferencesApi = window.TokenMonitorClientDisplayPreferences;
 const customPricingFormApi = window.TokenMonitorCustomPricingForm;
 const viewDisplayPreferencesApi = window.TokenMonitorViewDisplayPreferences;
 const preferenceDragSortApi = window.TokenMonitorPreferenceDragSort;
+const verticalDragSortApi = window.TokenMonitorVerticalDragSort;
 const homeOverviewApi = window.TokenMonitorHomeOverview;
 const homeModulePreferencesApi = window.TokenMonitorHomeModulePreferences;
 const { limitFillPercent, limitModeSuffix } = window.TokenMonitorLimitDisplayMode;
@@ -156,7 +199,6 @@ const LIMIT_CAPABILITY_TAG_KEYS = {
   Subscription: 'settings.limits.capability.subscription',
   'Token Plan': 'settings.limits.capability.tokenPlan',
   'Coding Plan': 'settings.limits.capability.codingPlan',
-  'Membership/Coding Plan': 'settings.limits.capability.membershipCodingPlan',
   Relay: 'settings.limits.capability.relay',
   'API key': 'settings.limits.capability.apiKey',
   'AK/SK': 'settings.limits.capability.akSk',
@@ -228,9 +270,10 @@ const SERVICE_STATUS_PLACEHOLDERS = [
 const SERVICE_PROVIDER_OPTIONS = SERVICE_STATUS_PLACEHOLDERS.map((entry) => ({ id: entry.id, label: entry.label }));
 const TOKEN_MONITOR_REPOSITORY_URL = 'https://github.com/Javis603/token-monitor';
 const TOKEN_MONITOR_ISSUES_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/issues/new/choose`;
+const TOKEN_MONITOR_WEBSITE_URL = 'https://javis-ai.com/token-monitor/';
 const TOKEN_MONITOR_WSL_SQLITE_GUIDE_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/blob/main/docs/wsl-sqlite-setup.md`;
 const serviceStatusProviderPreferencesApi = window.TokenMonitorServiceStatusProviderPreferences;
-const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'accounts', 'sync'];
+const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'sync'];
 const REFRESH_BUTTON_FEEDBACK_MS = 700;
 const CODEX_PENDING_ACTIVE_GRACE_MS = 30000;
 const initialFloatingBubble = window.__TOKEN_MONITOR_INITIAL_FLOATING_BUBBLE__ || { collapsed: false, side: null };
@@ -254,7 +297,7 @@ let directBreakdownOverride = null;
 state.projectSettingsExpanded = false;
 state.homeActivitySettingsExpanded = false;
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
-const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, windowsBackdrop: 'acrylic', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, settingsInTitlebar: false };
+const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, windowsBackdrop: 'acrylic', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, compactTokenUnits: 'western', settingsInTitlebar: false };
 let preferenceDrag = null;
 let viewSwitcherLongPressTimer = null;
 let viewSwitcherLongPressTriggered = false;
@@ -293,6 +336,10 @@ Object.assign(els, {
   startupGroup: document.getElementById('startupGroup'),
   startAtLoginInput: document.getElementById('startAtLoginInput'),
   startupNote: document.getElementById('startupNote'),
+  advancedSettingsGroup: document.getElementById('advancedSettingsGroup'),
+  advancedSettingsToggle: document.getElementById('advancedSettingsToggle'),
+  advancedSettingsDetails: document.getElementById('advancedSettingsDetails'),
+  advancedSettingsSummary: document.getElementById('advancedSettingsSummary'),
   tokscaleGroup: document.getElementById('tokscaleGroup'),
   tokscaleInstalled: document.getElementById('tokscaleInstalled'),
   tokscaleBundledLine: document.getElementById('tokscaleBundledLine'),
@@ -305,6 +352,7 @@ Object.assign(els, {
   openTokscaleLinkButton: document.getElementById('openTokscaleLinkButton'),
   aboutVersion: document.getElementById('aboutVersion'),
   openRepositoryButton: document.getElementById('openRepositoryButton'),
+  openWebsiteButton: document.getElementById('openWebsiteButton'),
   reportIssueButton: document.getElementById('reportIssueButton'),
   appUpdatePill: document.getElementById('appUpdatePill'),
   appUpdatePillAction: document.getElementById('appUpdatePillAction'),
@@ -326,12 +374,16 @@ Object.assign(els, {
   appUpdateCheckButton: document.getElementById('appUpdateCheckButton'),
   appUpdateViewReleaseButton: document.getElementById('appUpdateViewReleaseButton'),
   appUpdateNotes: document.getElementById('appUpdateNotes'),
+  appUpdateNotesToggle: document.getElementById('appUpdateNotesToggle'),
+  appUpdateNotesDetails: document.getElementById('appUpdateNotesDetails'),
   appUpdateNotesTitle: document.getElementById('appUpdateNotesTitle'),
   appUpdateNotesBody: document.getElementById('appUpdateNotesBody'),
   appUpdateReleaseNotesButton: document.getElementById('appUpdateReleaseNotesButton'),
   appUpdateMessage: document.getElementById('appUpdateMessage'),
   titleIconInput: document.getElementById('titleIconInput'),
   showCompactTotalTokensInput: document.getElementById('showCompactTotalTokensInput'),
+  compactTokenUnitsRow: document.getElementById('compactTokenUnitsRow'),
+  compactTokenUnitsInput: document.getElementById('compactTokenUnitsInput'),
   swapSettingsRefreshInput: document.getElementById('swapSettingsRefreshInput'),
   resetClientDisplayOrderButton: document.getElementById('resetClientDisplayOrderButton'),
   showAllClientsButton: document.getElementById('showAllClientsButton'),
@@ -340,7 +392,6 @@ Object.assign(els, {
   viewDisplayList: document.getElementById('viewDisplayList'),
   syncSettingsSummary: document.getElementById('syncSettingsSummary'),
   toolsSettingsSummary: document.getElementById('toolsSettingsSummary'),
-  accountsSettingsSummary: document.getElementById('accountsSettingsSummary'),
   limitsSettingsSummary: document.getElementById('limitsSettingsSummary'),
   generalSettingsSummary: document.getElementById('generalSettingsSummary'),
   mainSettingsSummary: document.getElementById('mainSettingsSummary'),
@@ -423,6 +474,17 @@ function currentLocale() {
   return i18n.resolveLocale(currentLanguage(), preferredLanguages());
 }
 
+function supportsLocalizedCompactTokenUnits(locale) {
+  return /^(zh|ja|ko)(?:-|$)/i.test(String(locale || ''));
+}
+
+function effectiveCompactTokenUnits() {
+  return supportsLocalizedCompactTokenUnits(currentLocale())
+    && state.settings?.compactTokenUnits === 'localized'
+    ? 'localized'
+    : 'western';
+}
+
 function t(key, params) {
   return i18n.translate(currentLocale(), key, params);
 }
@@ -475,6 +537,7 @@ function setSettingsSectionExpanded(section, expanded) {
 const SETTINGS_SCROLL_ANCHOR_MS = 360;
 const SETTINGS_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Tab']);
 let settingsScrollAnchorFrame = null;
+let settingsScrollInteractionRevision = 0;
 
 function cancelSettingsScrollAnchor() {
   if (settingsScrollAnchorFrame === null) return;
@@ -482,8 +545,13 @@ function cancelSettingsScrollAnchor() {
   settingsScrollAnchorFrame = null;
 }
 
+function cancelSettingsScrollAnchorOnInteraction() {
+  settingsScrollInteractionRevision += 1;
+  cancelSettingsScrollAnchor();
+}
+
 function cancelSettingsScrollAnchorOnKeydown(event) {
-  if (SETTINGS_SCROLL_KEYS.has(event.key)) cancelSettingsScrollAnchor();
+  if (SETTINGS_SCROLL_KEYS.has(event.key)) cancelSettingsScrollAnchorOnInteraction();
 }
 
 function shouldAnchorSettingsScroll(section, expanding) {
@@ -523,21 +591,9 @@ function setupSettingsSections() {
     });
     setSettingsSectionExpanded(section, state.settingsSections[section]);
   }
-  els.settingsPanel?.addEventListener('pointerdown', cancelSettingsScrollAnchor, { passive: true });
-  els.settingsPanel?.addEventListener('wheel', cancelSettingsScrollAnchor, { passive: true });
+  els.settingsPanel?.addEventListener('pointerdown', cancelSettingsScrollAnchorOnInteraction, { passive: true });
+  els.settingsPanel?.addEventListener('wheel', cancelSettingsScrollAnchorOnInteraction, { passive: true });
   els.settingsPanel?.addEventListener('keydown', cancelSettingsScrollAnchorOnKeydown);
-}
-
-function orderAccountProviderGroups() {
-  const container = document.getElementById('accountsSettingsDetails');
-  if (!container) return;
-  for (const provider of LIMIT_PROVIDERS) {
-    const groupId = provider.id === 'opencode'
-      ? 'opencodeCookieGroup'
-      : `${provider.id}AccountGroup`;
-    const group = document.getElementById(groupId);
-    if (group?.parentElement === container) container.append(group);
-  }
 }
 
 function refreshIntervalLabel(value) {
@@ -567,28 +623,6 @@ function settingsSectionSummary(section) {
       tracked: enabledClientSet().size,
       visible: KNOWN_CLIENTS.length - hiddenClientSet().size,
       pinned: pinnedClientSet().size
-    });
-  }
-  if (section === 'accounts') {
-    const claudeLinked = externalProviderAccountLinked('claude');
-    const cursorLinked = Boolean(state.cursorAccount.status?.loggedIn) && !state.cursorAccount.status?.expired;
-    const opencodeCount = state.opencodeProfileCount || 0;
-    const openrouterCount = state.openrouterProfileCount || 0;
-    const thirdpartyCount = state.thirdPartyProfileCount || 0;
-    const deepseekLinked = deepseekAccountLinked();
-    const minimaxLinked = minimaxAccountLinked();
-    const zaiLinked = externalProviderAccountLinked('zai');
-    const zaiteamLinked = externalProviderAccountLinked('zaiteam');
-    const volcengineLinked = externalProviderAccountLinked('volcengine');
-    const qoderLinked = externalProviderAccountLinked('qoder');
-    const kimiLinked = externalProviderAccountLinked('kimi');
-    const ollamaLinked = externalProviderAccountLinked('ollama');
-    const mimoLinked = mimoAccountLinked();
-    const copilotLinked = copilotAccountLinked();
-    const codexLinked = (state.settings?.codexManagedAccounts || []).length > 0;
-    return t('settings.summary.accounts', {
-      linked: (claudeLinked ? 1 : 0) + (codexLinked ? 1 : 0) + (cursorLinked ? 1 : 0) + (opencodeCount > 0 ? 1 : 0) + (openrouterCount > 0 ? 1 : 0) + (thirdpartyCount > 0 ? 1 : 0) + (deepseekLinked ? 1 : 0) + (minimaxLinked ? 1 : 0) + (zaiLinked ? 1 : 0) + (zaiteamLinked ? 1 : 0) + (volcengineLinked ? 1 : 0) + (qoderLinked ? 1 : 0) + (kimiLinked ? 1 : 0) + (ollamaLinked ? 1 : 0) + (mimoLinked ? 1 : 0) + (copilotLinked ? 1 : 0),
-      total: 16
     });
   }
   if (section === 'limits') {
@@ -626,32 +660,60 @@ function renderSettingsSummaries() {
 }
 
 function formatNumber(value) { return Math.round(Number(value || 0)).toLocaleString('en-US'); }
-function formatCompact(value) {
+function formatCompact(value, unitSystem = 'western', locale = 'en') {
   const num = Math.round(Number(value || 0));
   const abs = Math.abs(num);
-  const units = [
-    { divisor: 1e3, suffix: 'K' },
-    { divisor: 1e6, suffix: 'M' },
-    { divisor: 1e9, suffix: 'B' }
-  ];
-  let unitIndex = abs >= 1e9 ? 2 : abs >= 1e6 ? 1 : abs >= 1e3 ? 0 : -1;
+  const localized = unitSystem === 'localized';
+  const language = String(locale || '').toLowerCase();
+  const localizedSuffixes = language.startsWith('ko')
+    ? ['만', '억']
+    : language.startsWith('zh-cn')
+      ? ['万', '亿']
+      : language.startsWith('ja')
+        ? ['万', '億']
+        : ['萬', '億'];
+  const units = localized
+    ? [
+        { divisor: 1e4, suffix: localizedSuffixes[0] },
+        { divisor: 1e8, suffix: localizedSuffixes[1] }
+      ]
+    : [
+        { divisor: 1e3, suffix: 'K' },
+        { divisor: 1e6, suffix: 'M' },
+        { divisor: 1e9, suffix: 'B' }
+      ];
+  let unitIndex = -1;
+  for (let index = units.length - 1; index >= 0; index -= 1) {
+    if (abs >= units[index].divisor) {
+      unitIndex = index;
+      break;
+    }
+  }
   if (unitIndex < 0) return String(num);
 
   let unit = units[unitIndex];
-  let display = (num / unit.divisor).toFixed(1);
-  if (Math.abs(Number(display)) >= 1000 && unitIndex < units.length - 1) {
+  const formatted = () => {
+    const scaled = num / unit.divisor;
+    const digits = localized && Math.abs(scaled) < 10 ? 2 : 1;
+    return scaled.toFixed(digits);
+  };
+  let display = formatted();
+  const promotionBoundary = localized ? 10000 : 1000;
+  if (Math.abs(Number(display)) >= promotionBoundary && unitIndex < units.length - 1) {
     unit = units[unitIndex + 1];
-    display = (num / unit.divisor).toFixed(1);
+    display = formatted();
   }
-  return `${display.replace(/\.0$/, '')}${unit.suffix}`;
+  return `${display.replace(/\.?0+$/, '')}${unit.suffix}`;
 }
 function updateTotalCompact(value) {
   if (!els.totalTokensCompact) return;
   const num = Math.round(Number(value || 0));
-  if (state.settings?.showCompactTotalTokens !== true || Math.abs(num) < 1000) {
+  const unitSystem = effectiveCompactTokenUnits();
+  const threshold = unitSystem === 'localized' ? 1e4 : 1e3;
+  if (state.settings?.showCompactTotalTokens !== true || Math.abs(num) < threshold) {
     hideTotalCompact();
   } else {
-    els.totalTokensCompact.textContent = `≈ ${formatCompact(num)}`;
+    els.totalTokensCompact.textContent = `≈ ${formatCompact(num, unitSystem, currentLocale())}`;
     els.totalTokensCompact.classList.remove('hidden');
   }
   fitTotalNumber();
@@ -898,7 +960,7 @@ function renderAppUpdateNotes(s) {
   const visible = Boolean(version && groups.length > 0);
   els.appUpdateNotes.classList.toggle('hidden', !visible);
   if (!visible) {
-    els.appUpdateNotes.open = false;
+    setSettingsAccordionExpanded(els.appUpdateNotes, els.appUpdateNotesToggle, els.appUpdateNotesDetails, false);
     els.appUpdateNotesTitle.textContent = '';
     els.appUpdateNotesBody.replaceChildren();
     return;
@@ -908,7 +970,10 @@ function renderAppUpdateNotes(s) {
   els.appUpdateNotesBody.replaceChildren(...buildAppUpdateNoteGroupNodes(groups));
   els.appUpdateReleaseNotesButton.classList.toggle('hidden', !s.latest?.htmlUrl);
   if (s.hasUpdate && state.appUpdateNotesPresentedVersion !== version) {
-    els.appUpdateNotes.open = true;
+    // The disclosure may have just changed from display:none. Commit its
+    // collapsed grid once so the first automatic reveal can transition too.
+    els.appUpdateNotesDetails.getBoundingClientRect();
+    setSettingsAccordionExpanded(els.appUpdateNotes, els.appUpdateNotesToggle, els.appUpdateNotesDetails, true);
     state.appUpdateNotesPresentedVersion = version;
   }
 }
@@ -1037,6 +1102,13 @@ function mergeTokscalePayload(payload) {
 function renderTokscaleStatus() {
   if (!els.tokscaleGroup) return;
   const status = state.tokscaleStatus;
+  const advancedSummaryKey = state.tokscaleCheck?.newer
+    ? 'settings.advanced.tokscaleUpdate'
+    : 'settings.advanced.summary';
+  if (els.advancedSettingsSummary) {
+    els.advancedSettingsSummary.dataset.i18n = advancedSummaryKey;
+    els.advancedSettingsSummary.textContent = t(advancedSummaryKey);
+  }
   if (status?.supported === false) {
     els.tokscaleGroup.classList.add('hidden');
     return;
@@ -1170,6 +1242,10 @@ function animateNumber(el, from, to, duration = 1000, onDone = null) {
     }
   }
   numberAnimHandle = requestAnimationFrame(frame);
+}
+
+function animateTotalNumber(el, from, to, duration) {
+  animateNumber(el, from, to, duration, () => updateTotalCompact(to));
 }
 
 const rowNumberAnimations = new Map();
@@ -2064,7 +2140,8 @@ function codexResetCreditExpiryDetailLabel(date) {
   return diffMs <= 0 ? 'Expires now' : `Expires in ${formatDuration(diffMs)}`;
 }
 
-function codexResetCreditExpiryDateLabel(date) {
+// Shared by Codex reset credits and Claude prepaid grants.
+function expiryDateLabel(date) {
   return new Intl.DateTimeFormat(currentLocale(), { month: 'numeric', day: 'numeric' }).format(date);
 }
 
@@ -2127,45 +2204,14 @@ function codexResetCreditsNode(resetCredits) {
     });
     expiryGroup.append(timeline);
     if (expirationDates.length > 1) {
-      const infoWrap = document.createElement('span');
-      infoWrap.className = 'limit-detail-tooltip-wrap';
-      infoWrap.classList.toggle('has-opened', state.limitDetailTooltipHasOpened);
-      const info = document.createElement('span');
-      info.className = 'limit-detail-tooltip-trigger';
-      info.textContent = 'i';
-      info.tabIndex = 0;
-      info.setAttribute('aria-label', expirationDates.map((date, index) => `Reset ${index + 1}: ${codexResetCreditExpiryDetailLabel(date)}`).join(', '));
-      const tooltip = document.createElement('span');
-      tooltip.className = 'limit-detail-tooltip';
-      tooltip.setAttribute('role', 'tooltip');
-      expirationDates.forEach((date) => {
-        const row = document.createElement('span');
-        row.className = 'limit-detail-tooltip-row';
-        const label = document.createElement('span');
-        label.textContent = codexResetCreditExpiryDateLabel(date);
-        const tooltipExpiry = document.createElement('span');
-        tooltipExpiry.textContent = codexResetCreditExpiryLabel(date);
-        row.append(label, tooltipExpiry);
-        tooltip.append(row);
-      });
-      const markResetCreditsTooltipOpened = () => {
-        state.limitDetailTooltipHasOpened = true;
-        state.limitDetailTooltipActive = true;
-        infoWrap.classList.add('has-opened');
-      };
-      const releaseResetCreditsTooltip = () => {
-        requestAnimationFrame(() => {
-          if (limitDetailTooltipShouldHoldRender()) return;
-          state.limitDetailTooltipActive = false;
-          flushPendingLimitDetailTooltipRender();
-        });
-      };
-      infoWrap.addEventListener('pointerenter', markResetCreditsTooltipOpened);
-      infoWrap.addEventListener('focusin', markResetCreditsTooltipOpened);
-      infoWrap.addEventListener('pointerleave', releaseResetCreditsTooltip);
-      infoWrap.addEventListener('focusout', releaseResetCreditsTooltip);
-      infoWrap.append(info, tooltip);
-      expiryGroup.append(infoWrap);
+      // A date paired with a bare duration doesn't read as `<name>: <value>`, so
+      // the spoken label is supplied rather than derived from the cells.
+      const infoNode = limitDetailInfoNode(
+        expirationDates.map((date) => [expiryDateLabel(date), codexResetCreditExpiryLabel(date)]),
+        '',
+        expirationDates.map((date, index) => `Reset ${index + 1}: ${codexResetCreditExpiryDetailLabel(date)}`).join(', ')
+      );
+      if (infoNode) expiryGroup.append(infoNode);
     }
     line.append(expiryGroup);
   }
@@ -2174,7 +2220,7 @@ function codexResetCreditsNode(resetCredits) {
   return item;
 }
 
-function openrouterSpendEntries(balance) {
+function providerSpendEntries(balance) {
   return [
     ['Today', optionalFiniteNumber(balance?.todaySpend)],
     ['Week', optionalFiniteNumber(balance?.weekSpend)],
@@ -2183,8 +2229,41 @@ function openrouterSpendEntries(balance) {
   ].filter(([, value]) => value !== null);
 }
 
-function limitDetailInfoNode(entries, extraClass = '') {
+// The meter-less note row every balance/spend provider draws: a label on the
+// left, then an optional summary and an optional ⓘ tooltip on the right. The
+// wording stays with the callers — each provider says something different about
+// the same layout — so the spoken label is `label` plus whatever parts they pass.
+function limitNoteRowNode({ label, summary = '', detailEntries = null, ariaParts = [] }) {
+  const item = document.createElement('div');
+  item.className = 'limit-window limit-window-wide limit-window-note limit-spend';
+  const line = document.createElement('div');
+  line.className = 'limit-window-text limit-spend-line';
+  const labelNode = document.createElement('span');
+  labelNode.textContent = label;
+  const right = document.createElement('span');
+  right.className = 'limit-spend-right';
+  if (summary) {
+    const summaryNode = document.createElement('span');
+    summaryNode.className = 'limit-spend-summary';
+    summaryNode.textContent = summary;
+    right.append(summaryNode);
+  }
+  const infoNode = detailEntries ? limitDetailInfoNode(detailEntries, 'limit-spend-info-wrap') : null;
+  if (infoNode) right.append(infoNode);
+  line.append(labelNode, right);
+  item.append(line);
+  item.setAttribute('aria-label', [label, ...ariaParts].join(', '));
+  return item;
+}
+
+// Entries are rows of cells: `[label, value]`, or `[label, middle, value]` when
+// a row carries an extra field. Rows are grid cells (`display: contents`), so a
+// short row would slide into the next row's columns — pad every row to the
+// widest one and widen the grid to match. `ariaLabel` overrides the spoken label
+// for callers whose cells don't read as `<name>: <value>` on their own.
+function limitDetailInfoNode(entries, extraClass = '', ariaLabel = '') {
   if (!Array.isArray(entries) || entries.length === 0) return null;
+  const columns = entries.reduce((widest, entry) => Math.max(widest, entry.length), 0);
   const infoWrap = document.createElement('span');
   infoWrap.className = ['limit-detail-tooltip-wrap', extraClass].filter(Boolean).join(' ');
   infoWrap.classList.toggle('has-opened', state.limitDetailTooltipHasOpened);
@@ -2194,19 +2273,20 @@ function limitDetailInfoNode(entries, extraClass = '') {
   info.tabIndex = 0;
   info.setAttribute(
     'aria-label',
-    entries.map(([entryLabel, value]) => `${entryLabel}: ${value}`).join(', ')
+    ariaLabel || entries.map(([entryLabel, ...rest]) => `${entryLabel}: ${rest.filter(Boolean).join(' ')}`).join(', ')
   );
   const tooltip = document.createElement('span');
-  tooltip.className = 'limit-detail-tooltip';
+  tooltip.className = ['limit-detail-tooltip', columns > 2 ? 'limit-detail-tooltip-triple' : '']
+    .filter(Boolean).join(' ');
   tooltip.setAttribute('role', 'tooltip');
-  entries.forEach(([entryLabel, value]) => {
+  entries.forEach((entry) => {
     const row = document.createElement('span');
     row.className = 'limit-detail-tooltip-row';
-    const tooltipLabel = document.createElement('span');
-    tooltipLabel.textContent = entryLabel;
-    const tooltipValue = document.createElement('span');
-    tooltipValue.textContent = value;
-    row.append(tooltipLabel, tooltipValue);
+    for (let column = 0; column < columns; column += 1) {
+      const cell = document.createElement('span');
+      cell.textContent = entry[column] ?? '';
+      row.append(cell);
+    }
     tooltip.append(row);
   });
   const markOpened = () => {
@@ -2229,43 +2309,22 @@ function limitDetailInfoNode(entries, extraClass = '') {
   return infoWrap;
 }
 
-function openrouterSpendNode(balance) {
-  const entries = openrouterSpendEntries(balance);
+function providerSpendNode(balance) {
+  const entries = providerSpendEntries(balance);
   if (entries.length === 0) return null;
   const currency = balance?.currency || 'USD';
   const preferredSummary = entries.filter(([label]) => label === 'Today' || label === 'Month');
   const summaryEntries = preferredSummary.length > 0 ? preferredSummary : entries.slice(0, 2);
-  const summaryText = summaryEntries
-    .map(([label, value]) => `${label} ${formatMoney(value, currency)}`)
-    .join(' · ');
-
-  const item = document.createElement('div');
-  item.className = 'limit-window limit-window-wide limit-window-note limit-spend';
-  const line = document.createElement('div');
-  line.className = 'limit-window-text limit-spend-line';
-  const label = document.createElement('span');
-  label.textContent = 'Spend';
-  const right = document.createElement('span');
-  right.className = 'limit-spend-right';
-  const summary = document.createElement('span');
-  summary.className = 'limit-spend-summary';
-  summary.textContent = summaryText;
-  right.append(summary);
-
-  if (entries.length > summaryEntries.length) {
-    right.append(limitDetailInfoNode(
-      entries.map(([entryLabel, value]) => [entryLabel, formatMoney(value, currency)]),
-      'limit-spend-info-wrap'
-    ));
-  }
-
-  line.append(label, right);
-  item.append(line);
-  item.setAttribute(
-    'aria-label',
-    ['Spend', ...entries.map(([entryLabel, value]) => `${entryLabel} ${formatMoney(value, currency)}`)].join(', ')
-  );
-  return item;
+  const formatted = entries.map(([entryLabel, value]) => [entryLabel, formatMoney(value, currency)]);
+  return limitNoteRowNode({
+    label: 'Spend',
+    summary: summaryEntries
+      .map(([label, value]) => `${label} ${formatMoney(value, currency)}`)
+      .join(' · '),
+    // Only worth a tooltip when it would say more than the summary already does.
+    detailEntries: entries.length > summaryEntries.length ? formatted : null,
+    ariaParts: formatted.map(([entryLabel, value]) => `${entryLabel} ${value}`)
+  });
 }
 
 function thirdPartySpendNode(provider, quotaWindow) {
@@ -2286,34 +2345,39 @@ function thirdPartySpendNode(provider, quotaWindow) {
     entries.push([t('settings.thirdparty.expires'), expiresAt.toLocaleDateString()]);
   }
   if (allTimeSpend === null && entries.length === 0) return null;
-
-  const item = document.createElement('div');
-  item.className = 'limit-window limit-window-wide limit-window-note limit-spend';
-  const line = document.createElement('div');
-  line.className = 'limit-window-text limit-spend-line';
-  const label = document.createElement('span');
-  label.textContent = allTimeSpend === null ? 'Details' : 'Spend';
-  const right = document.createElement('span');
-  right.className = 'limit-spend-right';
-  if (allTimeSpend !== null) {
-    const summary = document.createElement('span');
-    summary.className = 'limit-spend-summary';
-    summary.textContent = `All time ${formatMoney(allTimeSpend, currency)}`;
-    right.append(summary);
-  }
-  const infoNode = limitDetailInfoNode(entries, 'limit-spend-info-wrap');
-  if (infoNode) right.append(infoNode);
-  line.append(label, right);
-  item.append(line);
-  item.setAttribute(
-    'aria-label',
-    [
-      allTimeSpend === null ? 'Details' : 'Spend',
-      ...(allTimeSpend === null ? [] : [`All time ${formatMoney(allTimeSpend, currency)}`]),
+  // Without a spend figure the row has nothing to summarize, so it retitles
+  // itself and leans entirely on the tooltip.
+  const summary = allTimeSpend === null ? '' : `All time ${formatMoney(allTimeSpend, currency)}`;
+  return limitNoteRowNode({
+    label: allTimeSpend === null ? 'Details' : 'Spend',
+    summary,
+    detailEntries: entries,
+    ariaParts: [
+      ...(summary ? [summary] : []),
       ...entries.map(([entryLabel, value]) => `${entryLabel} ${value}`)
-    ].join(', ')
-  );
-  return item;
+    ]
+  });
+}
+
+// One tooltip row per prepaid grant: amount, expiry date, time left, the same
+// shape Codex's reset credits use. `aria` spells the expiry out, since the
+// terse columns no longer say what the date and duration mean.
+function claudePrepaidGrantRows(tranches, currency) {
+  return tranches
+    .filter((tranche) => optionalFiniteNumber(tranche?.amount) !== null)
+    .map((tranche) => {
+      const money = formatMoney(tranche.amount, tranche.currency || currency);
+      const expiresAt = tranche.expiresAt ? new Date(tranche.expiresAt) : null;
+      if (!expiresAt || Number.isNaN(expiresAt.getTime())) {
+        return { cells: [money, '', 'No expiry'], aria: `${money} no expiry` };
+      }
+      const diffMs = expiresAt.getTime() - Date.now();
+      const remaining = diffMs <= 0 ? 'Expired' : formatDuration(diffMs);
+      return {
+        cells: [money, expiryDateLabel(expiresAt), remaining],
+        aria: diffMs <= 0 ? `${money} expired` : `${money} expires in ${remaining}`
+      };
+    });
 }
 
 // Claude's prepaid credits. Deliberately meter-less: the headline is a sum of
@@ -2329,40 +2393,13 @@ function claudeBalanceNode(provider) {
   if (amount === null) return null;
   const currency = balance?.currency || 'USD';
   const tranches = Array.isArray(balance.tranches) ? balance.tranches : [];
-  const entries = tranches
-    .filter((tranche) => optionalFiniteNumber(tranche?.amount) !== null)
-    .map((tranche) => {
-      const expiresAt = tranche.expiresAt ? new Date(tranche.expiresAt) : null;
-      const valid = expiresAt && !Number.isNaN(expiresAt.getTime());
-      const diffMs = valid ? expiresAt.getTime() - Date.now() : 0;
-      return [
-        formatMoney(tranche.amount, tranche.currency || currency),
-        !valid ? 'No expiry' : diffMs <= 0 ? 'Expired' : `Expires in ${formatDuration(diffMs)}`
-      ];
-    });
-
-  const item = document.createElement('div');
-  item.className = 'limit-window limit-window-wide limit-window-note limit-spend';
-  const line = document.createElement('div');
-  line.className = 'limit-window-text limit-spend-line';
-  const label = document.createElement('span');
-  label.textContent = 'Balance';
-  const right = document.createElement('span');
-  right.className = 'limit-spend-right';
-  const summary = document.createElement('span');
-  summary.className = 'limit-spend-summary';
-  summary.textContent = formatMoney(amount, currency);
-  right.append(summary);
-  const infoNode = limitDetailInfoNode(entries, 'limit-spend-info-wrap');
-  if (infoNode) right.append(infoNode);
-  line.append(label, right);
-  item.append(line);
-  item.setAttribute('aria-label', [
-    'Balance',
-    formatMoney(amount, currency),
-    ...entries.map(([entryLabel, value]) => `${entryLabel} ${value}`)
-  ].join(', '));
-  return item;
+  const grants = claudePrepaidGrantRows(tranches, currency);
+  return limitNoteRowNode({
+    label: 'Balance',
+    summary: formatMoney(amount, currency),
+    detailEntries: grants.map((grant) => grant.cells),
+    ariaParts: [formatMoney(amount, currency), ...grants.map((grant) => grant.aria)]
+  });
 }
 
 const {
@@ -2948,7 +2985,7 @@ function renderProviderWindows(provider, color) {
       if (!hasMeter) node.classList.add('limit-window-no-reset');
       windows.append(node);
     }
-    const spendNode = openrouterSpendNode(balance);
+    const spendNode = providerSpendNode(balance);
     if (spendNode) windows.append(spendNode);
   } else if (provider.provider === 'thirdparty') {
     windows.classList.add('limit-windows-thirdparty');
@@ -3002,16 +3039,8 @@ function renderProviderWindows(provider, color) {
       balanceNode.classList.add('limit-window-wide', 'limit-window-no-reset');
       windows.append(balanceNode);
 
-      const parts = [];
-      if (Number.isFinite(Number(balance.todaySpend))) parts.push(`Today ${formatMoney(balance.todaySpend, currency)}`);
-      if (Number.isFinite(Number(balance.monthSpend))) {
-        parts.push(`Month ${formatMoney(balance.monthSpend, currency)}`);
-      }
-      if (parts.length) {
-        const spendNode = limitWindowNode('Spend', { showMeter: false }, color, 0.6, parts.join(' · '));
-        spendNode.classList.add('limit-window-wide', 'limit-window-note');
-        windows.append(spendNode);
-      }
+      const spendNode = providerSpendNode(balance);
+      if (spendNode) windows.append(spendNode);
     }
   } else if (provider.provider === 'mimo') {
     windows.classList.add('limit-windows-mimo');
@@ -4439,6 +4468,8 @@ function dailyWithHeatIntensity(daily) {
   return window.TokenMonitorUsageCharts.computeHeatmapIntensities(daily);
 }
 
+const homeActivityProgrammaticScrollers = new WeakSet();
+
 function applyHomeActivityScroll(scroller) {
   const target = homeOverviewApi.homeActivityScrollTarget({
     scrollWidth: scroller.scrollWidth,
@@ -4446,7 +4477,10 @@ function applyHomeActivityScroll(scroller) {
     followEnd: state.homeActivityFollowEnd,
     savedLeft: state.homeActivityScrollLeft
   });
-  if (Math.abs(scroller.scrollLeft - target) > 0.5) scroller.scrollLeft = target;
+  if (Math.abs(scroller.scrollLeft - target) > 0.5) {
+    homeActivityProgrammaticScrollers.add(scroller);
+    scroller.scrollLeft = target;
+  }
   scroller.classList.toggle('is-scrolled', target > 2);
 }
 
@@ -4598,10 +4632,16 @@ function setupHomeActivityHover(scroller) {
     scheduleSpotlight();
   };
 
-  const hide = () => {
-    tooltip.dataset.visible = 'false';
-    tooltip.setAttribute('aria-hidden', 'true');
-    tooltip.style.transform = 'translate(-9999px, -9999px)';
+  const hide = ({ clearHover = true, concealTooltip = true } = {}) => {
+    if (clearHover) {
+      state.homeActivityHoverPoint = null;
+      state.homeActivityHoverDate = '';
+    }
+    if (concealTooltip) {
+      tooltip.dataset.visible = 'false';
+      tooltip.setAttribute('aria-hidden', 'true');
+      tooltip.style.transform = 'translate(-9999px, -9999px)';
+    }
     if (spotlightFrame) cancelAnimationFrame(spotlightFrame);
     spotlightFrame = 0;
     spotlightVisible = false;
@@ -4614,23 +4654,25 @@ function setupHomeActivityHover(scroller) {
     activeCell = null;
   };
 
-  scroller.addEventListener('pointermove', (event) => {
+  const showAtPoint = (clientX, clientY, target) => {
     if (!svg || scroller.classList.contains('is-dragging')) {
       hide();
       return;
     }
     const rect = svg.getBoundingClientRect();
     const view = svg.viewBox.baseVal;
-    const x = view.x + (event.clientX - rect.left) * view.width / Math.max(1, rect.width);
-    const y = view.y + (event.clientY - rect.top) * view.height / Math.max(1, rect.height);
+    const x = view.x + (clientX - rect.left) * view.width / Math.max(1, rect.width);
+    const y = view.y + (clientY - rect.top) * view.height / Math.max(1, rect.height);
     moveSpotlight(x, y);
 
-    const target = event.target instanceof Element ? event.target.closest('.heat[data-d]') : null;
-    const cell = target && canvas.contains(target) ? target : null;
+    const targetCell = target instanceof Element ? target.closest('.heat[data-d]') : null;
+    const cell = targetCell && canvas.contains(targetCell) ? targetCell : null;
     if (!cell) {
       hide();
       return;
     }
+    state.homeActivityHoverPoint = { x: clientX, y: clientY };
+    state.homeActivityHoverDate = cell.dataset.d || '';
     if (activeCell !== cell) {
       activeCell?.removeAttribute('data-active');
       activeCell = cell;
@@ -4642,23 +4684,73 @@ function setupHomeActivityHover(scroller) {
     tooltip.dataset.visible = 'true';
     tooltip.setAttribute('aria-hidden', 'false');
     moveHomeActivityTooltip(tooltip, cell);
+  };
+
+  scroller.addEventListener('pointermove', (event) => {
+    showAtPoint(event.clientX, event.clientY, event.target);
   });
-  scroller.addEventListener('pointerleave', hide);
-  scroller.addEventListener('scroll', hide);
+  scroller.addEventListener('pointerleave', () => hide());
+  scroller.addEventListener('scroll', () => {
+    // Restoring the saved/right-edge position emits a delayed scroll event. It is not
+    // user intent and must not clear the hover that renderHome just reconnected.
+    if (homeActivityProgrammaticScrollers.delete(scroller)) {
+      state.homeActivityHoverRestore?.();
+      return;
+    }
+    hide();
+  });
   // The tooltip lives on document.body and is only dismissed by handlers on this
-  // scroller, which renderHome() throws away on every rebuild. Expose the latest
-  // hide() so renderHome/render can clear it — DOM removal fires no pointerleave.
-  state.homeActivityHoverTeardown = hide;
+  // scroller, which renderHome() throws away on every rebuild. Preserve the visible
+  // tooltip plus its semantic cell identity across that replacement, so live stats
+  // refreshes do not fade or jump it before the new cell is ready.
+  state.homeActivityHoverTeardown = ({ preserveHover = false } = {}) => hide({
+    clearHover: !preserveHover,
+    concealTooltip: !preserveHover
+  });
+  state.homeActivityHoverRestore = () => {
+    const point = state.homeActivityHoverPoint;
+    const date = state.homeActivityHoverDate;
+    if (!point || !date) return;
+    const cell = Array.from(canvas?.querySelectorAll('.heat[data-d]') || [])
+      .find((candidate) => candidate.dataset.d === date);
+    if (!cell) {
+      hide();
+      return;
+    }
+    const rect = cell.getBoundingClientRect();
+    const hitSlop = 2;
+    const stillHovered = point.x >= rect.left - hitSlop
+      && point.x <= rect.right + hitSlop
+      && point.y >= rect.top - hitSlop
+      && point.y <= rect.bottom + hitSlop;
+    if (!stillHovered) {
+      hide();
+      return;
+    }
+    showAtPoint(point.x, point.y, cell);
+  };
 }
 
 // Dismiss the body-level activity tooltip + spotlight from outside the scroller's own
-// pointer handlers (Home rerender, or switching away from Home while a cell is hovered).
-// Clearing the ref after teardown drops the last hold on the old hide() closure, so a
-// discarded scroller + its SVG can be collected when the trends module goes away and no
-// fresh setupHomeActivityHover reassigns it. setup always re-registers before any hover.
-function hideHomeActivityTooltip() {
-  state.homeActivityHoverTeardown?.();
+// pointer handlers. A Home rerender may preserve the active hover for the replacement
+// scroller; leaving Home clears it. Dropping both closures lets the old SVG be collected.
+function hideHomeActivityTooltip({ preserveHover = false } = {}) {
+  const teardown = state.homeActivityHoverTeardown;
+  teardown?.({ preserveHover });
   state.homeActivityHoverTeardown = null;
+  state.homeActivityHoverRestore = null;
+  if (!preserveHover) {
+    state.homeActivityHoverPoint = null;
+    state.homeActivityHoverDate = '';
+    if (!teardown) {
+      const tooltip = document.querySelector('.home-activity-tooltip');
+      if (tooltip) {
+        tooltip.dataset.visible = 'false';
+        tooltip.setAttribute('aria-hidden', 'true');
+        tooltip.style.transform = 'translate(-9999px, -9999px)';
+      }
+    }
+  }
 }
 
 function renderHomeTrendsModule() {
@@ -4721,6 +4813,11 @@ function renderHomeTrendsModule() {
   const { module, body } = homeModuleShell('trends', t('home.activity'), 'trends', activeDaysLabel);
   const activityScroll = document.createElement('div');
   activityScroll.className = 'home-activity-scroll';
+  if (state.homeActivityHoverPoint && state.homeActivityHoverDate) {
+    // This replacement is being inserted directly under a stationary pointer. Keep
+    // the already-visible spotlight from replaying its hover fade on the new SVG.
+    activityScroll.classList.add('is-restoring-hover');
+  }
   activityScroll.tabIndex = 0;
   activityScroll.setAttribute('role', 'region');
   activityScroll.setAttribute('aria-label', t('home.activityScroll'));
@@ -4760,7 +4857,13 @@ function renderHomeTrendsModule() {
     dates.append(label);
   }
   body.append(activityScroll, trendHead, plot, dates);
-  setupHomeActivityScroller(activityScroll, () => animateHomeHistoryVisuals(activityScroll, activityCanvas, chart));
+  setupHomeActivityScroller(activityScroll, () => {
+    // The scroller is now laid out and has its saved/right-edge position. Reconnect
+    // an active hover only after that geometry is stable; otherwise the replacement
+    // briefly resolves against the oldest (left) edge and then drops the tooltip.
+    state.homeActivityHoverRestore?.();
+    animateHomeHistoryVisuals(activityScroll, activityCanvas, chart);
+  });
   setupHomeActivityHover(activityScroll);
   return module;
 }
@@ -4768,9 +4871,9 @@ function renderHomeTrendsModule() {
 function renderHome() {
   if (!els.homePanel) return;
   // The previous scroller (and its ResizeObserver) is about to be replaced; drop the
-  // observer so at most one is live and it is gone if the trends module disappears,
-  // and hide any open activity tooltip before its owning scroller is discarded.
-  hideHomeActivityTooltip();
+  // observer so at most one is live. Keep the active tooltip visible while the
+  // replacement heatmap reconnects it to the same date cell.
+  hideHomeActivityTooltip({ preserveHover: true });
   state.homeActivityResizeObserver?.disconnect();
   state.homeActivityResizeObserver = null;
   const period = state.stats.periods?.[state.period] || { totalTokens: 0, costUsd: 0, clients: {} };
@@ -4792,6 +4895,7 @@ function renderHome() {
     action.addEventListener('click', openHomeSettings);
     empty.append(title, body, action);
     els.homePanel.replaceChildren(empty);
+    hideHomeActivityTooltip();
     return;
   }
   const nodes = moduleIds.map((id) => {
@@ -4802,8 +4906,17 @@ function renderHome() {
     return renderHomeTrendsModule();
   });
   els.homePanel.replaceChildren(...nodes);
-  // setupHomeActivityScroller wires a ResizeObserver that applies the scroll position
-  // post-layout, so no requestAnimationFrame guess is needed here.
+  // setupHomeActivityScroller first runs while its module is detached, where
+  // scrollWidth can equal clientWidth. Apply again synchronously now that the DOM is
+  // attached, before the browser paints or hover restoration measures the new cell.
+  const activityScroller = els.homePanel.querySelector('.home-activity-scroll');
+  if (activityScroller) applyHomeActivityScroll(activityScroller);
+  if (state.homeActivityHoverRestore) state.homeActivityHoverRestore();
+  else hideHomeActivityTooltip();
+  if (activityScroller?.classList.contains('is-restoring-hover')) {
+    requestAnimationFrame(() => activityScroller.classList.remove('is-restoring-hover'));
+  }
+  // ResizeObserver repeats the scroll + hover restoration once layout fully settles.
 }
 
 function render() {
@@ -4831,7 +4944,7 @@ function render() {
     const widest = formatNumber(nextTotal).length >= formatNumber(animationFrom).length ? nextTotal : animationFrom;
     els.totalTokens.textContent = formatNumber(widest);
     updateTotalCompact(nextTotal);
-    animateNumber(els.totalTokens, animationFrom, nextTotal, state.periodMotionActive ? 800 : 1000, fitTotalNumber);
+    animateTotalNumber(els.totalTokens, animationFrom, nextTotal, state.periodMotionActive ? 800 : 1000);
     pulseLiveDot();
   } else if (!headlineNumberIsAnimatingTo(nextTotal)) {
     cancelNumberAnimation();
@@ -5048,23 +5161,7 @@ async function refreshStats(options = {}) {
     }
     applyCodexActiveAccountFromStats();
     setStatus(statusTextFor(state.mode, state.streamConnected));
-    render();
-    renderLimitProviderCheckboxes();
-    renderToolPreferences();
-    renderWslPanel();
-    updateOpenRouterProfilesStatus();
-    updateThirdPartyProfilesStatus();
-    renderDeepseekStatus();
-    renderMinimaxStatus();
-    renderExternalProviderStatus('claude');
-    renderExternalProviderStatus('zai');
-    renderExternalProviderStatus('zaiteam');
-    renderExternalProviderStatus('volcengine');
-    renderExternalProviderStatus('qoder');
-    renderExternalProviderStatus('kimi');
-    renderExternalProviderStatus('ollama');
-    renderMimoStatus();
-    renderCopilotStatus();
+    statsRenderScheduler.request();
     maybeUpdateBarsIcon();
     if (feedback) settleRefreshButtonState('refreshed');
   } catch (error) {
@@ -5814,6 +5911,7 @@ function appearancePatchFromControls() {
     showToolIcons: Boolean(els.toolIconsInput.checked),
     titleIconOnly: Boolean(els.titleIconInput.checked),
     showCompactTotalTokens: Boolean(els.showCompactTotalTokensInput.checked),
+    compactTokenUnits: els.compactTokenUnitsInput?.value === 'localized' ? 'localized' : 'western',
     settingsInTitlebar: Boolean(els.swapSettingsRefreshInput.checked),
     glassOpacity: Number(els.glassInput.value === '' ? defaultAppearance.glassOpacity : els.glassInput.value),
     glassBlur: Number(els.blurInput.value === '' ? defaultAppearance.glassBlur : els.blurInput.value),
@@ -6055,6 +6153,13 @@ function syncSettingsForm() {
   els.toolIconsInput.checked = state.settings.showToolIcons !== false;
   els.titleIconInput.checked = state.settings.titleIconOnly === true;
   els.showCompactTotalTokensInput.checked = state.settings.showCompactTotalTokens === true;
+  if (els.compactTokenUnitsInput) {
+    els.compactTokenUnitsInput.value = state.settings.compactTokenUnits === 'localized' ? 'localized' : 'western';
+  }
+  els.compactTokenUnitsRow?.classList.toggle(
+    'hidden',
+    state.settings.showCompactTotalTokens !== true || !supportsLocalizedCompactTokenUnits(currentLocale())
+  );
   els.swapSettingsRefreshInput.checked = state.settings.settingsInTitlebar === true;
   els.discordRpcInput.checked = Boolean(state.settings.discordRpcEnabled);
   syncWindowBehaviorControls();
@@ -6341,6 +6446,269 @@ function createPreferenceOrderHandle({ kind, id, label, count }) {
   handle.addEventListener('pointerdown', (event) => startPreferenceDrag(event, kind, id));
   handle.addEventListener('keydown', (event) => onPreferenceOrderKeydown(event, kind, id));
   return handle;
+}
+
+// The limit provider list drags from the whole row instead of a handle: the
+// pointer must travel this far vertically before the gesture counts as a drag
+// rather than a click. Same threshold the tray composer uses horizontally.
+const LIMIT_PROVIDER_DRAG_THRESHOLD = 4;
+let limitProviderDrag = null;
+
+// Rows are measured in the settings panel's content space (client Y plus its
+// scrollTop) so edge auto-scrolling never invalidates the snapshot: when the
+// panel scrolls the pointer's content Y advances on its own, with no
+// compensation term anywhere else.
+function limitProviderContentY(clientY) {
+  const panel = els.settingsPanel;
+  if (!panel) return clientY;
+  return clientY - panel.getBoundingClientRect().top + panel.scrollTop;
+}
+
+function limitProviderRowElements() {
+  return Array.from(els.limitProviderCheckboxes?.querySelectorAll('.limit-provider-row[data-provider]') || []);
+}
+
+function limitProviderContentTop(el) {
+  const panel = els.settingsPanel;
+  const panelTop = panel ? panel.getBoundingClientRect().top - panel.scrollTop : 0;
+  return el.getBoundingClientRect().top - panelTop;
+}
+
+function limitProviderDragRows() {
+  const panel = els.settingsPanel;
+  const panelTop = panel ? panel.getBoundingClientRect().top - panel.scrollTop : 0;
+  return limitProviderRowElements().map((el) => {
+    const rect = el.getBoundingClientRect();
+    return { el, id: el.dataset.provider, top: rect.top - panelTop, height: rect.height };
+  });
+}
+
+// The checkbox, nested controls, and options panel own their clicks. The main
+// disclosure button is deliberately the drag surface too: below the threshold
+// it clicks, above it the drag suppresses that click.
+const LIMIT_PROVIDER_DRAG_EXCLUDED = 'button:not(.limit-provider-main), input, select, textarea, a, .accordion-animated-container';
+
+function startLimitProviderRowDrag(event, id) {
+  if (event.button !== 0) return;
+  const rowEl = event.currentTarget;
+  // Scoped to the row on purpose: `closest` keeps walking past it, and the
+  // whole settings section is itself an `.accordion-animated-container`, so an
+  // unscoped match excludes every row and no drag ever starts.
+  const excluded = event.target?.closest?.(LIMIT_PROVIDER_DRAG_EXCLUDED);
+  if (excluded && rowEl.contains(excluded)) return;
+  if (limitProviderDrag) finishLimitProviderDrag(false);
+  if (limitProviderRowElements().length <= 1) return;
+  const pressY = limitProviderContentY(event.clientY);
+  limitProviderDrag = {
+    id,
+    pointerId: event.pointerId,
+    // Where in the row the pointer landed. The origin is rebuilt from this once
+    // the rows are measured, so a collapse between press and measurement cannot
+    // leave the row hanging off the cursor.
+    grabOffset: pressY - limitProviderContentTop(rowEl),
+    pressY,
+    lastClientY: event.clientY,
+    started: false,
+    changed: false,
+    expandedBefore: state.limitProviderSettingsExpanded,
+    captureEl: rowEl,
+    rows: [],
+    snapshot: null,
+    order: null,
+    scrollFrame: 0,
+    renderPending: false
+  };
+  setLimitProviderDragListeners(true);
+}
+
+function setLimitProviderDragListeners(active) {
+  const method = active ? 'addEventListener' : 'removeEventListener';
+  window[method]('pointermove', onLimitProviderPointerMove, true);
+  window[method]('pointerup', onLimitProviderPointerUp, true);
+  window[method]('pointercancel', onLimitProviderDragAbort, true);
+  window[method]('keydown', onLimitProviderDragKeydown, true);
+  // Deliberately not capture. `blur` does not bubble, so a capture listener on
+  // `window` is the standard way to observe *every* element's blur — including
+  // the one the press itself causes when focus leaves whatever the user last
+  // clicked. That cancelled the drag before it could start. Without capture only
+  // the window's own blur arrives, which is the case worth aborting on.
+  window[method]('blur', onLimitProviderDragAbort);
+}
+
+// Order matters: freeze the accordion, collapse, and only then measure. With
+// the transition disabled the collapse lands synchronously, so the snapshot
+// sees settled geometry instead of a mid-animation height.
+function beginLimitProviderDrag() {
+  const drag = limitProviderDrag;
+  const list = els.limitProviderCheckboxes;
+  drag.started = true;
+  list?.classList.add('is-reordering');
+  if (drag.expandedBefore) setLimitProviderSettingsExpanded('');
+  drag.rows = limitProviderDragRows();
+  drag.snapshot = verticalDragSortApi.createVerticalDragSnapshot(
+    drag.rows.map(({ id, top, height }) => ({ id, top, height })),
+    drag.id,
+    drag.grabOffset
+  );
+  if (drag.snapshot.sourceIndex < 0) {
+    finishLimitProviderDrag(false);
+    return false;
+  }
+  drag.rows[drag.snapshot.sourceIndex].el.classList.add('dragging');
+  list?.classList.add('drag-active');
+  startLimitProviderDragScroll();
+  return true;
+}
+
+function updateLimitProviderDragPositions() {
+  const drag = limitProviderDrag;
+  if (!drag?.started) return;
+  const offsetY = limitProviderContentY(drag.lastClientY) - drag.snapshot.originY;
+  const resolved = verticalDragSortApi.resolveVerticalDrag(drag.snapshot, offsetY);
+  drag.order = resolved.order;
+  drag.changed = resolved.targetIndex !== drag.snapshot.sourceIndex;
+  for (const [index, { el }] of drag.rows.entries()) {
+    if (index === drag.snapshot.sourceIndex) el.style.setProperty('--drag-y', `${offsetY}px`);
+    else el.style.setProperty('--drag-shift', `${resolved.shifts[index]}px`);
+  }
+}
+
+function startLimitProviderDragScroll() {
+  const step = () => {
+    const drag = limitProviderDrag;
+    const panel = els.settingsPanel;
+    if (!drag?.started || !panel) return;
+    const rect = panel.getBoundingClientRect();
+    const delta = verticalDragSortApi.edgeScrollDelta({
+      pointerY: drag.lastClientY,
+      top: rect.top,
+      bottom: rect.bottom
+    });
+    if (delta) {
+      panel.scrollTop += delta;
+      updateLimitProviderDragPositions();
+    }
+    drag.scrollFrame = requestAnimationFrame(step);
+  };
+  limitProviderDrag.scrollFrame = requestAnimationFrame(step);
+}
+
+function onLimitProviderPointerMove(event) {
+  const drag = limitProviderDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  drag.lastClientY = event.clientY;
+  if (!drag.started) {
+    if (Math.abs(limitProviderContentY(event.clientY) - drag.pressY) < LIMIT_PROVIDER_DRAG_THRESHOLD) return;
+    // Capture only after the gesture crosses the drag threshold. Capturing on
+    // pointerdown retargets the eventual click from the nested disclosure
+    // button to the outer row, so an ordinary press can no longer expand it.
+    // Once dragging, capture still guarantees that an outside-window release
+    // reaches cleanup instead of leaving the repaint gate stuck.
+    drag.captureEl?.addEventListener('lostpointercapture', onLimitProviderDragAbort);
+    try { drag.captureEl?.setPointerCapture?.(event.pointerId); } catch (_) {}
+    if (!beginLimitProviderDrag()) return;
+  }
+  event.preventDefault();
+  updateLimitProviderDragPositions();
+}
+
+function onLimitProviderPointerUp(event) {
+  const drag = limitProviderDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  const { started, changed, order } = drag;
+  if (!started || !changed || !order?.length) {
+    finishLimitProviderDrag(true);
+    return;
+  }
+  // Mirror the new order locally before anything can repaint. A stats update
+  // held back during the drag is flushed on drop, and every repaint sorts from
+  // `state.settings` — which the deferred save has not written yet, so without
+  // this the list rebuilds into the old order and flips again a frame later.
+  const value = order.join(',');
+  state.settings = { ...state.settings, limitProviderOrder: value };
+  finishLimitProviderDrag(true);
+  // The drop itself is already in the DOM. Persisting re-renders the whole
+  // settings form, which on a populated install is a long task — run it only
+  // once the browser has painted the landed row, or that paint gets swallowed
+  // and the drop reads as a freeze. rAF fires before paint, so the timeout
+  // inside it is what lands after. Saved directly rather than through
+  // `onPreferenceOrderCommit`, whose no-op guard compares against the value we
+  // just mirrored and would drop the write.
+  requestAnimationFrame(() => {
+    setTimeout(() => void saveSettings({ limitProviderOrder: value }), 0);
+  });
+}
+
+function onLimitProviderDragAbort(event) {
+  if (!limitProviderDrag) return;
+  if (event?.pointerId != null && event.pointerId !== limitProviderDrag.pointerId) return;
+  finishLimitProviderDrag(false);
+}
+
+function onLimitProviderDragKeydown(event) {
+  if (event.key !== 'Escape' || !limitProviderDrag) return;
+  event.preventDefault();
+  finishLimitProviderDrag(false);
+}
+
+function releaseLimitProviderLandingStyleAfterPaint(list) {
+  requestAnimationFrame(() => {
+    setTimeout(() => list?.classList.remove('is-landing'), 0);
+  });
+}
+
+// The final DOM positions and the drag transforms both encode the same move.
+// Keep transform transitions disabled through the first landed paint so rows
+// do not briefly apply both offsets and animate back from a double displacement.
+function finishLimitProviderDrag(commit) {
+  const drag = limitProviderDrag;
+  if (!drag) return;
+  // The DOM reorder itself runs before the asynchronous settings save. Moving
+  // the focused row (and every sibling via appendChild) can trigger browser
+  // scroll anchoring immediately, so the save-time scroll guard is already too
+  // late. Preserve the panel around the whole landing transaction, including a
+  // deferred repaint that was held while dragging.
+  preserveSettingsPanelScroll(() => {
+    if (drag.scrollFrame) cancelAnimationFrame(drag.scrollFrame);
+    setLimitProviderDragListeners(false);
+    // Released before the reorder moves the node: relocating a captured element
+    // fires `lostpointercapture`, which would re-enter this as an abort.
+    const captureEl = drag.captureEl;
+    captureEl?.removeEventListener('lostpointercapture', onLimitProviderDragAbort);
+    try {
+      if (captureEl?.hasPointerCapture?.(drag.pointerId)) captureEl.releasePointerCapture(drag.pointerId);
+    } catch (_) {}
+    const list = els.limitProviderCheckboxes;
+    if (drag.started) {
+      const landing = Boolean(commit && drag.changed && drag.order?.length);
+      if (landing) list?.classList.add('is-landing');
+      if (landing) applyPreferenceOrder('provider', drag.order);
+      for (const { el } of drag.rows) {
+        el.style.removeProperty('--drag-y');
+        el.style.removeProperty('--drag-shift');
+        el.classList.remove('dragging');
+      }
+      list?.classList.remove('drag-active');
+      list?.classList.remove('is-reordering');
+      if (drag.expandedBefore) setLimitProviderSettingsExpanded(drag.expandedBefore);
+      suppressNextLimitProviderClick();
+      if (landing) releaseLimitProviderLandingStyleAfterPaint(list);
+    }
+    const renderPending = drag.renderPending;
+    limitProviderDrag = null;
+    if (renderPending) renderLimitProviderCheckboxes();
+  });
+}
+
+// The same main-row button owns click-to-expand and drag-to-reorder. Cancelling
+// its click after a completed drag prevents the drop from also toggling details.
+function suppressNextLimitProviderClick() {
+  const swallow = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  window.addEventListener('click', swallow, true);
+  setTimeout(() => window.removeEventListener('click', swallow, true), 0);
 }
 
 function renderViewPreferences() {
@@ -7135,91 +7503,204 @@ function renderToolPreferences() {
   }
 }
 
+function connectLimitProviderCheckboxName(checkbox, nameNode, providerId) {
+  const nameId = `limitProviderName-${providerId}`;
+  nameNode.id = nameId;
+  checkbox.setAttribute('aria-labelledby', nameId);
+}
+
+function moveLimitProviderLiveNode(parent, node, before = null) {
+  if (!parent || !node || node.parentElement === parent) return;
+  parent.moveBefore(node, before);
+}
+
 function renderLimitProviderCheckboxes() {
   if (!els.limitProviderCheckboxes) return;
+  // A stats update mid-drag would replace the rows under the pointer and kill
+  // the gesture silently. Defer the repaint until the drop.
+  if (limitProviderDrag) {
+    limitProviderDrag.renderPending = true;
+    return;
+  }
+  return preserveSettingsPanelScroll(renderLimitProviderCheckboxesNow);
+}
+
+function renderLimitProviderCheckboxesNow() {
+  const previousRows = Array.from(els.limitProviderCheckboxes.children);
+  const focusedId = document.activeElement?.id || '';
   const enabled = enabledLimitProviderSet();
   const collected = new Map((state.stats?.limits?.providers || []).map((provider) => [provider.provider, provider]));
   const providers = limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, state.settings?.limitProviderOrder);
-  els.limitProviderCheckboxes.replaceChildren();
   for (const { id, label, settingsLabel } of providers) {
-    const provider = enabled.has(id)
+    const isEnabled = enabled.has(id);
+    const provider = isEnabled
       ? (collected.get(id) || { provider: id, ...(state.stats ? { status: missingLimitProviderStatus() } : {}), windows: [] })
       : { provider: id, status: 'disabled', windows: [] };
     const row = document.createElement('div');
-    row.className = 'limit-provider-row';
+    row.className = `limit-provider-row${isEnabled ? '' : ' is-disabled'}`;
     row.dataset.provider = id;
     const wrap = document.createElement('label');
     wrap.className = 'client-checkbox limit-provider-toggle';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.id = `limitProviderEnabled-${id}`;
     cb.dataset.provider = id;
-    cb.checked = enabled.has(id);
+    cb.checked = isEnabled;
     cb.addEventListener('change', onLimitProviderToggle);
+    // The drag handle is gone, so the checkbox carries the keyboard reorder
+    // shortcuts. A checkbox has no native arrow-key behaviour, so the existing
+    // key bindings transfer unchanged.
+    cb.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
+    cb.addEventListener('keydown', (event) => onPreferenceOrderKeydown(event, 'provider', id));
     const copy = document.createElement('span');
     copy.className = 'limit-provider-copy';
+    const nameLine = document.createElement('span');
+    nameLine.className = 'limit-provider-name-line';
     const text = document.createElement('span');
     text.className = 'limit-provider-name';
     text.textContent = settingsLabel || label;
+    connectLimitProviderCheckboxName(cb, text, id);
+    nameLine.append(text);
     const tags = document.createElement('span');
     tags.className = 'limit-provider-tags';
     const provenance = limitProviderProvenance(provider);
-    for (const tagInfo of limitProviderPresentationApi.limitProviderSettingsTags(provider, provenance)) {
+    const connectionDetailKey = LIMIT_PROVIDER_CONNECTION_DETAIL_KEYS[id];
+    const accountGroup = limitProviderAccountGroup(id);
+    const tagInfos = limitProviderPresentationApi.limitProviderSettingsTags(provider, provenance);
+    const detected = provider.status === 'ok' && !provider.stale;
+    if (detected) {
+      const statusTag = tagInfos.find((tagInfo) => tagInfo.kind === 'status');
+      const dot = document.createElement('span');
+      dot.className = 'limit-provider-status-dot';
+      dot.title = translatedLimitProviderTag(statusTag);
+      dot.setAttribute('role', 'img');
+      dot.setAttribute('aria-label', dot.title);
+      nameLine.append(dot);
+    }
+    for (const tagInfo of tagInfos) {
+      if ((detected || !isEnabled) && tagInfo.kind === 'status') continue;
+      const duplicatesInlineSetup = tagInfo.kind === 'capability'
+        && ((connectionDetailKey && tagInfo.label === 'Auto')
+          || (accountGroup && tagInfo.label === 'Manual login'));
+      if (duplicatesInlineSetup) continue;
       const tag = document.createElement('span');
       tag.className = `limit-provider-tag limit-provider-tag-${tagInfo.kind}`;
       if (tagInfo.tone) tag.classList.add(`limit-provider-tag-${tagInfo.tone}`);
       tag.textContent = translatedLimitProviderTag(tagInfo);
       tags.append(tag);
     }
-    copy.append(text, tags);
-    wrap.append(cb, copy);
-    const handle = createPreferenceOrderHandle({
-      kind: 'provider',
-      id,
-      label: settingsLabel || label,
-      count: providers.length
-    });
-    // The chevron and the drag handle share one grid cell so rows without
-    // provider settings keep their handle aligned with the rest of the list.
+    copy.append(nameLine, tags);
+    wrap.append(cb);
     const actions = document.createElement('span');
     actions.className = 'limit-provider-actions';
-    const settings = LIMIT_PROVIDER_SETTINGS[id];
-    let optionsContainer = null;
-    if (settings) {
-      const expanded = state.limitProviderSettingsExpanded === id;
-      const disclosure = document.createElement('button');
-      disclosure.type = 'button';
-      disclosure.className = `view-subgroup-toggle${expanded ? ' is-expanded' : ''}`;
-      disclosure.title = t('settings.limits.providerOptions', { provider: settingsLabel || label });
-      disclosure.setAttribute('aria-label', disclosure.title);
-      disclosure.setAttribute('aria-expanded', String(expanded));
-      const icon = document.createElement('span');
-      icon.className = 'view-subgroup-icon';
-      icon.setAttribute('aria-hidden', 'true');
-      disclosure.append(icon);
-      // Built once and toggled by class, never added and removed: an element
-      // that leaves the DOM cannot animate. Same shape the Home view rows use.
-      optionsContainer = document.createElement('div');
-      optionsContainer.className = `accordion-animated-container${expanded ? '' : ' hidden'}`;
-      const inner = document.createElement('div');
-      inner.className = 'accordion-animation-inner';
-      inner.append(limitProviderSettingsList(id, settings));
-      optionsContainer.append(inner);
-      disclosure.addEventListener('click', () => {
-        const open = state.limitProviderSettingsExpanded !== id;
-        state.limitProviderSettingsExpanded = open ? id : '';
-        disclosure.classList.toggle('is-expanded', open);
-        disclosure.setAttribute('aria-expanded', String(open));
-        optionsContainer.classList.toggle('hidden', !open);
-      });
-      actions.append(disclosure);
+    const accountStatus = limitProviderAccountStatus(id);
+    if (connectionDetailKey) {
+      const mode = document.createElement('span');
+      mode.className = 'cursor-status-pill limit-provider-mode-pill';
+      mode.textContent = t('settings.limits.connection.autoDetect');
+      actions.append(mode);
     }
-    actions.append(handle);
-    row.append(wrap, actions);
+    const settings = LIMIT_PROVIDER_SETTINGS[id];
+    const hasOptions = Boolean(accountGroup || settings || connectionDetailKey);
+    let optionsContainer = null;
+    let optionsInner = null;
+    let main = null;
+    let disclosureIcon = null;
+    if (hasOptions) {
+      const expanded = state.limitProviderSettingsExpanded === id;
+      row.classList.toggle('expanded', expanded);
+      main = document.createElement('button');
+      main.type = 'button';
+      main.id = `limitProviderDisclosure-${id}`;
+      main.className = 'limit-provider-main';
+      main.title = t('settings.limits.providerOptions', { provider: settingsLabel || label });
+      main.setAttribute('aria-label', main.title);
+      main.setAttribute('aria-expanded', String(expanded));
+      disclosureIcon = document.createElement('span');
+      disclosureIcon.className = 'cursor-disclosure-icon';
+      disclosureIcon.setAttribute('aria-hidden', 'true');
+      actions.append(disclosureIcon);
+      optionsContainer = document.createElement('div');
+      optionsContainer.id = `limitProviderOptions-${id}`;
+      optionsContainer.className = `accordion-animated-container${expanded ? '' : ' hidden'}`;
+      main.setAttribute('aria-controls', optionsContainer.id);
+      optionsInner = document.createElement('div');
+      optionsInner.className = 'accordion-animation-inner limit-provider-options-inner';
+      if (accountGroup) {
+        accountGroup.classList.add('limit-provider-account-group');
+      }
+      if (connectionDetailKey) optionsInner.append(limitProviderConnectionDetail(connectionDetailKey));
+      if (settings) optionsInner.append(limitProviderSettingsList(id, settings));
+      optionsContainer.append(optionsInner);
+      const toggleOptions = () => {
+        const opening = state.limitProviderSettingsExpanded !== id;
+        const accountToggle = accountGroup?.querySelector(':scope > .settings-group-header');
+        const accountOpen = accountToggle?.getAttribute('aria-expanded') === 'true';
+        if (accountToggle && accountOpen !== opening) accountToggle.click();
+        else setLimitProviderSettingsExpanded(opening ? id : '');
+      };
+      main.addEventListener('click', toggleOptions);
+    }
+    if (main) {
+      main.append(copy, actions);
+      row.append(wrap, main);
+    } else {
+      row.append(wrap, copy, actions);
+    }
+    row.addEventListener('pointerdown', (event) => startLimitProviderRowDrag(event, id));
     // Kept inside the row rather than as a sibling: reordering moves only
     // `.limit-provider-row` nodes, so a sibling panel would be stranded when the
     // list is dragged.
     if (optionsContainer) row.append(optionsContainer);
     els.limitProviderCheckboxes.appendChild(row);
+    // `moveBefore()` preserves focus and edit state while reparenting. Its
+    // destination must already be connected, so the row is mounted first.
+    moveLimitProviderLiveNode(actions, accountStatus, disclosureIcon);
+    moveLimitProviderLiveNode(optionsInner, accountGroup);
+  }
+  for (const row of previousRows) row.remove();
+  if (focusedId && document.activeElement === document.body) {
+    document.getElementById(focusedId)?.focus({ preventScroll: true });
+  }
+}
+
+function limitProviderAccountGroup(providerId) {
+  const groupId = LIMIT_PROVIDER_ACCOUNT_GROUP_IDS[providerId];
+  return groupId ? document.getElementById(groupId) : null;
+}
+
+function limitProviderAccountStatus(providerId) {
+  const statusId = LIMIT_PROVIDER_ACCOUNT_STATUS_IDS[providerId];
+  return statusId ? document.getElementById(statusId) : null;
+}
+
+function limitProviderConnectionDetail(bodyKey) {
+  const panel = document.createElement('div');
+  panel.className = 'limit-provider-connection-detail';
+  const title = document.createElement('span');
+  title.className = 'limit-provider-connection-title';
+  title.textContent = t('settings.limits.connection.title');
+  const body = document.createElement('p');
+  body.className = 'settings-note';
+  body.textContent = t(bodyKey);
+  panel.append(title, body);
+  return panel;
+}
+
+// Single entry point for the provider options accordion. The drag gesture also
+// needs to collapse and restore it, so the class/aria bookkeeping cannot stay
+// inside the disclosure's own click handler.
+function setLimitProviderSettingsExpanded(providerId) {
+  state.limitProviderSettingsExpanded = providerId || '';
+  const rows = els.limitProviderCheckboxes?.querySelectorAll('.limit-provider-row[data-provider]') || [];
+  for (const row of rows) {
+    const disclosure = row.querySelector('.limit-provider-main');
+    const container = row.querySelector(':scope > .accordion-animated-container');
+    if (!disclosure || !container) continue;
+    const open = row.dataset.provider === state.limitProviderSettingsExpanded;
+    disclosure.setAttribute('aria-expanded', String(open));
+    row.classList.toggle('expanded', open);
+    container.classList.toggle('hidden', !open);
   }
 }
 
@@ -7230,6 +7711,7 @@ const LIMIT_PROVIDER_SETTINGS = {
     key: 'claudePrepaidBalanceEnabled',
     titleKey: 'settings.limits.prepaidBalance',
     descKey: 'settings.limits.prepaidBalanceDesc',
+    requiresConfiguredKey: 'claudeWebCookieConfigured',
     defaultValue: true
   }]
 };
@@ -7252,7 +7734,10 @@ function limitProviderSettingsList(providerId, settings) {
     copy.append(title);
     const input = document.createElement('input');
     input.type = 'checkbox';
-    input.checked = state.settings?.[setting.key] !== false;
+    const available = !setting.requiresConfiguredKey || Boolean(state.settings?.[setting.requiresConfiguredKey]);
+    input.checked = available && state.settings?.[setting.key] !== false;
+    input.disabled = !available;
+    item.classList.toggle('is-disabled', !available);
     input.addEventListener('change', async () => {
       await saveSettings({ [setting.key]: input.checked });
       // Switching this off hides the row immediately; the request it also stops
@@ -7322,7 +7807,11 @@ async function onLimitProviderToggle() {
   }
   await saveSettings({ limitProviders: checked.join(','), limitsEnabled: checked.length > 0 });
   clearDisabledLimitProviderPendingChecks(new Set(checked));
-  await refreshStats({ force: true });
+  // settings:update reconfigures LimitsRuntime immediately. Its existing
+  // snapshot and the newly enabled provider's eventual result arrive through
+  // the normal stats push, so a forced usage + all-provider refresh here only
+  // replaces stable account summaries with an interim snapshot and duplicates
+  // collection work.
 }
 
 async function onLimitProviderMove(providerId, direction) {
@@ -7563,13 +8052,18 @@ function preserveSettingsPanelScroll(callback) {
   if (!panel || panel.classList.contains('hidden')) return callback();
   const scrollTop = panel.scrollTop;
   const scrollLeft = panel.scrollLeft;
+  const interactionRevision = settingsScrollInteractionRevision;
   const restore = () => {
     panel.scrollTop = scrollTop;
     panel.scrollLeft = scrollLeft;
   };
   const result = callback();
   restore();
-  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restore);
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      if (settingsScrollInteractionRevision === interactionRevision) restore();
+    });
+  }
   return result;
 }
 
@@ -7746,6 +8240,7 @@ els.hubModeOptions.addEventListener('change', async (event) => {
 
 els.languageInput?.addEventListener('change', async () => {
   await saveSettings({ language: els.languageInput.value });
+  if (!numberAnimHandle) updateTotalCompact(state.currentTotal);
 });
 
 els.currencyInput?.addEventListener('change', async () => {
@@ -7905,21 +8400,26 @@ els.themeCodeInput?.addEventListener('keydown', (event) => {
   void applyThemeCodeFromInput();
 });
 els.themeCodeInput?.addEventListener('input', invalidateThemeCodeFeedback);
-function setupThemeAccordion(group, toggle, details) {
+function setSettingsAccordionExpanded(group, toggle, details, expanded) {
   if (!group || !toggle || !details) return;
-  const setExpanded = (expanded) => {
-    const open = Boolean(expanded);
-    toggle.setAttribute('aria-expanded', String(open));
-    details.classList.toggle('hidden', !open);
-    details.inert = !open;
-    group.classList.toggle('expanded', open);
-  };
-  toggle.addEventListener('click', () => setExpanded(details.classList.contains('hidden')));
-  setExpanded(false);
+  const open = Boolean(expanded);
+  toggle.setAttribute('aria-expanded', String(open));
+  details.classList.toggle('hidden', !open);
+  details.inert = !open;
+  group.classList.toggle('expanded', open);
+}
+function setupSettingsAccordion(group, toggle, details) {
+  if (!group || !toggle || !details) return;
+  toggle.addEventListener('click', () => {
+    setSettingsAccordionExpanded(group, toggle, details, details.classList.contains('hidden'));
+  });
+  setSettingsAccordionExpanded(group, toggle, details, false);
 }
 
-setupThemeAccordion(els.themeAdvancedGroup, els.themeAdvancedToggle, els.themeAdvancedDetails);
-setupThemeAccordion(els.themeVendorGroup, els.themeVendorToggle, els.themeVendorDetails);
+setupSettingsAccordion(els.appUpdateNotes, els.appUpdateNotesToggle, els.appUpdateNotesDetails);
+setupSettingsAccordion(els.advancedSettingsGroup, els.advancedSettingsToggle, els.advancedSettingsDetails);
+setupSettingsAccordion(els.themeAdvancedGroup, els.themeAdvancedToggle, els.themeAdvancedDetails);
+setupSettingsAccordion(els.themeVendorGroup, els.themeVendorToggle, els.themeVendorDetails);
 for (const input of els.systemGlassInputs || []) {
   input.addEventListener('change', () => {
     if (input.checked) saveAppearanceFromControls();
@@ -7941,6 +8441,14 @@ els.toolIconsInput.addEventListener('change', async () => {
 });
 els.titleIconInput.addEventListener('change', saveAppearanceFromControls);
 els.showCompactTotalTokensInput.addEventListener('change', async () => {
+  els.compactTokenUnitsRow?.classList.toggle(
+    'hidden',
+    !els.showCompactTotalTokensInput.checked || !supportsLocalizedCompactTokenUnits(currentLocale())
+  );
+  await saveAppearanceFromControls();
+  if (!numberAnimHandle) updateTotalCompact(state.currentTotal);
+});
+els.compactTokenUnitsInput?.addEventListener('change', async () => {
   await saveAppearanceFromControls();
   if (!numberAnimHandle) updateTotalCompact(state.currentTotal);
 });
@@ -8012,6 +8520,7 @@ els.downloadTokscaleButton?.addEventListener('click', downloadTokscaleFromNpm);
 els.resetTokscaleButton?.addEventListener('click', resetTokscaleToBundled);
 els.openTokscaleLinkButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.('https://github.com/junhoyeo/tokscale'));
 els.openRepositoryButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_REPOSITORY_URL));
+els.openWebsiteButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_WEBSITE_URL));
 els.reportIssueButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.(TOKEN_MONITOR_ISSUES_URL));
 els.refreshButton.addEventListener('click', () => {
   if (state.breakdown === 'status') refreshStatusViewManually().catch(() => {});
@@ -8180,6 +8689,31 @@ window.tokenMonitor.onTokscalePush?.((payload) => {
   renderTokscaleStatus();
 });
 
+function renderStatsUpdate() {
+  render();
+  renderLimitProviderCheckboxes();
+  renderToolPreferences();
+  renderWslPanel();
+  updateOpenRouterProfilesStatus();
+  updateThirdPartyProfilesStatus();
+  renderDeepseekStatus();
+  renderMinimaxStatus();
+  renderExternalProviderStatus('claude');
+  renderExternalProviderStatus('zai');
+  renderExternalProviderStatus('zaiteam');
+  renderExternalProviderStatus('volcengine');
+  renderExternalProviderStatus('qoder');
+  renderExternalProviderStatus('kimi');
+  renderExternalProviderStatus('ollama');
+  renderCopilotStatus();
+}
+
+const statsRenderScheduler = statsRenderSchedulerApi.createStatsRenderScheduler({
+  isHidden: () => document.hidden,
+  render: renderStatsUpdate
+});
+document.addEventListener('visibilitychange', () => statsRenderScheduler.flush());
+
 window.tokenMonitor.onStatsPush?.((payload) => {
   if (!payload) return;
   if (payload.event === 'status') {
@@ -8208,22 +8742,7 @@ window.tokenMonitor.onStatsPush?.((payload) => {
   setStatus(statusTextFor(state.mode, state.streamConnected));
   renderSyncClientStatus();
   if (payload.data?.stats) {
-    render();
-    renderLimitProviderCheckboxes();
-    renderToolPreferences();
-    renderWslPanel();
-    updateOpenRouterProfilesStatus();
-    updateThirdPartyProfilesStatus();
-    renderDeepseekStatus();
-    renderMinimaxStatus();
-    renderExternalProviderStatus('claude');
-    renderExternalProviderStatus('zai');
-    renderExternalProviderStatus('zaiteam');
-    renderExternalProviderStatus('volcengine');
-    renderExternalProviderStatus('qoder');
-    renderExternalProviderStatus('kimi');
-    renderExternalProviderStatus('ollama');
-    renderCopilotStatus();
+    statsRenderScheduler.request();
     maybeUpdateBarsIcon();
   }
   restartTimer();
@@ -9361,6 +9880,16 @@ function setAccountGroupExpanded(prefix, expanded, stateKey) {
   toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
   details.classList.toggle('hidden', !next);
   if (group) group.classList.toggle('expanded', next);
+  syncLimitProviderAccountExpansion(prefix, next);
+}
+
+function syncLimitProviderAccountExpansion(providerId, expanded) {
+  if (!LIMIT_PROVIDER_ACCOUNT_GROUP_IDS[providerId]) return;
+  if (expanded) {
+    setLimitProviderSettingsExpanded(providerId);
+  } else if (state.limitProviderSettingsExpanded === providerId) {
+    setLimitProviderSettingsExpanded('');
+  }
 }
 
 function setCodexAccountExpanded(expanded) {
@@ -9666,10 +10195,6 @@ function clearDeepseekPendingCheck() {
 function clearDeepseekProviderStatus() {
   if (!Array.isArray(state.stats?.limits?.providers)) return;
   state.stats.limits.providers = state.stats.limits.providers.filter((provider) => provider.provider !== 'deepseek');
-}
-
-function mimoAccountLinked() {
-  return (state.settings?.mimoManagedAccounts || []).length > 0;
 }
 
 function renderMimoStatus() {
@@ -9987,9 +10512,12 @@ function setExternalAccountExpanded(providerName, expanded) {
   const details = document.getElementById(`${providerName}SettingsDetails`);
   const toggle = document.getElementById(`${providerName}SettingsToggle`);
   if (!details || !toggle) return;
-  state[`${providerName}AccountExpanded`] = expanded;
-  details.classList.toggle('hidden', !expanded);
-  toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  const next = Boolean(expanded);
+  state[`${providerName}AccountExpanded`] = next;
+  details.classList.toggle('hidden', !next);
+  toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+  limitProviderAccountGroup(providerName)?.classList.toggle('expanded', next);
+  syncLimitProviderAccountExpansion(providerName, next);
 }
 
 function zaiPlatformUrl() {
@@ -10094,9 +10622,12 @@ function setMinimaxAccountExpanded(expanded) {
   const details = document.getElementById('minimaxSettingsDetails');
   const toggle = document.getElementById('minimaxSettingsToggle');
   if (!details || !toggle) return;
-  state.minimaxAccountExpanded = expanded;
-  details.classList.toggle('hidden', !expanded);
-  toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  const next = Boolean(expanded);
+  state.minimaxAccountExpanded = next;
+  details.classList.toggle('hidden', !next);
+  toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+  limitProviderAccountGroup('minimax')?.classList.toggle('expanded', next);
+  syncLimitProviderAccountExpansion('minimax', next);
 }
 
 function renderMinimaxStatus() {
@@ -10192,6 +10723,7 @@ function renderOpenCodeProfiles() {
     if (entries.length === 0 && !hasEnvVar) {
       listEl.innerHTML = '<div class="opencode-empty">' + t('settings.opencode.emptyList') + '</div>';
       state.opencodeProfileCount = 0;
+      renderOpenCodeProfilesStatusSummary({});
       renderSettingsSummaries();
       return;
     }
@@ -10327,7 +10859,10 @@ async function updateOpenCodeProfilesStatus() {
     }
   }
 
-  // Update summary pill
+  renderOpenCodeProfilesStatusSummary(profiles);
+}
+
+function renderOpenCodeProfilesStatusSummary(profiles) {
   const totalEl = document.getElementById('opencodeCookieStatus');
   if (totalEl) {
     const linkedCount = Object.values(profiles).filter(s => s.linked).length;
@@ -10704,7 +11239,7 @@ function renderCursorStatus() {
     refreshBtn.classList.remove('hidden');
     manualPanel.classList.remove('hidden');
     setCursorCheckboxesEnabled(false);
-    setSettingsSectionExpanded('accounts', true);
+    setSettingsSectionExpanded('limits', true);
     setCursorAccountExpanded(true);
     renderSettingsSummaries();
     return;
@@ -10734,7 +11269,7 @@ function renderCursorStatus() {
     refreshBtn.classList.remove('hidden');
     manualPanel.classList.remove('hidden');
     setCursorCheckboxesEnabled(false);
-    setSettingsSectionExpanded('accounts', true);
+    setSettingsSectionExpanded('limits', true);
     setCursorAccountExpanded(true);
     renderSettingsSummaries();
     return;
@@ -12054,6 +12589,8 @@ function initSettingsAnimationWrappers() {
   const selectors = [
     '.settings-section-details',
     '.cursor-settings-details',
+    '.advanced-settings-details',
+    '.app-update-notes-details',
     '.hub-mode-fields',
     '.presence-feature-body',
     '#claudeManualPanel',
@@ -12089,7 +12626,6 @@ function initSettingsAnimationWrappers() {
   });
 }
 
-orderAccountProviderGroups();
 initSettingsAnimationWrappers();
 setupSettingsSections();
 setupCursorAccountUI();

@@ -11,7 +11,14 @@ const { appVersion } = require('./appVersion');
 const { normalizeClientsCsv } = require('./clientTracking');
 const { tokscalePackageNameForPlatform, tokscalePlatformKey } = require('./tokscalePlatform');
 const { customPricingPath } = require('./tokscaleConfig');
-const { applyPeriodDelta, emptyPeriod, extractUsageFromTokscale, mergePeriods } = require('./usage');
+const {
+  applyPeriodDelta,
+  emptyPeriod,
+  extractUsageBundleFromTokscale,
+  extractUsageFromTokscale,
+  mergePeriods,
+  UNATTRIBUTED_USAGE_CLIENT
+} = require('./usage');
 const { collectWslUsage: collectWslUsageImpl, emptyWslBundle, probeWslState: probeWslStateImpl } = require('./wslUsage');
 const { hermesProfileWatchDirs, resolveHermesHome } = require('./hermesProfiles');
 const { mergeHistories, parseGraphResult, normalizeHistory } = require('./history');
@@ -634,18 +641,28 @@ async function collectUsageOnce(options) {
   // separately below and merged back in.
   const tokscaleClients = normalizedClients ? normalizedClients.split(',').filter((c) => c !== 'proma').join(',') : normalizedClients;
   const includesProma = normalizedClients.split(',').includes('proma');
+  const trackedClientSet = new Set(normalizedClients.split(',').filter(Boolean));
+  const targetClients = [...new Set(normalizeClientsCsv(options.targetClients).split(',').filter((client) => trackedClientSet.has(client)))];
+  const targetRequested = targetClients.length > 0;
+  const targetTokscaleClients = targetClients.filter((client) => client !== 'proma').join(',');
   let today = emptyPeriod();
   let month = emptyPeriod();
   let allTime = emptyPeriod();
+  let todayPartitions = null;
   const anchor = options.todayOnlyAnchor;
-  const anchorUsed = Boolean(anchor && anchor.dateKey === localTodayKey(collectedAt));
+  const anchorUsed = Boolean(
+    anchor
+    && anchor.dateKey === localTodayKey(collectedAt)
+    && canTargetTodayPartitions(anchor, targetClients)
+  );
   let promaPeriods = null;
   let promaRows = null;
   let promaPricing = null;
   if (normalizedClients) {
-    await maybeSyncCursor(tokscaleClients, options.logger, { force: options.forceCursorSync === true });
-    await maybeSyncAntigravity(tokscaleClients, options.logger, options.homeDir || os.homedir());
-    if (includesProma) {
+    const syncClients = targetRequested ? targetTokscaleClients : tokscaleClients;
+    await maybeSyncCursor(syncClients, options.logger, { force: options.forceCursorSync === true });
+    await maybeSyncAntigravity(syncClients, options.logger, options.homeDir || os.homedir());
+    if (includesProma && (!targetRequested || targetClients.includes('proma'))) {
       try {
         promaRows = collectPromaRows();
         promaPricing = await resolvePromaPricing(promaRows, {
@@ -667,21 +684,40 @@ async function collectUsageOnce(options) {
       // Anchored tick (watch-triggered): every tokscale period scan costs the
       // same full load + filter, so scan only --today and update the broader
       // windows exactly via applyPeriodDelta — one spawn instead of three.
-      if (tokscaleClients) {
-        const todayJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--today'], commandTimeoutMs });
-        today = extractUsageFromTokscale(todayJson);
+      const scanClients = targetRequested ? targetTokscaleClients : tokscaleClients;
+      let freshPartitions = Object.create(null);
+      let useTargetedPartitions = targetRequested;
+      if (scanClients) {
+        const todayJson = await runTokscaleFn({ clients: scanClients, flags: ['--today'], commandTimeoutMs });
+        const bundle = extractUsageBundleFromTokscale(todayJson);
+        freshPartitions = bundle.byClient;
+        const unattributed = freshPartitions[UNATTRIBUTED_USAGE_CLIENT];
+        if (targetRequested && periodHasUsage(unattributed)) {
+          // A row without a client cannot be replaced safely inside one client
+          // partition. Fall back to one all-client today scan for correctness.
+          const fullTodayJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--today'], commandTimeoutMs });
+          freshPartitions = extractUsageBundleFromTokscale(fullTodayJson).byClient;
+          useTargetedPartitions = false;
+        } else if (targetRequested) {
+          // Empty tokscale output uses the unattributed fallback shape. Keep the
+          // anchor's real unattributed partition while clearing the target.
+          delete freshPartitions[UNATTRIBUTED_USAGE_CLIENT];
+        }
       }
-      // The persisted anchor contains every Windows-side client, including
-      // locally parsed Proma. Include its fresh today usage before deriving
-      // broader windows so base + (fresh today - anchor today) stays exact.
-      if (promaPeriods) today = mergePeriods(today, promaPeriods.today);
+      if (promaPeriods) freshPartitions.proma = promaPeriods.today;
+      todayPartitions = useTargetedPartitions
+        ? replaceTodayPartitions(anchor.todayPartitions, freshPartitions, targetClients)
+        : completeTodayPartitions(freshPartitions, normalizedClients);
+      today = mergeTodayPartitions(todayPartitions);
       month = applyPeriodDelta(anchor.month, today, anchor.today);
       allTime = applyPeriodDelta(anchor.allTime, today, anchor.today);
     } else if (tokscaleClients) {
       // Serial on purpose: concurrent scans triple the peak CPU/IO load, which
       // is what let the issue #15 self-trigger loop spike tokscale past 500% CPU.
       const todayJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--today'], commandTimeoutMs });
-      today = extractUsageFromTokscale(todayJson);
+      const todayBundle = extractUsageBundleFromTokscale(todayJson);
+      today = todayBundle.period;
+      todayPartitions = todayBundle.byClient;
       if (typeof options.onProgress === 'function') decorateLocalPeriods({ today });
       try { if (typeof options.onProgress === 'function') options.onProgress({ today, updatedAt: new Date().toISOString() }); } catch (_) {}
       const monthJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--month'], commandTimeoutMs });
@@ -711,7 +747,12 @@ async function collectUsageOnce(options) {
       today = mergePeriods(today, promaPeriods.today);
       month = mergePeriods(month, promaPeriods.month);
       allTime = mergePeriods(allTime, promaPeriods.allTime);
+      todayPartitions = { ...(todayPartitions || {}), proma: promaPeriods.today };
     }
+    todayPartitions = completeTodayPartitions(todayPartitions, normalizedClients);
+    // Partition metadata is internal but must remain as complete as the public
+    // period: a later targeted tick re-merges these sessions into `today`.
+    propagateTodayProjects(today, Object.values(todayPartitions));
   }
 
   // WSL contribution (Windows only; no-op elsewhere). Full tick scans running WSL
@@ -801,7 +842,7 @@ async function collectUsageOnce(options) {
   }
 
   if (typeof options.onAnchorComputed === 'function') {
-    options.onAnchorComputed({ windowsPeriods, wslBundle, wslStatus });
+    options.onAnchorComputed({ windowsPeriods, todayPartitions, wslBundle, wslStatus });
   }
 
   const summary = {
@@ -986,19 +1027,40 @@ function antigravityCliDataDir() {
   return path.join(geminiHome, 'antigravity-cli', 'conversations');
 }
 
-function watchPathsForClients(clientsCsv) {
-  const candidates = [];
+function watchClientRootsForClients(clientsCsv) {
+  const rootsByClient = {};
   for (const [client, dirs] of Object.entries(clientWatchCandidates(clientsCsv))) {
     if (SELF_SYNCED_CLIENTS.has(client)) continue;
-    candidates.push(...dirs);
+    const existing = [...new Set(dirs.filter(dirExists))];
+    if (existing.length > 0) rootsByClient[client] = existing;
   }
   // antigravity is self-synced (its IDE cache is written by our sync and must stay
   // watch-excluded), but its CLI data dir is safe to watch (no self-trigger loop)
   // and gives the seconds-level refresh the sync path can't. tokscaleClientFilter
   // pulls the antigravity-cli rows in on the tick.
   const enabled = new Set(String(clientsCsv || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean));
-  if (enabled.has('antigravity')) candidates.push(antigravityCliDataDir());
-  return [...new Set(candidates.filter(dirExists))];
+  const antigravityCliDir = antigravityCliDataDir();
+  if (enabled.has('antigravity') && dirExists(antigravityCliDir)) {
+    rootsByClient.antigravity = [antigravityCliDir];
+  }
+  return rootsByClient;
+}
+
+function watchPathsForClients(clientsCsv) {
+  return [...new Set(Object.values(watchClientRootsForClients(clientsCsv)).flat())];
+}
+
+function clientsForWatchPath(filePath, rootsByClient) {
+  if (!filePath) return [];
+  const resolved = path.resolve(filePath);
+  const matched = [];
+  for (const [client, roots] of Object.entries(rootsByClient || {})) {
+    if (roots.some((root) => {
+      const resolvedRoot = path.resolve(root);
+      return resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep);
+    })) matched.push(client);
+  }
+  return matched;
 }
 
 // Inside a Hermes home dir tokscale only reads the SQLite db; the rest is the
@@ -1014,11 +1076,15 @@ const HERMES_DB_FILES = new Set(['state.db', 'state.db-wal', 'state.db-shm']);
 
 function watchIgnoreMatcher(clientsCsv) {
   const candidates = clientWatchCandidates(clientsCsv);
-  const hermesRoots = (candidates.hermes || []).map((dir) => path.resolve(dir));
+  // canonicalWatchPath must be applied here too: chokidar reports events under
+  // whatever root it was handed, so a matcher built on the uncanonicalised path
+  // would stop matching on Windows and silently un-prune the Hermes runtime
+  // (issue #38) while the watch itself still worked.
+  const hermesRoots = (candidates.hermes || []).map((dir) => path.resolve(canonicalWatchPath(dir)));
   const hermesRootSet = new Set(hermesRoots);
   const copilotRoots = (candidates.copilot || [])
     .filter((dir) => path.basename(dir) === 'workspaceStorage')
-    .map((dir) => path.resolve(dir));
+    .map((dir) => path.resolve(canonicalWatchPath(dir)));
   if (hermesRoots.length === 0 && copilotRoots.length === 0) return undefined;
   return (target) => {
     const resolved = path.resolve(target);
@@ -1101,6 +1167,41 @@ function wslPeriodsForPreview(wslAnchor, anchorDateKey, todayKey) {
   };
 }
 
+function completeTodayPartitions(partitions, clientsCsv) {
+  const completed = { ...(partitions || {}) };
+  for (const client of normalizeClientsCsv(clientsCsv).split(',').filter(Boolean)) {
+    if (!Object.prototype.hasOwnProperty.call(completed, client)) completed[client] = emptyPeriod();
+  }
+  return completed;
+}
+
+function replaceTodayPartitions(current, fresh, targetClients) {
+  const next = { ...(current || {}) };
+  for (const client of targetClients || []) next[client] = emptyPeriod();
+  for (const [client, period] of Object.entries(fresh || {})) next[client] = period;
+  return next;
+}
+
+function mergeTodayPartitions(partitions) {
+  return mergePeriods(...Object.values(partitions || {}));
+}
+
+function periodHasUsage(period) {
+  if (!period) return false;
+  return Number(period.totalTokens || 0) > 0
+    || Number(period.costUsd || 0) > 0
+    || Object.keys(period.sessions || {}).length > 0;
+}
+
+function canTargetTodayPartitions(anchor, targetClients) {
+  if (!targetClients?.length) return true;
+  return Boolean(
+    anchor?.todayPartitions
+    && !periodHasUsage(anchor.todayPartitions[UNATTRIBUTED_USAGE_CLIENT])
+    && targetClients.every((client) => Object.prototype.hasOwnProperty.call(anchor.todayPartitions, client))
+  );
+}
+
 function configFingerprint(clientsCsv, allTimeSince, projectsEnabled = true) {
   // Deterministic string that captures the config inputs anchor correctness
   // depends on. When this changes, the persisted anchor is invalidated.
@@ -1112,13 +1213,82 @@ function configFingerprint(clientsCsv, allTimeSince, projectsEnabled = true) {
 // and picks up any changes that the delta-derivation might miss.
 const FULL_SCAN_INTERVAL_MS = 60 * 60 * 1000;
 
+// Escape hatch for filesystems that never deliver native events — network
+// mounts, some FUSE drivers, container bind mounts. chokidar has its own
+// CHOKIDAR_USEPOLLING override, but that is chokidar's surface, not ours: it
+// is undocumented for our users and can change with a dependency bump, so
+// support asks would have no stable answer. Resolved here rather than in each
+// entry point so the widget and the headless agent cannot drift apart.
+// Tri-state on purpose: unset must fall through to the caller's value, which
+// is why parseBoolean's fallback semantics don't fit. The default is native on
+// every platform — chokidar 4 has no per-platform backend left to differ on,
+// and the failure cases it cannot cover are handled by the watch-descriptor
+// fallback below rather than by pre-emptively polling everywhere.
+//
+// Returns undefined when unset, which is what keeps that tri-state readable to
+// callers that need to tell "no opinion" from an explicit "never poll".
+function watchPollingEnvOverride(env = process.env) {
+  const raw = String(env.TOKEN_MONITOR_WATCH_POLLING ?? '').trim().toLowerCase();
+  if (!raw) return undefined;
+  return !['0', 'false', 'no', 'off'].includes(raw);
+}
+
+function resolveWatchUsePolling(preferred, env = process.env) {
+  const override = watchPollingEnvOverride(env);
+  if (override !== undefined) return override;
+  if (typeof preferred === 'boolean') return preferred;
+  return false;
+}
+
+// Kernel watch descriptors are a per-user budget shared with every other
+// watcher on the machine (inotify on Linux, file descriptors on macOS/BSD), and
+// editors are the usual heavy consumer — a busy Linux desktop can hand us
+// ENOSPC on startup through no fault of ours. chokidar reports that
+// asynchronously on the watcher, so without this the watch would just stop
+// delivering events and live mode would silently decay to hourly
+// reconciliation. Polling needs no descriptors at all, which makes it the
+// correct degraded mode rather than merely a slower one. An explicit
+// TOKEN_MONITOR_WATCH_POLLING=0 opts out: with native events now the default
+// everywhere, suppressing this fallback is the only thing that direction of the
+// override still does.
+const WATCH_DESCRIPTOR_ERROR_CODES = new Set(['ENOSPC', 'EMFILE', 'ENFILE']);
+
+// Windows only: libuv asserts that the filename ReadDirectoryChangesW hands
+// back starts with the directory string it was given, and calls abort() when it
+// does not (src/win/fs-event.c). An 8.3 short path such as C:\Users\RUNNER~1\…
+// is reported back in its long form and trips exactly that assert, taking the
+// whole process down. That is a native abort, so handleWatchError can never see
+// it and the polling fallback cannot save us — the only guard is to hand
+// chokidar the canonical long path in the first place. Junctions reach the same
+// assert by the same route. Identity off Windows, so watch roots elsewhere stay
+// byte-identical to the paths tokscale reads.
+function canonicalWatchPath(dir) {
+  if (process.platform !== 'win32') return dir;
+  try { return fs.realpathSync.native(dir); }
+  catch (_) { return dir; }
+}
+
+function watcherOptions(usePolling, ignored) {
+  return {
+    ignoreInitial: true,
+    persistent: true,
+    ...(usePolling
+      ? { usePolling: true, interval: 2000, binaryInterval: 5000 }
+      : { usePolling: false }),
+    ...(ignored ? { ignored } : {}),
+    awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 }
+  };
+}
+
 function startCollector(options) {
   const {
     clients, allTimeSince, commandTimeoutMs, deviceId, agentVersion, agentRuntime,
     intervalMs, historyIntervalMs = 15 * 60 * 1000, historyEnabled = true, watchEnabled, watchDebounceMs,
-    watchUsePolling = true, watchTriggersCollection = true, intervalRequiresActivity = false,
+    watchTriggersCollection = true, intervalRequiresActivity = false,
     onUpdate, onPreview, onError, logger
   } = options;
+  const watchUsePolling = resolveWatchUsePolling(options.watchUsePolling);
+  const watchNativeForced = watchPollingEnvOverride() === false;
   const deviceOsInfo = options.osInfo === undefined
     ? hostOsInfo()
     : normalizeOsInfo(options.osInfo);
@@ -1141,11 +1311,19 @@ function startCollector(options) {
   let debounceTimer = null;
   let intervalTimer = null;
   let stopped = false;
+  const scheduledWatchClients = new Set();
+  let scheduledWatchNeedsFullScan = false;
+  const selfSyncedClients = normalizeClientsCsv(clients).split(',').filter((client) => SELF_SYNCED_CLIENTS.has(client));
   let activityRevision = 0;
   let collectedActivityRevision = 0;
   let initialCollectionComplete = false;
   const watchers = [];
   let watchedDirectoryKey = null;
+  // Sticky: once the kernel has refused us watch descriptors, every later
+  // rebuild (a client gaining or losing a data directory) stays on polling for
+  // the rest of the process. Retrying native events on each rebuild would just
+  // rediscover the same exhausted budget.
+  let watchDescriptorFallback = false;
 
   // On-disk anchor: persist full-scan snapshots so the collector can reuse
   // month/allTime across restarts. On the first interval tick the anchor is
@@ -1158,7 +1336,16 @@ function startCollector(options) {
       if (saved && saved.dateKey === localTodayKey()) {
         const fp = configFingerprint(clients, allTimeSince, options.projectsEnabled);
         if (saved.configFingerprint === fp) {
-          anchor = { dateKey: saved.dateKey, today: saved.today, month: saved.month, allTime: saved.allTime };
+          anchor = {
+            dateKey: saved.dateKey,
+            today: saved.today,
+            month: saved.month,
+            allTime: saved.allTime,
+            // Per-client partitions are deliberately rebuilt by the first
+            // anchored all-client tick after restart. Persisted partitions
+            // could be stale for clients that changed while the app was down.
+            todayPartitions: null
+          };
           // Don't restore a persisted WSL snapshot when WSL scanning is now off —
           // the configFingerprint intentionally ignores the toggle (host periods
           // stay valid), so without this gate a warm-scan preview would briefly
@@ -1189,6 +1376,8 @@ function startCollector(options) {
     const includeHistory = shouldIncludeHistory(Date.now(), lastHistoryAt, historyIntervalMs, Boolean(tickOptions.forceHistory), historyEnabled);
     if (includeHistory) lastHistoryAt = Date.now();
     const todayKey = localTodayKey();
+    const requestedTargetClients = [...new Set(normalizeClientsCsv(tickOptions.targetClients).split(',').filter(Boolean))];
+    const targetAnchorReady = canTargetTodayPartitions(anchor, requestedTargetClients);
     const anchored = Boolean(tickOptions.todayOnly && anchor && anchor.dateKey === todayKey);
     const refreshWsl = Boolean(tickOptions.refreshWsl);
     try {
@@ -1204,6 +1393,7 @@ function startCollector(options) {
         osInfo: deviceOsInfo,
         includeHistory,
         forceCursorSync: Boolean(tickOptions.forceCursorSync),
+        targetClients: anchored && targetAnchorReady ? requestedTargetClients : [],
         todayOnlyAnchor: anchored ? anchor : null,
         wslAnchor: anchored ? wslAnchor : null,
         wslStatus: anchored ? wslStatusAnchor : null,
@@ -1257,7 +1447,13 @@ function startCollector(options) {
       });
       if (stopped) return;
       if (!anchored && captured) {
-        anchor = { dateKey: todayKey, today: captured.windowsPeriods.today, month: captured.windowsPeriods.month, allTime: captured.windowsPeriods.allTime };
+        anchor = {
+          dateKey: todayKey,
+          today: captured.windowsPeriods.today,
+          month: captured.windowsPeriods.month,
+          allTime: captured.windowsPeriods.allTime,
+          todayPartitions: captured.todayPartitions
+        };
         wslAnchor = captured.wslBundle;
         wslStatusAnchor = captured.wslStatus || null;
         lastFullScanAt = Date.now();
@@ -1276,11 +1472,14 @@ function startCollector(options) {
             }));
           } catch (_) {}
         }
-      } else if (anchored && refreshWsl && captured) {
-        // Interval anchored ticks refresh WSL independently; update the
-        // frozen snapshot so subsequent watch ticks see the fresh data.
-        wslAnchor = captured.wslBundle;
-        wslStatusAnchor = captured.wslStatus || null;
+      } else if (anchored && captured) {
+        // Keep the rolling per-client today partitions fresh for targeted
+        // watch ticks. WSL stays independently frozen between interval ticks.
+        if (captured.todayPartitions) anchor.todayPartitions = captured.todayPartitions;
+        if (refreshWsl) {
+          wslAnchor = captured.wslBundle;
+          wslStatusAnchor = captured.wslStatus || null;
+        }
       }
       await onUpdate?.(summary, reason);
       if (!anchored) setupWatchers();
@@ -1291,6 +1490,13 @@ function startCollector(options) {
       return true;
     } catch (error) {
       if (stopped) return;
+      // takeWatchClients() already drained the pending set, so the clients this
+      // tick was meant to cover are gone. Force the next tick to scan all of
+      // them in every mode: in live mode the next watch event would otherwise
+      // target only its own client and leave the failed one serving the stale
+      // anchor partition until the 5–30 minute interval reconciles it, which
+      // breaks the seconds-level freshness live mode promises.
+      scheduledWatchNeedsFullScan = true;
       if (onError) onError(error, reason); else log(`collector tick failed (${reason}): ${error.message}`);
       return false;
     }
@@ -1334,15 +1540,32 @@ function startCollector(options) {
     }
   }
 
-  function scheduleTick(reason) {
+  function recordWatchClients(eventClients) {
+    if (Array.isArray(eventClients)) {
+      if (eventClients.length === 0) scheduledWatchNeedsFullScan = true;
+      else for (const client of eventClients) scheduledWatchClients.add(client);
+    }
+  }
+
+  function takeWatchClients(additionalClients = []) {
+    const targetClients = scheduledWatchNeedsFullScan
+      ? []
+      : [...new Set([...scheduledWatchClients, ...additionalClients])];
+    scheduledWatchClients.clear();
+    scheduledWatchNeedsFullScan = false;
+    return targetClients;
+  }
+
+  function scheduleTick(reason, eventClients) {
     if (stopped) return;
+    recordWatchClients(eventClients);
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
       // Re-arm instead of queueing onto the in-flight tick: the coalesce path
       // would re-run immediately on completion, stacking scans back-to-back.
       if (tickInFlight) { scheduleTick(reason); return; }
-      runTick(reason, { todayOnly: true });
+      runTick(reason, { todayOnly: true, targetClients: takeWatchClients() });
     }, watchDebounceMs);
   }
 
@@ -1353,9 +1576,31 @@ function startCollector(options) {
     watchers.length = 0;
   }
 
+  function handleWatchError(error) {
+    log(`chokidar error: ${error.message}`);
+    if (stopped || watchUsePolling || watchNativeForced || watchDescriptorFallback) return;
+    if (!WATCH_DESCRIPTOR_ERROR_CODES.has(error?.code)) return;
+    watchDescriptorFallback = true;
+    log(`Native file events unavailable (${error.code}); falling back to 2s polling.`);
+    // Rebuilding from inside chokidar's own error emit would close the watcher
+    // mid-dispatch, so hand it to the next tick of the loop instead.
+    setImmediate(() => {
+      if (stopped) return;
+      watchedDirectoryKey = null;
+      setupWatchers();
+    });
+  }
+
   function setupWatchers() {
     if (!watchEnabled) return;
-    const dirs = watchPathsForClients(clients);
+    // Canonicalise before anything derives from these roots, so the paths handed
+    // to chokidar and the paths clientsForWatchPath matches against are the same
+    // strings. Resolving only one of the two would silently break attribution.
+    const rootsByClient = Object.fromEntries(
+      Object.entries(watchClientRootsForClients(clients))
+        .map(([client, dirs]) => [client, dirs.map(canonicalWatchPath)])
+    );
+    const dirs = [...new Set(Object.values(rootsByClient).flat())];
     const directoryKey = dirs.join('\0');
     if (directoryKey === watchedDirectoryKey) return;
     closeWatchers();
@@ -1364,17 +1609,10 @@ function startCollector(options) {
       log('No watchable client data directories found; relying on fallback interval only.');
       return;
     }
+    const usePolling = watchUsePolling || watchDescriptorFallback;
     try {
       const ignored = watchIgnoreMatcher(clients);
-      const watcher = chokidar.watch(dirs, {
-        ignoreInitial: true,
-        persistent: true,
-        ...(watchUsePolling
-          ? { usePolling: true, interval: 2000, binaryInterval: 5000 }
-          : { usePolling: false }),
-        ...(ignored ? { ignored } : {}),
-        awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 }
-      });
+      const watcher = chokidar.watch(dirs, watcherOptions(usePolling, ignored));
       watcher.on('all', (event, filePath) => {
         activityRevision += 1;
         if (tickPending) {
@@ -1382,12 +1620,18 @@ function startCollector(options) {
             ? activityRevision
             : Math.max(pendingActivityRevision, activityRevision);
         }
-        if (watchTriggersCollection) scheduleTick(`watch:${event}:${path.basename(filePath || '')}`);
+        const eventClients = clientsForWatchPath(filePath, rootsByClient);
+        if (watchTriggersCollection) {
+          scheduleTick(
+            `watch:${event}:${path.basename(filePath || '')}`,
+            eventClients
+          );
+        } else recordWatchClients(eventClients);
       });
-      watcher.on('error', (error) => log(`chokidar error: ${error.message}`));
+      watcher.on('error', handleWatchError);
       watchers.push(watcher);
       watchedDirectoryKey = directoryKey;
-      for (const dir of dirs) log(`Watching ${dir} (${watchUsePolling ? 'polling 2s' : 'native events'})`);
+      for (const dir of dirs) log(`Watching ${dir} (${usePolling ? 'polling 2s' : 'native events'})`);
     } catch (error) {
       watchedDirectoryKey = null;
       log(`Cannot watch ${dirs.join(', ')}: ${error.message}`);
@@ -1415,8 +1659,9 @@ function startCollector(options) {
     // lastFullScanAt === 0 means no valid timestamp exists (cold start,
     // unparseable, or future timestamp) — force a full scan immediately.
     const anchorToday = Boolean(!fullScanDue && anchor && anchor.dateKey === localTodayKey());
+    const targetClients = intervalRequiresActivity ? takeWatchClients(selfSyncedClients) : [];
     runTick('interval', {
-      ...(anchorToday ? { todayOnly: true, refreshWsl: true } : {}),
+      ...(anchorToday ? { todayOnly: true, refreshWsl: true, targetClients } : {}),
       activityRevision: activityRevisionAtStart
     }).finally(() => {
       if (stopped) return;
@@ -1461,6 +1706,7 @@ module.exports = {
   collectHistoryOnce,
   collectUsageOnce,
   clientDataDirPresence,
+  clientWatchCandidates,
   computePeriodWindows,
   configFingerprint,
   deriveClientStatus,
@@ -1482,9 +1728,13 @@ module.exports = {
   resolvePlatformBinary,
   resolvePromaPricing,
   resetPromaPricingCache,
+  resolveWatchUsePolling,
   shouldIncludeHistory,
   startCollector,
   tokscaleCommand,
+  tokscaleClientFilter,
+  TOKSCALE_CLIENT_ALIASES,
+  watcherOptions,
   watchIgnoreMatcher,
   watchPathsForClients
 };

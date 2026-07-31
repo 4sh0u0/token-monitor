@@ -33,7 +33,6 @@ const settingsIconAssets = {
   appearance: 'appearance.svg',
   tools: 'collection.svg',
   limits: 'limits.svg',
-  accounts: 'accounts.svg',
   sync: 'sync.svg'
 };
 
@@ -45,14 +44,16 @@ test('preference drag only selects sortable rows, not nested controls', () => {
   assert.doesNotMatch(body, /querySelectorAll\(`\\\[data-\$\{attr\}\\\]`\)/);
 });
 
-test('preference drag does not animate row transforms during pointer movement', () => {
+// The handle-based lists still reorder by moving DOM nodes as the pointer
+// travels, with no transform animation. The AI Tool Limits list moved to the
+// transform model and carries its own guards in limitProviderDrag.test.js.
+test('handle-based preference drag does not animate row transforms during pointer movement', () => {
   const app = readRendererFile('app.js');
   const css = readRendererFile('styles.css');
   assert.doesNotMatch(app, /animatePreferenceOrderChange/);
   assert.doesNotMatch(app, /translateY\(/);
   assert.doesNotMatch(cssRule(css, '.tool-preference-row'), /transform/);
   assert.doesNotMatch(cssRule(css, '.view-preference-row'), /transform/);
-  assert.doesNotMatch(cssRule(css, '.settings-panel .limit-provider-row'), /transform/);
   assert.doesNotMatch(cssRule(css, '.preference-order-handle'), /transition:\s*transform/);
 });
 
@@ -116,8 +117,9 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(html, /class="settings-section-icon settings-section-icon-window"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-tools"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-limits"/);
-  assert.match(html, /class="settings-section-icon settings-section-icon-accounts"/);
   assert.match(html, /class="settings-section-icon settings-section-icon-sync"/);
+  assert.doesNotMatch(html, /data-settings-section="accounts"/);
+  assert.match(html, /id="accountsSettingsDetails" class="hidden" aria-hidden="true"/);
   assert.match(html, /id="generalSettingsSummary"/);
   assert.match(html, /id="mainSettingsSummary"/);
   assert.match(html, /id="windowSettingsSummary"/);
@@ -139,12 +141,19 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(app, /renderSettingsSummaries/);
   assert.match(app, /settingsSectionSummary/);
   assert.match(app, /for \(const other of SETTINGS_SECTION_IDS\)/);
+  assert.doesNotMatch(app, /'limits', 'accounts', 'sync'/);
   assert.doesNotMatch(app, /viewsSettingsSummary/);
+  assert.doesNotMatch(app, /orderAccountProviderGroups/);
 
   const css = readRendererFile('styles.css');
+  const i18n = readRendererFile('i18n.js');
   assert.match(css, /\.settings-section-toggle/);
   assert.match(css, /\.settings-section-icon/);
   assert.match(css, /\.settings-section-summary/);
+  assert.doesNotMatch(css, /\.settings-section-icon-accounts/);
+  assert.doesNotMatch(i18n, /settings\.(?:sections|summary)\.accounts/);
+  assert.equal(fs.existsSync(path.join(rendererDir, 'icons', 'settings', 'accounts.svg')), false);
+  assert.doesNotMatch(readRendererFile('icons/THIRD_PARTY_NOTICES.md'), /settings\/accounts\.svg/);
   assert.match(cssRule(css, '.settings-section-icon'), /mask:\s*var\(--settings-section-icon-url\)/);
   for (const [section, asset] of Object.entries(settingsIconAssets)) {
     assert.match(cssRule(css, `.settings-section-icon-${section}`), new RegExp(`icons/settings/${asset}`));
@@ -297,9 +306,13 @@ test('checkbox labels keep semantics without making the whole row a hit target',
   assert.match(css, /\.settings-panel \.client-checkboxes label\.client-checkbox input\[type="checkbox"\]\s*\{[^}]*cursor:\s*pointer/);
 });
 
-test('AI Tool Limits provider rows remain whole-row clickable', () => {
+// The provider row opens its details, while the checkbox remains the only hit
+// target that enables or disables the provider.
+test('AI Tool Limits provider checkbox keeps an isolated hit target', () => {
   const css = readRendererFile('styles.css');
-  assert.match(css, /\.settings-panel \.limit-provider-list label\.client-checkbox\s*\{[^}]*pointer-events:\s*auto/);
+  assert.doesNotMatch(css, /\.settings-panel \.limit-provider-list label\.client-checkbox\s*\{[^}]*pointer-events:\s*auto/);
+  assert.match(css, /\.settings-panel \.checkbox-label,\s*\.settings-panel label\.client-checkbox\s*\{[^}]*pointer-events:\s*none/);
+  assert.match(css, /\.settings-panel label\.client-checkbox > input\[type="checkbox"\]\s*\{[^}]*pointer-events:\s*auto/);
 });
 
 test('theme code feedback clears when the displayed code changes', () => {
@@ -327,20 +340,22 @@ test('theme code feedback clears when the displayed code changes', () => {
   assert.match(copy, /themeCodeFeedbackIsCurrent\(generation, code\)/);
 });
 
-test('theme colour accordions share accessible collapsed-state handling', () => {
+test('settings accordions share accessible collapsed-state handling', () => {
   const app = readRendererFile('app.js');
-  const setupStart = app.indexOf('function setupThemeAccordion(');
-  const setupEnd = app.indexOf('\nsetupThemeAccordion(els.themeAdvancedGroup', setupStart);
-  assert.notEqual(setupStart, -1, 'setupThemeAccordion function should exist');
-  assert.notEqual(setupEnd, -1, 'theme accordion setup calls should follow the helper');
+  const setupStart = app.indexOf('function setSettingsAccordionExpanded(');
+  const setupEnd = app.indexOf('\nfunction setupSettingsAccordion(', setupStart);
+  assert.notEqual(setupStart, -1, 'setSettingsAccordionExpanded function should exist');
+  assert.notEqual(setupEnd, -1, 'settings accordion setup calls should follow the helper');
   const setup = app.slice(setupStart, setupEnd);
 
   assert.match(setup, /toggle\.setAttribute\('aria-expanded', String\(open\)\)/);
   assert.match(setup, /details\.classList\.toggle\('hidden', !open\)/);
   assert.match(setup, /details\.inert = !open/);
   assert.match(setup, /group\.classList\.toggle\('expanded', open\)/);
-  assert.match(app, /setupThemeAccordion\(els\.themeAdvancedGroup, els\.themeAdvancedToggle, els\.themeAdvancedDetails\)/);
-  assert.match(app, /setupThemeAccordion\(els\.themeVendorGroup, els\.themeVendorToggle, els\.themeVendorDetails\)/);
+  assert.match(app, /setupSettingsAccordion\(els\.appUpdateNotes, els\.appUpdateNotesToggle, els\.appUpdateNotesDetails\)/);
+  assert.match(app, /setupSettingsAccordion\(els\.advancedSettingsGroup, els\.advancedSettingsToggle, els\.advancedSettingsDetails\)/);
+  assert.match(app, /setupSettingsAccordion\(els\.themeAdvancedGroup, els\.themeAdvancedToggle, els\.themeAdvancedDetails\)/);
+  assert.match(app, /setupSettingsAccordion\(els\.themeVendorGroup, els\.themeVendorToggle, els\.themeVendorDetails\)/);
 });
 
 test('Trends has a master toggle separate from main-screen visibility', () => {

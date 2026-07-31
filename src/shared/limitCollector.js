@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { appVersion } = require('./appVersion');
+const { BROWSER_USER_AGENT } = require('./browserUserAgent');
 const {
   DEFAULT_LIMITS_REFRESH_MS,
   normalizeLimitProvider,
@@ -291,28 +292,31 @@ function displayPlanText(raw, maxWords = 3) {
   return visible.map(displayPlanWord).join(' ');
 }
 
+const PLAN_LABEL_ALIASES = {
+  free: 'Free',
+  plus: 'Plus',
+  pro: 'Pro',
+  max: 'Max',
+  team: 'Team',
+  teams: 'Team',
+  enterprise: 'Enterprise',
+  ultra: 'Ultra'
+};
+
 function planLabelFromParts(...parts) {
   const text = parts.map((part) => String(part || '')).find(Boolean) || '';
   const raw = cleanPlanText(text);
   if (!raw || raw.includes('@')) return '';
-  const aliases = {
-    free: 'Free',
-    plus: 'Plus',
-    pro: 'Pro',
-    max: 'Max',
-    team: 'Team',
-    teams: 'Team',
-    enterprise: 'Enterprise',
-    ultra: 'Ultra'
-  };
-  if (aliases[raw]) return aliases[raw];
+  if (PLAN_LABEL_ALIASES[raw]) return PLAN_LABEL_ALIASES[raw];
   return displayPlanText(raw);
 }
 
 function claudeRateLimitTierLabel(rateLimitTier) {
   const raw = cleanPlanText(rateLimitTier, []);
   if (!raw) return '';
-  const words = raw.split(/\s+/).filter((word) => !['default', 'claude', 'ai'].includes(word));
+  // `raven` is the internal codename an enterprise tier carries (`default_raven`),
+  // not something to render: without it that tier would read as a plan called Raven.
+  const words = raw.split(/\s+/).filter((word) => !['default', 'claude', 'ai', 'raven'].includes(word));
   if (words.length === 0) return '';
   return planLabelFromParts(words.join(' '));
 }
@@ -646,10 +650,15 @@ async function fetchJson(url, headers, deps = {}, options = {}) {
 }
 
 function fetchClaudeWebJson(url, headers, deps = {}, options = {}) {
-  const webDeps = typeof deps.claudeWebFetch === 'function'
-    ? { ...deps, fetch: deps.claudeWebFetch }
-    : deps;
-  return fetchJson(url, headers, webDeps, {
+  const viaChromium = typeof deps.claudeWebFetch === 'function';
+  const webDeps = viaChromium ? { ...deps, fetch: deps.claudeWebFetch } : deps;
+  // Chromium sends its own browser agent, and setting one here would override it
+  // with a version that no longer matches the runtime. undici sends none at all,
+  // and claude.ai's Cloudflare answers both that and an honest
+  // `token-monitor/<version>` agent with `403 cf-mitigated: challenge`, so that
+  // path has to present as a browser.
+  const webHeaders = viaChromium ? headers : { ...headers, 'user-agent': BROWSER_USER_AGENT };
+  return fetchJson(url, webHeaders, webDeps, {
     forbiddenIsUnauthorized: true,
     onResponse: options.onResponse
   });
@@ -902,6 +911,40 @@ function claudeWebOrganizationCapabilities(organization) {
   );
 }
 
+// On a personal claude.ai account the plan is not on the membership at all:
+// `seat_tier` is null and neither `rate_limit_tier` nor `billing_type` exists
+// at that level. The organization's capability list carries it, and it is the
+// same list that already decides which organization to read. Returns the shared
+// alias key rather than a display string, so a plan read here renders
+// identically to the same plan read from OAuth credentials.
+//
+// `raven` covers Team and Enterprise together; `raven_type` separates them, and
+// claude.ai treats a raven organization without one as unknown rather than as
+// Team. This mirrors that: a capability that cannot name the plan yields
+// nothing and lets the seat tier answer instead.
+function claudeCapabilityPlan(capabilities, organization) {
+  if (capabilities.has('claude_max')) return 'max';
+  if (capabilities.has('claude_pro')) return 'pro';
+  if (!capabilities.has('raven')) return '';
+  const ravenType = String(organization?.raven_type || '').trim().toLowerCase();
+  if (!ravenType) return '';
+  return ravenType === 'enterprise' ? 'enterprise' : 'team';
+}
+
+// A seat tier is `<plan>_<seat level>` (`enterprise_standard`), and only the
+// plan half belongs in a plan label: keeping the level renders "Enterprise
+// Standard" where the same account over OAuth renders "Enterprise".
+//
+// A value with no recognized plan in front contributes nothing. A bare seat
+// level says which seat someone holds, not which plan they are on, so rendering
+// it puts membership bookkeeping where the plan goes: `standard` would read as
+// a plan called Standard, and `unassigned` (what claude.ai substitutes for a
+// member holding no seat) as one called Unassigned.
+function claudeSeatTier(membership) {
+  const [plan] = cleanPlanText(membership?.seat_tier).split(' ');
+  return PLAN_LABEL_ALIASES[plan] ? plan : '';
+}
+
 function selectClaudeWebOrganization(organizations) {
   const candidates = organizations.filter((candidate) => claudeWebOrganizationId(candidate));
   const hasChatCapability = (candidate) => (
@@ -917,7 +960,13 @@ function selectClaudeWebOrganization(organizations) {
     || null;
 }
 
+// Exact matches only. Everything read off a membership is scoped to its own
+// organization, so falling back to "whichever membership came first" labels the
+// organization we resolved usage for with a different one's plan and name. On a
+// multi-organization account that is not a near miss, it is the wrong answer.
+// The selected organization carries the same fields and is always available.
 function claudeWebMembership(accountBody, organizationId) {
+  if (!organizationId) return null;
   const account = accountBody?.account && typeof accountBody.account === 'object'
     ? accountBody.account
     : accountBody;
@@ -928,7 +977,7 @@ function claudeWebMembership(accountBody, organizationId) {
       : [];
   return memberships.find((membership) => (
     claudeWebOrganizationId(membership?.organization || membership) === organizationId
-  )) || memberships[0] || null;
+  )) || null;
 }
 
 function claudeStableIdentity(accountId, organizationId, accountEmail) {
@@ -963,9 +1012,20 @@ function claudeWebAccountIdentity(accountBody, organization) {
   if (!stableIdentity) {
     throw claudeIdentityUnavailable('Claude Web account did not include a stable account identity');
   }
+  // The organization we resolved usage for, falling back to the membership's
+  // own copy only when no organization was passed in at all.
+  const planOrganization = organization && typeof organization === 'object'
+    ? organization
+    : memberOrganization;
+  // The organization states the plan; a seat tier only implies one, so it
+  // answers second. `billing_type` is deliberately not consulted at all: it is
+  // a payment method (`apple_subscription`), never a plan, so reading it would
+  // label a Pro account "Apple subscription".
   const accountLabel = claudePlanLabelFromParts(
-    membership?.seat_tier || membership?.billing_type || account?.subscription_type,
-    membership?.rate_limit_tier || account?.rate_limit_tier
+    claudeCapabilityPlan(claudeWebOrganizationCapabilities(planOrganization), planOrganization)
+      || claudeSeatTier(membership)
+      || account?.subscription_type,
+    membership?.rate_limit_tier || planOrganization?.rate_limit_tier || account?.rate_limit_tier
   );
   return {
     accountKey: hashKey('claude-account', stableIdentity),
@@ -3291,6 +3351,7 @@ async function fetchDeepSeekLimits(options = {}, deps = {}) {
         amount: row.amount,
         currency: row.currency,
         todaySpend: spend.todaySpend,
+        weekSpend: spend.weekSpend,
         monthSpend: spend.monthSpend,
         allTimeSpend: spend.allTimeSpend,
         trackingSince: spend.trackingSince,

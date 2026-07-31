@@ -440,11 +440,6 @@ body.is-windows.floating-bubble-collapsed-right .floating-bubble-tab {
 .settings-panel label.client-checkbox > input[type="checkbox"] {
   pointer-events: auto;
 }
-/* The AI Tool Limits provider matrix is intentionally row-clickable: its
-   compact provider rows are easier to scan and select as a whole. */
-.settings-panel .limit-provider-list label.client-checkbox {
-  pointer-events: auto;
-}
 .settings-panel .checkbox-label {
   display: flex;
   align-items: center;
@@ -838,6 +833,113 @@ span.settings-note.settings-item-desc {
   padding-top: 9px;
   border-top: 1px solid rgba(var(--line-rgb), 0.075);
 }
+.advanced-settings {
+  gap: 0 !important;
+}
+.advanced-settings-toggle {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+.advanced-settings-toggle:hover { color: var(--text); }
+.advanced-settings-toggle:focus-visible {
+  border-radius: 4px;
+  outline: 1px solid rgba(115, 189, 245, 0.72);
+  outline-offset: 3px;
+}
+.advanced-settings-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+.advanced-settings.expanded > .advanced-settings-toggle .settings-section-disclosure {
+  transform: rotate(180deg);
+}
+.advanced-settings-details {
+  min-width: 0;
+}
+.advanced-settings-body {
+  display: grid;
+  min-width: 0;
+}
+.advanced-settings-body > .advanced-settings-block + .advanced-settings-block {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(var(--line-rgb), 0.075);
+}
+.maintenance-section,
+.maintenance-panel {
+  gap: 0 !important;
+}
+.maintenance-section > * + *,
+.maintenance-panel > * + * {
+  margin-top: 8px;
+}
+.maintenance-header {
+  min-height: 14px;
+}
+.maintenance-version-grid {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding: 2px 0;
+}
+.maintenance-version-item {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.maintenance-version-item.hidden { display: none; }
+.maintenance-version-item strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: inherit;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.maintenance-version-item small {
+  color: inherit;
+  font-size: 9px;
+}
+.maintenance-actions {
+  margin-top: 8px !important;
+}
+.app-update-settings > .app-update-notes {
+  margin-top: 4px;
+}
+.advanced-config-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px !important;
+}
+.advanced-config-row > * + * {
+  margin-top: 0 !important;
+}
+.advanced-config-row .settings-note {
+  min-width: 0;
+}
+.advanced-config-row .settings-actions {
+  flex: 0 0 auto;
+}
 .settings-section-details-inner > .settings-subgroup:first-child {
   padding-top: 0;
   border-top: 0;
@@ -888,7 +990,6 @@ span.settings-note.settings-item-desc {
 .settings-section-icon-window { --settings-section-icon-url: url("icons/settings/window.svg"); }
 .settings-section-icon-tools { --settings-section-icon-url: url("icons/settings/collection.svg"); }
 .settings-section-icon-limits { --settings-section-icon-url: url("icons/settings/limits.svg"); }
-.settings-section-icon-accounts { --settings-section-icon-url: url("icons/settings/accounts.svg"); }
 .settings-section-icon-sync { --settings-section-icon-url: url("icons/settings/sync.svg"); }
 .settings-section-icon-appearance { --settings-section-icon-url: url("icons/settings/appearance.svg"); }
 .cursor-settings-toggle {
@@ -1141,34 +1242,57 @@ span.settings-note.settings-item-desc {
   gap: 8px;
   margin-top: 8px;
 }
-.app-update-notes {
-  min-width: 0;
-  padding-top: 8px;
-  border-top: 1px solid rgba(var(--line-rgb), 0.075);
-  color: var(--muted);
-  font-size: 10px;
-}
+.app-update-notes { min-width: 0; color: var(--muted); font-size: 10px; }
 .app-update-notes.hidden { display: none; }
-.app-update-notes summary {
-  width: max-content;
-  max-width: 100%;
-  color: var(--text);
+.app-update-notes-toggle {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
+  font: inherit;
   font-size: 10.5px;
   font-weight: 600;
   line-height: 1.35;
+  text-align: left;
   user-select: none;
 }
-.app-update-notes summary::marker { color: var(--muted); }
-.app-update-notes summary:focus-visible {
+.app-update-notes-toggle:hover { color: var(--blue); }
+.app-update-notes-toggle:focus-visible {
   border-radius: 3px;
   outline: 1px solid rgba(115, 189, 245, 0.72);
   outline-offset: 3px;
 }
+.app-update-notes-disclosure {
+  width: 8px;
+  height: 8px;
+}
+.app-update-notes-disclosure::before {
+  width: 0;
+  height: 0;
+  border: 0;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 5px solid currentColor;
+  transform: none;
+}
+.app-update-notes.expanded .app-update-notes-disclosure {
+  transform: rotate(90deg);
+}
+.app-update-notes-details { min-width: 0; }
+.app-update-notes-content {
+  min-width: 0;
+  padding: 4px 0 2px;
+}
 .app-update-notes-body {
   display: grid;
   gap: 7px;
-  margin-top: 8px;
 }
 .app-update-note-title {
   color: var(--text);
@@ -1182,7 +1306,7 @@ span.settings-note.settings-item-desc {
   line-height: 1.45;
 }
 .app-update-note-group li + li { margin-top: 3px; }
-.app-update-notes .inline-link { margin-top: 7px; font-size: 10px; }
+.app-update-notes .inline-link { margin-top: 8px; font-size: 10px; }
 .app-update-notes .inline-link.hidden { display: none; }
 .inline-link {
   padding: 0;
@@ -1332,29 +1456,6 @@ span.settings-note.settings-item-desc {
 .currency-rate-prefix { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
 .settings-panel .currency-rate-manual-field input { flex: 1 1 0; width: 0; min-width: 0; font-size: 11px; }
 .settings-note.currency-rate-status { font-variant-numeric: tabular-nums; }
-.tokscale-lines {
-  display: grid;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 10px;
-}
-.tokscale-lines > div {
-  display: flex;
-  min-width: 0;
-  justify-content: space-between;
-  gap: 10px;
-}
-.tokscale-lines > div.hidden { display: none; }
-.tokscale-lines strong {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text);
-  font-weight: 500;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tokscale-lines small { color: var(--muted); font-size: 9px; }
 .tokscale-message {
   color: var(--muted);
   font-size: 10px;
@@ -1645,24 +1746,68 @@ span.settings-note.settings-item-desc {
   gap: 6px;
 }
 .settings-panel .limit-provider-row {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   margin: 0 -2px;
-  padding: 1px 2px;
+  padding: 1px 0;
   border-radius: 6px;
-  transition: background 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+  touch-action: pan-y;
+  transform: translateY(calc(var(--drag-y, 0px) + var(--drag-shift, 0px)));
+  transition:
+    transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease;
 }
 .settings-panel .limit-provider-row label.client-checkbox {
   min-width: 0;
 }
-/* The disclosure and the drag handle share one cell, so a provider without
-   options keeps its handle in line with every other row. */
-.limit-provider-actions {
+.limit-provider-main {
   display: flex;
   align-items: center;
-  gap: 2px;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+.limit-provider-main:focus-visible {
+  outline: 1px solid rgba(var(--accent-rgb), 0.62);
+  outline-offset: 2px;
+}
+.limit-provider-row.is-disabled .limit-provider-main {
+  color: var(--muted);
+}
+.limit-provider-row.is-disabled .limit-provider-tag {
+  border-color: rgba(var(--line-rgb), 0.13);
+  color: var(--muted);
+}
+.limit-provider-actions {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 58%;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.limit-provider-actions > .cursor-status-pill {
+  flex: 0 1 auto;
+}
+.limit-provider-row.expanded > .limit-provider-main .cursor-disclosure-icon {
+  transform: rotate(180deg);
 }
 /* Provider options hang under their own row, spanning the full width beneath
    both the label and the actions. The row's spacing is a column gap only: a row
@@ -1676,23 +1821,65 @@ span.settings-note.settings-item-desc {
 .settings-panel .limit-provider-row > .accordion-animated-container {
   grid-column: 1 / -1;
   margin-top: 4px;
+  cursor: default;
 }
+/* The dragged row must track the pointer with zero latency, so it opts out of
+   the transform transition its neighbours use to slide out of the way. */
+.settings-panel .limit-provider-row.dragging {
+  z-index: 2;
+  background: rgba(var(--panel-rgb), 0.96);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.62);
+  cursor: grabbing;
+  scale: 1.02;
+  transition:
+    background 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease;
+  will-change: transform;
+}
+.settings-panel .limit-provider-list.is-landing .limit-provider-row {
+  transition:
+    background 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease;
+}
+.limit-provider-list.drag-active .limit-provider-row:not(.dragging) { opacity: 0.78; }
+/* Collapsing must land instantly so the drag snapshot measures settled
+   geometry rather than a mid-animation height. */
+.limit-provider-list.is-reordering .accordion-animated-container { transition: none; }
 .settings-panel .limit-provider-settings-list {
-  margin-left: 22px;
+  margin: 0;
+  padding-left: 0;
+  border-left: 0;
 }
 .settings-panel .limit-provider-toggle {
   align-items: flex-start;
 }
 .limit-provider-copy {
   display: grid;
+  flex: 1 1 auto;
   min-width: 0;
   gap: 3px;
   white-space: normal;
+}
+.limit-provider-name-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
 }
 .limit-provider-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.limit-provider-status-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 1px rgba(var(--success-rgb), 0.1);
 }
 .limit-provider-tags {
   display: flex;
@@ -1751,6 +1938,33 @@ span.settings-note.settings-item-desc {
 .limit-provider-tag-muted {
   color: var(--muted);
 }
+.limit-provider-options-inner {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+.limit-provider-account-group {
+  margin-left: 0;
+}
+.limit-provider-account-group > .settings-group-header {
+  display: none;
+}
+.limit-provider-account-group > .cursor-settings-details {
+  margin-top: 0;
+}
+.limit-provider-connection-detail {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 4px 0 2px;
+}
+.limit-provider-connection-title {
+  color: var(--text);
+  font-size: 10px;
+}
+.limit-provider-connection-detail > .settings-note {
+  margin: 0;
+}
 .preference-order-handle {
   display: inline-flex;
   align-items: center;
@@ -1794,7 +2008,6 @@ span.settings-note.settings-item-desc {
 }
 .tool-preference-row.is-dragging,
 .view-preference-row.is-dragging,
-.settings-panel .limit-provider-row.is-dragging,
 .home-module-preference-row.is-dragging,
 .home-limit-provider-row.is-dragging {
   background: rgba(var(--accent-rgb), 0.08);
@@ -2524,7 +2737,7 @@ html.is-windows .settings-panel select option {
   margin-top: 1px;
   overflow-x: auto;
   overflow-y: hidden;
-  cursor: grab;
+  cursor: default;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
@@ -2569,6 +2782,10 @@ html.is-windows .settings-panel select option {
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease;
+}
+.home-activity-scroll.is-restoring-hover .heat,
+.home-activity-scroll.is-restoring-hover .heat-bright-layer {
+  transition: none;
 }
 .home-activity-scroll:hover .heat-bright-layer,
 .home-activity-scroll:focus-within .heat-bright-layer {
@@ -2727,7 +2944,7 @@ html.is-windows .settings-panel select option {
 .row-icon-cursor     { -webkit-mask-image: url(../../../assets/icons/cursor.svg);        mask-image: url(../../../assets/icons/cursor.svg); }
 .row-icon-antigravity { -webkit-mask-image: url(../../../assets/icons/antigravity.svg);   mask-image: url(../../../assets/icons/antigravity.svg); }
 .row-icon-cline      { -webkit-mask-image: url(../../../assets/icons/cline.svg);         mask-image: url(../../../assets/icons/cline.svg); }
-.row-icon-kimi       { -webkit-mask-image: url(../../../assets/icons/moonshot.svg);      mask-image: url(../../../assets/icons/moonshot.svg); }
+.row-icon-kimi       { -webkit-mask-image: url(../../../assets/icons/kimi.svg);          mask-image: url(../../../assets/icons/kimi.svg); }
 .row-icon-grok       { -webkit-mask-image: url(../../../assets/icons/xai.svg);           mask-image: url(../../../assets/icons/xai.svg); }
 .row-icon-copilot    { -webkit-mask-image: url(../../../assets/icons/copilot.svg);       mask-image: url(../../../assets/icons/copilot.svg); }
 .row-icon-pi         { -webkit-mask-image: url(../../../assets/icons/pi.svg);            mask-image: url(../../../assets/icons/pi.svg); }
@@ -2841,8 +3058,8 @@ html.is-windows .settings-panel select option {
   mask-image: url(../../../assets/icons/ollama.svg);
 }
 .limit-icon-kimi {
-  -webkit-mask-image: url(../../../assets/icons/moonshot.svg);
-  mask-image: url(../../../assets/icons/moonshot.svg);
+  -webkit-mask-image: url(../../../assets/icons/kimi.svg);
+  mask-image: url(../../../assets/icons/kimi.svg);
 }
 .limit-icon-mimo {
   -webkit-mask-image: url(../../../assets/icons/xiaomi.svg);
@@ -3529,6 +3746,9 @@ html.is-windows .limit-live-badge {
   -webkit-backdrop-filter: blur(28px) saturate(115%);
   backdrop-filter: blur(28px) saturate(115%);
 }
+.limit-detail-tooltip-triple {
+  grid-template-columns: max-content max-content max-content;
+}
 .limit-detail-tooltip::after {
   position: absolute;
   right: 6px;
@@ -3561,6 +3781,13 @@ html.is-windows .limit-live-badge {
 }
 .limit-detail-tooltip-row span:last-child {
   flex: 0 0 auto;
+  color: var(--text);
+  opacity: 0.54;
+  text-align: right;
+  white-space: nowrap;
+}
+/* Middle cell of a three-column row: secondary, like the trailing one. */
+.limit-detail-tooltip-row span:nth-child(2):not(:last-child) {
   color: var(--text);
   opacity: 0.54;
   text-align: right;
@@ -5444,4 +5671,5 @@ html.is-windows .limit-live-badge {
 }
 @media (prefers-reduced-motion: reduce) {
   .tray-composer-item { transition: none; }
+  .settings-panel .limit-provider-row { transition: none; }
 }

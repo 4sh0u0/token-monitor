@@ -161,7 +161,8 @@ function functionBody(source, name, nextName) {
   assert.notEqual(start, -1, `${name} function should exist`);
   const end = source.indexOf(`function ${nextName}(`, start);
   assert.notEqual(end, -1, `${nextName} function should follow ${name}`);
-  return source.slice(start, end);
+  const endLineStart = source.lastIndexOf('\n', end) + 1;
+  return source.slice(start, endLineStart);
 }
 
 function runLocalProviderStatus(source, state, providerName) {
@@ -179,6 +180,22 @@ function runLocalLiveCodexProvider(source, state) {
     `${liveHelper}\nlocalLiveCodexProvider();`,
     { accountIdentityApi, state }
   );
+}
+
+function runProviderSpendNode(source, balance) {
+  const optionalNumber = functionBody(source, 'optionalFiniteNumber', 'formatLimitWindowValue');
+  const spendEntries = functionBody(source, 'providerSpendEntries', 'limitNoteRowNode');
+  const spendNode = functionBody(source, 'providerSpendNode', 'thirdPartySpendNode');
+  const context = {
+    formatMoney: (value, currency) => `${currency} ${Number(value).toFixed(2)}`,
+    limitNoteRowNode: (options) => options
+  };
+  vm.runInNewContext(
+    `${optionalNumber}\n${spendEntries}\n${spendNode}\n`
+      + `result = providerSpendNode(${JSON.stringify(balance)});`,
+    context
+  );
+  return JSON.parse(JSON.stringify(context.result));
 }
 
 test('Limits and Home share reset expiry while preserving the existing reset copy', () => {
@@ -741,9 +758,12 @@ test('Codex renders manual reset credits below session and weekly windows', () =
   const resetCreditsValue = functionBody(app, 'formatCodexResetCreditsValue', 'codexResetCreditExpirationDates');
   const resetCreditExpirationDates = functionBody(app, 'codexResetCreditExpirationDates', 'codexResetCreditExpiryLabel');
   const resetCreditExpiryLabel = functionBody(app, 'codexResetCreditExpiryLabel', 'codexResetCreditExpiryDetailLabel');
-  const resetCreditExpiryDetailLabel = functionBody(app, 'codexResetCreditExpiryDetailLabel', 'codexResetCreditExpiryDateLabel');
-  const resetCreditExpiryDateLabel = functionBody(app, 'codexResetCreditExpiryDateLabel', 'limitDetailTooltipShouldHoldRender');
-  const codexResetCreditsNode = functionBody(app, 'codexResetCreditsNode', 'renderLimitProviderHead');
+  const resetCreditExpiryDetailLabel = functionBody(app, 'codexResetCreditExpiryDetailLabel', 'expiryDateLabel');
+  const resetCreditExpiryDateLabel = functionBody(app, 'expiryDateLabel', 'limitDetailTooltipShouldHoldRender');
+  // Sliced to the next function, not to `renderLimitProviderHead`: the wider slice
+  // swept in the shared tooltip builder, so these assertions passed on code that
+  // isn't Codex's.
+  const codexResetCreditsNode = functionBody(app, 'codexResetCreditsNode', 'providerSpendEntries');
   const limitDetailTooltipShouldHoldRender = functionBody(app, 'limitDetailTooltipShouldHoldRender', 'flushPendingLimitDetailTooltipRender');
   const renderLimits = functionBody(app, 'renderLimits', 'serviceStatusLabel');
 
@@ -767,17 +787,18 @@ test('Codex renders manual reset credits below session and weekly windows', () =
   assert.match(codexResetCreditsNode, /limit-reset-credits-time/);
   assert.match(codexResetCreditsNode, /limit-reset-credits-separator/);
   assert.match(codexResetCreditsNode, /separator\.textContent = '·'/);
-  assert.match(codexResetCreditsNode, /limit-detail-tooltip-wrap/);
-  assert.match(codexResetCreditsNode, /limit-detail-tooltip/);
   assert.match(codexResetCreditsNode, /expirationDates\.slice\(0, 3\)\.map\(codexResetCreditExpiryLabel\)/);
   assert.match(codexResetCreditsNode, /hiddenExpirationCount = expirationDates\.length - summaryParts\.length/);
   assert.match(codexResetCreditsNode, /summaryParts\.push\(`\+\$\{hiddenExpirationCount\}`\)/);
-  assert.match(codexResetCreditsNode, /expirationDates\.forEach/);
-  assert.match(codexResetCreditsNode, /label\.textContent = codexResetCreditExpiryDateLabel\(date\)/);
-  assert.match(codexResetCreditsNode, /tooltipExpiry\.textContent = codexResetCreditExpiryLabel\(date\)/);
-  assert.match(codexResetCreditsNode, /state\.limitDetailTooltipActive = true/);
-  assert.match(codexResetCreditsNode, /addEventListener\('pointerenter', markResetCreditsTooltipOpened\)/);
-  assert.match(codexResetCreditsNode, /if \(limitDetailTooltipShouldHoldRender\(\)\) return;/);
+  // The multi-expiry tooltip is the shared builder, not a second copy of its
+  // hover/focus wiring that has to be kept in step by hand.
+  assert.match(
+    codexResetCreditsNode,
+    /expirationDates\.map\(\(date\) => \[expiryDateLabel\(date\), codexResetCreditExpiryLabel\(date\)\]\)/
+  );
+  assert.match(codexResetCreditsNode, /`Reset \$\{index \+ 1\}: \$\{codexResetCreditExpiryDetailLabel\(date\)\}`/);
+  assert.doesNotMatch(codexResetCreditsNode, /addEventListener/);
+  assert.doesNotMatch(codexResetCreditsNode, /state\.limitDetailTooltip/);
   assert.match(codexResetCreditsNode, /formatCodexResetCreditsValue\(resetCredits\)/);
   assert.match(codexResetCreditsNode, /aria-label/);
   assert.match(limitDetailTooltipShouldHoldRender, /state\.limitDetailTooltipActive/);
@@ -793,6 +814,96 @@ test('Codex renders manual reset credits below session and weekly windows', () =
   assert.match(styles, /\.limit-detail-tooltip-row\s*\{[^}]*display: contents;/s);
   assert.match(styles, /\.limit-detail-tooltip-row span:last-child\s*\{[^}]*text-align: right;/s);
   assert.doesNotMatch(styles, /\.limit-reset-credits-clock/);
+});
+
+function runClaudePrepaidGrantRows(app, tranches, currency, now) {
+  const optionalNumber = functionBody(app, 'optionalFiniteNumber', 'formatLimitWindowValue');
+  const duration = functionBody(app, 'formatDuration', 'formatActiveDuration');
+  const dateLabel = functionBody(app, 'expiryDateLabel', 'limitDetailTooltipShouldHoldRender');
+  const grantRows = functionBody(app, 'claudePrepaidGrantRows', 'claudeBalanceNode');
+  const context = {
+    Date: class FrozenDate extends Date {
+      constructor(...args) {
+        super(...(args.length === 0 ? [now] : args));
+      }
+
+      static now() {
+        return now;
+      }
+    },
+    Intl,
+    currentLocale: () => 'en-US',
+    formatMoney: (value, code) => `${code === 'USD' ? '$' : `${code} `}${Number(value).toFixed(2)}`
+  };
+  vm.runInNewContext(
+    `${optionalNumber}\n${duration}\n${dateLabel}\n${grantRows}\n`
+      + `result = claudePrepaidGrantRows(${JSON.stringify(tranches)}, ${JSON.stringify(currency)});`,
+    context
+  );
+  // The rows come back with the sandbox's own prototypes, which deepEqual rejects.
+  return JSON.parse(JSON.stringify(context.result));
+}
+
+// Expiries are rendered in local time, so the fixtures are built from local
+// dates rather than fixed UTC instants. Both land in August, which no time zone
+// splits with a DST transition from late July.
+function localIso(year, month, day, hour = 0) {
+  return new Date(year, month - 1, day, hour, 0, 0, 0).toISOString();
+}
+
+test('Claude prepaid grants list amount, expiry date and time left in separate columns', () => {
+  const app = readRendererFile('app.js');
+  const now = new Date(2026, 6, 28, 0, 0, 0, 0).getTime();
+  const rows = runClaudePrepaidGrantRows(app, [
+    { amount: 13.43, currency: 'USD', expiresAt: localIso(2026, 8, 8, 17) },
+    { amount: 100, currency: 'USD', expiresAt: localIso(2026, 8, 20, 17) }
+  ], 'USD', now);
+
+  assert.deepEqual(rows.map((row) => row.cells), [
+    ['$13.43', '8/8', '11d 17h'],
+    ['$100.00', '8/20', '23d 17h']
+  ]);
+  // The columns dropped the wording, so only the spoken label still carries it.
+  assert.deepEqual(rows.map((row) => row.aria), [
+    '$13.43 expires in 11d 17h',
+    '$100.00 expires in 23d 17h'
+  ]);
+});
+
+test('Claude prepaid grants keep three cells when a grant has no usable expiry', () => {
+  const app = readRendererFile('app.js');
+  const now = new Date(2026, 6, 28, 0, 0, 0, 0).getTime();
+  const rows = runClaudePrepaidGrantRows(app, [
+    { amount: 5, currency: 'USD', expiresAt: null },
+    { amount: 6, currency: 'USD', expiresAt: 'not-a-date' },
+    { amount: 7, currency: 'USD', expiresAt: localIso(2026, 7, 1, 12) },
+    { amount: null, currency: 'USD', expiresAt: localIso(2026, 8, 8, 17) }
+  ], 'USD', now);
+
+  // Rows are grid cells, so a short row would slide into the next row's columns.
+  assert.deepEqual(rows.map((row) => row.cells.length), [3, 3, 3]);
+  assert.deepEqual(rows.map((row) => row.cells[2]), ['No expiry', 'No expiry', 'Expired']);
+  assert.deepEqual(rows.map((row) => row.cells[1]), ['', '', '7/1']);
+});
+
+test('The detail tooltip widens its grid and pads short rows for three-column entries', () => {
+  const app = readRendererFile('app.js');
+  const styles = readRendererFile('styles.css');
+  const infoNode = functionBody(app, 'limitDetailInfoNode', 'providerSpendNode');
+  const grantRows = functionBody(app, 'claudePrepaidGrantRows', 'claudeBalanceNode');
+  const balanceNode = functionBody(app, 'claudeBalanceNode', 'optionalFiniteNumber');
+
+  assert.match(infoNode, /const columns = entries\.reduce\(\(widest, entry\) => Math\.max\(widest, entry\.length\), 0\);/);
+  assert.match(infoNode, /columns > 2 \? 'limit-detail-tooltip-triple' : ''/);
+  assert.match(infoNode, /for \(let column = 0; column < columns; column \+= 1\)/);
+  assert.match(infoNode, /cell\.textContent = entry\[column\] \?\? '';/);
+  assert.match(infoNode, /entries\.map\(\(\[entryLabel, \.\.\.rest\]\) => `\$\{entryLabel\}: \$\{rest\.filter\(Boolean\)\.join\(' '\)\}`\)/);
+  assert.match(balanceNode, /const grants = claudePrepaidGrantRows\(tranches, currency\);/);
+  assert.match(balanceNode, /\.\.\.grants\.map\(\(grant\) => grant\.aria\)/);
+  // The wording belongs to the spoken label now, never to a rendered cell.
+  assert.doesNotMatch(grantRows, /cells: \[[^\]]*Expires in/);
+  assert.match(styles, /\.limit-detail-tooltip-triple\s*\{[^}]*grid-template-columns: max-content max-content max-content;/s);
+  assert.match(styles, /\.limit-detail-tooltip-row span:nth-child\(2\):not\(:last-child\)\s*\{[^}]*text-align: right;/s);
 });
 
 test('Home uses explicit billing labels so Copilot Premium and Chat stay distinct', () => {
@@ -844,7 +955,9 @@ test('DeepSeek main Limits row preserves the intentional month-spend balance met
 
   assert.match(renderProviderWindows, /\{ remainingPercent: creditsMeterPercent\(provider, null\) \},/);
   assert.match(renderProviderWindows, /balanceNode\.classList\.add\('limit-window-wide', 'limit-window-no-reset'\);/);
-  assert.match(renderProviderWindows, /const spendNode = limitWindowNode\('Spend', \{ showMeter: false \}, color, 0\.6,/);
+  assert.match(renderProviderWindows, /const spendNode = providerSpendNode\(balance\);/);
+  assert.match(app, /\['Week', optionalFiniteNumber\(balance\?\.weekSpend\)\]/);
+  assert.match(app, /\['All time', optionalFiniteNumber\(balance\?\.allTimeSpend\)\]/);
   assert.doesNotMatch(renderProviderWindows, /Month \(since tracking\)/);
   assert.doesNotMatch(renderProviderWindows, /monthSinceTracking \? 'Month \(since tracking\)' : 'Month'/);
   // The month-spend denominator now lives in the shared balance module.
@@ -852,6 +965,43 @@ test('DeepSeek main Limits row preserves the intentional month-spend balance met
   assert.match(balanceWindow, /provider\?\.balance\?\.monthSpend/);
   assert.doesNotMatch(renderProviderWindows, /formatMoney\(balance\.amount, currency\)\} left/);
   assert.match(styles, /\.limit-window-no-reset \.limit-reset\s*\{/);
+});
+
+test('shared spend presentation preserves zeroes and omits missing periods', () => {
+  const app = readRendererFile('app.js');
+  const complete = runProviderSpendNode(app, {
+    currency: 'CNY',
+    todaySpend: 0,
+    weekSpend: 1.25,
+    monthSpend: 2.5,
+    allTimeSpend: 3.75
+  });
+
+  assert.equal(complete.label, 'Spend');
+  assert.equal(complete.summary, 'Today CNY 0.00 · Month CNY 2.50');
+  assert.deepEqual(complete.detailEntries, [
+    ['Today', 'CNY 0.00'],
+    ['Week', 'CNY 1.25'],
+    ['Month', 'CNY 2.50'],
+    ['All time', 'CNY 3.75']
+  ]);
+  assert.deepEqual(complete.ariaParts, [
+    'Today CNY 0.00',
+    'Week CNY 1.25',
+    'Month CNY 2.50',
+    'All time CNY 3.75'
+  ]);
+
+  const missingWeek = runProviderSpendNode(app, {
+    currency: 'CNY',
+    todaySpend: 0,
+    weekSpend: null,
+    monthSpend: 2.5,
+    allTimeSpend: 3.75
+  });
+  assert.equal(missingWeek.summary, 'Today CNY 0.00 · Month CNY 2.50');
+  assert.deepEqual(missingWeek.detailEntries.map(([label]) => label), ['Today', 'Month', 'All time']);
+  assert.equal(missingWeek.ariaParts.some((part) => part.startsWith('Week ')), false);
 });
 
 test('Balance and token quota values omit the redundant left suffix', () => {
@@ -926,15 +1076,20 @@ test('settings provider status waits for stats and refreshes when stats arrive',
   const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'onToolTrackingToggle');
   const refreshStats = functionBody(app, 'refreshStats', 'publishViewState');
   const statsPush = app.match(/window\.tokenMonitor\.onStatsPush\?\.\(\(payload\) => \{[\s\S]*?\n\}\);/)?.[0] || '';
+  const statsRender = app.slice(
+    app.indexOf('function renderStatsUpdate()'),
+    app.indexOf('const statsRenderScheduler =')
+  );
   const settingsPush = app.match(/window\.tokenMonitor\.onSettingsPush\?\.\(\(next\) => \{[\s\S]*?\n\}\);/)?.[0] || '';
   const syncSettings = functionBody(app, 'syncSettingsForm', 'enabledClientSet');
 
   assert.doesNotMatch(renderSettings, /state\.stats \? missingLimitProviderStatus\(\) : 'unavailable'/);
-  assert.match(refreshStats, /renderLimitProviderCheckboxes\(\);/);
+  assert.match(refreshStats, /statsRenderScheduler\.request\(\);/);
   assert.match(refreshStats, /applyCodexActiveAccountFromStats\(\);/);
   assert.doesNotMatch(refreshStats, /state\.codexActiveAccount = codexActiveAccountFromStats\(\);/);
   assert.match(statsPush, /applyCodexActiveAccountFromStats\(\);/);
-  assert.match(statsPush, /renderLimitProviderCheckboxes\(\);/);
+  assert.match(statsPush, /statsRenderScheduler\.request\(\);/);
+  assert.match(statsRender, /renderLimitProviderCheckboxes\(\);/);
   // Account cards read state.stats, so every path that refreshes stats must
   // re-render them. Grok is automatic and belongs only to the generic provider
   // list, so it must not retain a separate account-card renderer.
@@ -942,13 +1097,11 @@ test('settings provider status waits for stats and refreshes when stats arrive',
   // the two cards are re-rendered there and
   // onSettingsPush itself does not duplicate the calls.
   for (const fn of ['renderDeepseekStatus', 'renderMinimaxStatus']) {
-    assert.match(refreshStats, new RegExp(`${fn}\\(\\);`), `${fn} missing from refreshStats`);
-    assert.match(statsPush, new RegExp(`${fn}\\(\\);`), `${fn} missing from onStatsPush`);
+    assert.match(statsRender, new RegExp(`${fn}\\(\\);`), `${fn} missing from renderStatsUpdate`);
     assert.match(syncSettings, new RegExp(`${fn}\\(\\);`), `${fn} missing from syncSettingsForm`);
   }
   for (const provider of ['claude', 'zai', 'volcengine', 'qoder', 'kimi', 'ollama']) {
-    assert.match(refreshStats, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from refreshStats`);
-    assert.match(statsPush, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from onStatsPush`);
+    assert.match(statsRender, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from renderStatsUpdate`);
     assert.match(syncSettings, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from syncSettingsForm`);
   }
   for (const fn of ['renderDeepseekStatus', 'renderMinimaxStatus']) {
@@ -1069,37 +1222,388 @@ test('Copilot env token is documented in env example, not the README overview', 
   assert.doesNotMatch(readmeTw, /COPILOT_API_TOKEN|GITHUB_COPILOT_TOKEN/);
 });
 
-test('Accounts summary counts all managed account groups including Claude Web and Third-party API', () => {
+test('AI Tool Limits owns every live account group and its status pill', () => {
   const app = readRendererFile('app.js');
-  const mimoLinkedBody = functionBody(app, 'mimoAccountLinked', 'renderMimoStatus');
-  const summaryBody = functionBody(app, 'settingsSectionSummary', 'renderSettingsSummaries');
+  const html = readRendererFile('index.html');
+  const groupMap = app.slice(
+    app.indexOf('const LIMIT_PROVIDER_ACCOUNT_GROUP_IDS = {'),
+    app.indexOf('const LIMIT_PROVIDER_ACCOUNT_STATUS_IDS = {')
+  );
+  const statusMap = app.slice(
+    app.indexOf('const LIMIT_PROVIDER_ACCOUNT_STATUS_IDS = {'),
+    app.indexOf('const LIMIT_PROVIDER_CONNECTION_DETAIL_KEYS = {')
+  );
+  const providers = [
+    ['claude', 'claudeAccountGroup', 'claudeAccountStatus'],
+    ['codex', 'codexAccountGroup', 'codexAccountStatus'],
+    ['opencode', 'opencodeCookieGroup', 'opencodeCookieStatus'],
+    ['cursor', 'cursorAccountGroup', 'cursorAccountStatus'],
+    ['kimi', 'kimiAccountGroup', 'kimiAccountStatus'],
+    ['copilot', 'copilotAccountGroup', 'copilotApiTokenStatus'],
+    ['mimo', 'mimoAccountGroup', 'mimoAccountStatus'],
+    ['zai', 'zaiAccountGroup', 'zaiAccountStatus'],
+    ['zaiteam', 'zaiteamAccountGroup', 'zaiteamAccountStatus'],
+    ['deepseek', 'deepseekAccountGroup', 'deepseekApiKeyStatus'],
+    ['openrouter', 'openrouterAccountGroup', 'openrouterStatus'],
+    ['minimax', 'minimaxAccountGroup', 'minimaxApiKeyStatus'],
+    ['volcengine', 'volcengineAccountGroup', 'volcengineAccountStatus'],
+    ['qoder', 'qoderAccountGroup', 'qoderAccountStatus'],
+    ['ollama', 'ollamaAccountGroup', 'ollamaAccountStatus'],
+    ['thirdparty', 'thirdpartyAccountGroup', 'thirdpartyStatus']
+  ];
 
-  assert.match(mimoLinkedBody, /return \(state\.settings\?\.mimoManagedAccounts \|\| \[\]\)\.length > 0;/);
-  assert.match(summaryBody, /const claudeLinked = externalProviderAccountLinked\('claude'\);/);
-  assert.match(summaryBody, /const minimaxLinked = minimaxAccountLinked\(\);/);
-  assert.match(summaryBody, /const zaiLinked = externalProviderAccountLinked\('zai'\);/);
-  assert.match(summaryBody, /const zaiteamLinked = externalProviderAccountLinked\('zaiteam'\);/);
-  assert.match(summaryBody, /const volcengineLinked = externalProviderAccountLinked\('volcengine'\);/);
-  assert.match(summaryBody, /const qoderLinked = externalProviderAccountLinked\('qoder'\);/);
-  assert.match(summaryBody, /const kimiLinked = externalProviderAccountLinked\('kimi'\);/);
-  assert.match(summaryBody, /const ollamaLinked = externalProviderAccountLinked\('ollama'\);/);
-  assert.match(summaryBody, /const openrouterCount = state\.openrouterProfileCount \|\| 0;/);
-  assert.match(summaryBody, /const thirdpartyCount = state\.thirdPartyProfileCount \|\| 0;/);
-  assert.match(summaryBody, /const mimoLinked = mimoAccountLinked\(\);/);
-  assert.match(summaryBody, /const copilotLinked = copilotAccountLinked\(\);/);
-  assert.match(summaryBody, /\(minimaxLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /\(claudeLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /\(zaiLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /\(zaiteamLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /\(volcengineLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /\(qoderLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /\(kimiLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /\(ollamaLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /\(openrouterCount > 0 \? 1 : 0\)/);
-  assert.match(summaryBody, /\(thirdpartyCount > 0 \? 1 : 0\)/);
-  assert.match(summaryBody, /\(mimoLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /\(copilotLinked \? 1 : 0\)/);
-  assert.match(summaryBody, /total: 16/);
+  for (const [provider, groupId, statusId] of providers) {
+    assert.match(groupMap, new RegExp(`${provider}: '${groupId}'`));
+    assert.match(statusMap, new RegExp(`${provider}: '${statusId}'`));
+    assert.match(html, new RegExp(`id="${groupId}"`));
+    assert.match(html, new RegExp(`id="${statusId}"[^>]*class="cursor-status-pill`));
+  }
+  assert.match(html, /id="accountsSettingsDetails" class="hidden" aria-hidden="true"/);
+  assert.doesNotMatch(html, /data-settings-section="accounts"/);
+});
+
+test('provider rerenders preserve live account nodes and focused controls', () => {
+  const app = readRendererFile('app.js');
+  const moveLiveNode = functionBody(app, 'moveLimitProviderLiveNode', 'renderLimitProviderCheckboxes');
+  const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'limitProviderAccountGroup');
+  const focusedInput = { id: 'deepseekApiKeyInput', isConnected: true };
+  const oldParent = { isConnected: true };
+  const disclosureIcon = { id: 'disclosureIcon' };
+  const connectedParent = {
+    isConnected: true,
+    children: [disclosureIcon],
+    moveBefore(node, before) {
+      assert.equal(this.isConnected, true);
+      assert.equal(node.isConnected, true);
+      assert.equal(before, disclosureIcon);
+      this.children.splice(this.children.indexOf(before), 0, node);
+      node.parentElement = this;
+    }
+  };
+  focusedInput.parentElement = oldParent;
+
+  vm.runInNewContext(
+    `${moveLiveNode}\nmoveLimitProviderLiveNode(connectedParent, focusedInput, disclosureIcon);`,
+    { connectedParent, disclosureIcon, focusedInput }
+  );
+
+  assert.equal(focusedInput.parentElement, connectedParent);
+  assert.deepEqual(connectedParent.children, [focusedInput, disclosureIcon]);
+  assert.doesNotMatch(renderSettings, /replaceChildren|restoreLimitProviderAccountGroups/);
+  assert.ok(
+    renderSettings.indexOf('els.limitProviderCheckboxes.appendChild(row);')
+      < renderSettings.indexOf('moveLimitProviderLiveNode(optionsInner, accountGroup);')
+  );
+  assert.ok(
+    renderSettings.indexOf('moveLimitProviderLiveNode(optionsInner, accountGroup);')
+      < renderSettings.indexOf('for (const row of previousRows) row.remove();')
+  );
+  assert.match(renderSettings, /accountGroup\.classList\.add\('limit-provider-account-group'\)/);
+  assert.match(renderSettings, /document\.getElementById\(focusedId\)\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.doesNotMatch(app, /function restoreLimitProviderAccountGroups/);
+});
+
+test('background provider rerenders preserve settings scroll without a focused control', () => {
+  const app = readRendererFile('app.js');
+  const interactionStart = app.indexOf('const SETTINGS_SCROLL_ANCHOR_MS');
+  const interactionEnd = app.indexOf('function shouldAnchorSettingsScroll', interactionStart);
+  const scrollInteraction = app.slice(interactionStart, interactionEnd);
+  const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'renderLimitProviderCheckboxesNow');
+  const preserveScroll = functionBody(app, 'preserveSettingsPanelScroll', 'saveSettings');
+  const panel = {
+    scrollTop: 684,
+    scrollLeft: 9,
+    classList: { contains: () => false }
+  };
+  const frames = [];
+  const els = {
+    limitProviderCheckboxes: {},
+    settingsPanel: panel
+  };
+  const renderLimitProviderCheckboxesNow = () => {
+    // Removing the visible anchor rows can make Chromium clamp both axes while
+    // the replacement list is being committed.
+    panel.scrollTop = 112;
+    panel.scrollLeft = 0;
+  };
+
+  vm.runInNewContext(
+    `${scrollInteraction}\n${preserveScroll}\n${renderSettings}\nrenderLimitProviderCheckboxes();`,
+    {
+      cancelAnimationFrame: () => {},
+      els,
+      limitProviderDrag: null,
+      renderLimitProviderCheckboxesNow,
+      requestAnimationFrame: (callback) => frames.push(callback)
+    }
+  );
+
+  assert.equal(panel.scrollTop, 684);
+  assert.equal(panel.scrollLeft, 9);
+  assert.equal(frames.length, 1);
+
+  // A post-layout anchor adjustment must be corrected as well.
+  panel.scrollTop = 112;
+  panel.scrollLeft = 0;
+  frames[0]();
+  assert.equal(panel.scrollTop, 684);
+  assert.equal(panel.scrollLeft, 9);
+});
+
+test('user scrolling wins over a pending provider scroll restore', () => {
+  const app = readRendererFile('app.js');
+  const interactionStart = app.indexOf('const SETTINGS_SCROLL_ANCHOR_MS');
+  const interactionEnd = app.indexOf('function shouldAnchorSettingsScroll', interactionStart);
+  const scrollInteraction = app.slice(interactionStart, interactionEnd);
+  const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'renderLimitProviderCheckboxesNow');
+  const preserveScroll = functionBody(app, 'preserveSettingsPanelScroll', 'saveSettings');
+  const setupSections = functionBody(app, 'setupSettingsSections', 'refreshIntervalLabel');
+  const listeners = new Map();
+  const panel = {
+    scrollTop: 200,
+    scrollLeft: 0,
+    classList: { contains: () => false },
+    addEventListener(type, listener) {
+      const entries = listeners.get(type) || [];
+      entries.push(listener);
+      listeners.set(type, entries);
+    },
+    dispatch(type, event = {}) {
+      for (const listener of listeners.get(type) || []) listener(event);
+    }
+  };
+  const frames = [];
+  const els = {
+    limitProviderCheckboxes: {},
+    settingsPanel: panel
+  };
+  const renderLimitProviderCheckboxesNow = () => {};
+
+  vm.runInNewContext(
+    `${scrollInteraction}
+${setupSections}
+${preserveScroll}
+${renderSettings}
+setupSettingsSections();
+renderLimitProviderCheckboxes();`,
+    {
+      cancelAnimationFrame: () => {},
+      document: { querySelectorAll: () => [] },
+      els,
+      limitProviderDrag: null,
+      renderLimitProviderCheckboxesNow,
+      requestAnimationFrame: (callback) => frames.push(callback)
+    }
+  );
+
+  panel.dispatch('wheel');
+  panel.scrollTop = 240;
+  frames[0]();
+  assert.equal(panel.scrollTop, 240);
+});
+
+test('dynamic account summaries are never reset by the static translation pass', () => {
+  const html = readRendererFile('index.html');
+  const statusIds = [
+    'claudeAccountStatus',
+    'codexAccountStatus',
+    'cursorAccountStatus',
+    'opencodeCookieStatus',
+    'openrouterStatus',
+    'deepseekApiKeyStatus',
+    'minimaxApiKeyStatus',
+    'zaiAccountStatus',
+    'zaiteamAccountStatus',
+    'volcengineAccountStatus',
+    'qoderAccountStatus',
+    'ollamaAccountStatus',
+    'kimiAccountStatus',
+    'mimoAccountStatus',
+    'copilotApiTokenStatus',
+    'thirdpartyStatus'
+  ];
+
+  for (const id of statusIds) {
+    const tag = html.match(new RegExp(`<span id="${id}"[^>]*>`))?.[0] || '';
+    assert.ok(tag, `${id} should exist`);
+    assert.doesNotMatch(tag, /data-i18n=/, `${id} is owned by its runtime status renderer`);
+  }
+});
+
+test('provider toggles converge through the limits push without a forced refresh', () => {
+  const app = readRendererFile('app.js');
+  const body = functionBody(app, 'onLimitProviderToggle', 'onLimitProviderMove');
+
+  assert.match(body, /saveSettings\(\{ limitProviders: checked\.join\(','\), limitsEnabled: checked\.length > 0 \}\)/);
+  assert.match(body, /clearDisabledLimitProviderPendingChecks\(new Set\(checked\)\)/);
+  assert.doesNotMatch(body, /refreshStats\(/);
+});
+
+test('empty OpenCode profiles render a localized summary before returning', () => {
+  const app = readRendererFile('app.js');
+  const renderProfiles = functionBody(app, 'renderOpenCodeProfiles', 'updateOpenCodeProfilesStatus');
+  const renderSummary = functionBody(app, 'renderOpenCodeProfilesStatusSummary', 'openrouterProfileStatusText');
+  const totalEl = { textContent: 'Not configured' };
+  const context = {
+    document: {
+      getElementById(id) {
+        return id === 'opencodeCookieStatus' ? totalEl : null;
+      }
+    },
+    state: { opencodeProfileCount: 0 },
+    t: (key, params) => params ? `${key}:${params.linked}/${params.total}` : `localized:${key}`
+  };
+
+  vm.runInNewContext(`${renderSummary}\nrenderOpenCodeProfilesStatusSummary({});`, context);
+
+  assert.equal(totalEl.textContent, 'localized:settings.opencode.statusNotSet');
+  assert.match(
+    renderProfiles,
+    /state\.opencodeProfileCount = 0;\s*renderOpenCodeProfilesStatusSummary\(\{\}\);\s*renderSettingsSummaries\(\);\s*return;/
+  );
+});
+
+test('expanded provider options use the full row width without nested indentation', () => {
+  const css = readRendererFile('styles.css');
+
+  assert.match(css, /\.settings-panel \.limit-provider-settings-list\s*\{[^}]*margin: 0;[^}]*padding-left: 0;[^}]*border-left: 0;/);
+  assert.match(css, /\.limit-provider-account-group\s*\{[^}]*margin-left: 0;/);
+  assert.match(css, /\.limit-provider-account-group > \.cursor-settings-details\s*\{[^}]*margin-top: 0;/);
+  assert.match(css, /\.limit-provider-connection-detail\s*\{[^}]*padding: 4px 0 2px;/);
+});
+
+test('Claude prepaid balance stays off and disabled until Web login is configured', () => {
+  const app = readRendererFile('app.js');
+  const renderList = functionBody(app, 'limitProviderSettingsList', 'onToolTrackingToggle');
+  const settings = [{
+    key: 'claudePrepaidBalanceEnabled',
+    titleKey: 'settings.limits.prepaidBalance',
+    descKey: 'settings.limits.prepaidBalanceDesc',
+    requiresConfiguredKey: 'claudeWebCookieConfigured'
+  }];
+
+  class FakeElement {
+    constructor(tagName) {
+      this.tagName = tagName;
+      this.children = [];
+      this.className = '';
+      this.classList = {
+        toggle: (name, enabled) => {
+          if (enabled) this.className = `${this.className} ${name}`.trim();
+        }
+      };
+    }
+    append(...children) { this.children.push(...children); }
+    addEventListener() {}
+  }
+
+  const context = {
+    document: { createElement: (tagName) => new FakeElement(tagName) },
+    state: {
+      settings: {
+        claudePrepaidBalanceEnabled: true,
+        claudeWebCookieConfigured: false
+      }
+    },
+    t: (key) => key
+  };
+  const loggedOutContext = { ...context, settings };
+  vm.runInNewContext(
+    `${renderList}\nresult = limitProviderSettingsList('claude', settings);`,
+    loggedOutContext
+  );
+  const loggedOutInput = loggedOutContext.result?.children?.[0]?.children?.[1];
+  assert.equal(loggedOutInput?.checked, false);
+  assert.equal(loggedOutInput?.disabled, true);
+
+  context.state.settings.claudeWebCookieConfigured = true;
+  const loggedInContext = { ...context, settings };
+  vm.runInNewContext(
+    `${renderList}\nresult = limitProviderSettingsList('claude', settings);`,
+    loggedInContext
+  );
+  const loggedInInput = loggedInContext.result?.children?.[0]?.children?.[1];
+  assert.equal(loggedInInput?.checked, true);
+  assert.equal(loggedInInput?.disabled, false);
+});
+
+test('successful providers use a green dot while preserving source and account labels', () => {
+  const app = readRendererFile('app.js');
+  const css = readRendererFile('styles.css');
+  const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'limitProviderAccountGroup');
+
+  assert.match(renderSettings, /const detected = provider\.status === 'ok' && !provider\.stale/);
+  assert.match(renderSettings, /dot\.className = 'limit-provider-status-dot'/);
+  assert.match(renderSettings, /if \(\(detected \|\| !isEnabled\) && tagInfo\.kind === 'status'\) continue/);
+  assert.match(renderSettings, /tag\.className = `limit-provider-tag limit-provider-tag-\$\{tagInfo\.kind\}`/);
+  assert.match(renderSettings, /moveLimitProviderLiveNode\(actions, accountStatus, disclosureIcon\)/);
+  assert.match(css, /\.limit-provider-status-dot\s*\{[\s\S]*?background: var\(--success\)/);
+});
+
+test('account and automatic provider panels reuse the original account summary geometry', () => {
+  const app = readRendererFile('app.js');
+  const css = readRendererFile('styles.css');
+  const i18n = readRendererFile('i18n.js');
+  const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'limitProviderAccountGroup');
+
+  assert.match(renderSettings, /main\.className = 'limit-provider-main'/);
+  assert.match(renderSettings, /disclosureIcon\.className = 'cursor-disclosure-icon'/);
+  assert.match(renderSettings, /actions\.append\(disclosureIcon\)/);
+  assert.match(renderSettings, /moveLimitProviderLiveNode\(actions, accountStatus, disclosureIcon\)/);
+  assert.match(renderSettings, /mode\.className = 'cursor-status-pill limit-provider-mode-pill'/);
+  assert.match(renderSettings, /mode\.textContent = t\('settings\.limits\.connection\.autoDetect'\)/);
+  assert.match(renderSettings, /connectionDetailKey && tagInfo\.label === 'Auto'/);
+  assert.match(renderSettings, /accountGroup && tagInfo\.label === 'Manual login'/);
+  assert.match(renderSettings, /if \(duplicatesInlineSetup\) continue/);
+  assert.match(renderSettings, /main\.append\(copy, actions\)/);
+  assert.doesNotMatch(renderSettings, /limit-provider-disclosure/);
+  assert.doesNotMatch(renderSettings, /view-subgroup-toggle|view-subgroup-icon/);
+  assert.match(app, /antigravity: 'settings\.limits\.connection\.antigravity'/);
+  assert.match(app, /grok: 'settings\.limits\.connection\.grok'/);
+  assert.match(app, /kiro: 'settings\.limits\.connection\.kiro'/);
+  assert.equal((i18n.match(/'settings\.limits\.connection\.title':/g) || []).length, 5);
+  assert.equal((i18n.match(/'settings\.limits\.connection\.autoDetect':/g) || []).length, 5);
+  assert.equal((i18n.match(/'settings\.limits\.connection\.antigravity':/g) || []).length, 5);
+  assert.equal((i18n.match(/'settings\.limits\.connection\.grok':/g) || []).length, 5);
+  assert.equal((i18n.match(/'settings\.limits\.connection\.kiro':/g) || []).length, 5);
+  assert.match(css, /\.limit-provider-main\s*\{[\s\S]*?display: flex;[\s\S]*?justify-content: space-between/);
+  assert.match(css, /\.limit-provider-actions\s*\{[\s\S]*?flex: 0 1 auto;[\s\S]*?max-width: 58%;[\s\S]*?gap: 4px/);
+  assert.doesNotMatch(css, /\.limit-provider-actions > \.cursor-status-pill\s*\{[^}]*min-width:/);
+  assert.match(css, /\.limit-provider-row\.expanded > \.limit-provider-main \.cursor-disclosure-icon/);
+});
+
+test('disabled providers use checkbox state instead of a redundant status tag', () => {
+  const app = readRendererFile('app.js');
+  const css = readRendererFile('styles.css');
+  const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'limitProviderAccountGroup');
+
+  assert.match(renderSettings, /row\.className = `limit-provider-row\$\{isEnabled \? '' : ' is-disabled'\}`/);
+  assert.match(renderSettings, /if \(\(detected \|\| !isEnabled\) && tagInfo\.kind === 'status'\) continue/);
+  assert.match(css, /\.limit-provider-row\.is-disabled \.limit-provider-main\s*\{[^}]*color: var\(--muted\)/);
+  assert.match(css, /\.limit-provider-row\.is-disabled \.limit-provider-tag\s*\{[^}]*color: var\(--muted\)/);
+});
+
+test('provider checkboxes are named by their visible provider name', () => {
+  const app = readRendererFile('app.js');
+  const connectName = functionBody(app, 'connectLimitProviderCheckboxName', 'renderLimitProviderCheckboxes');
+  const renderSettings = functionBody(app, 'renderLimitProviderCheckboxes', 'limitProviderAccountGroup');
+  const checkbox = {
+    attributes: {},
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    }
+  };
+  const nameNode = { id: '', textContent: 'Codex' };
+
+  vm.runInNewContext(
+    `${connectName}\nconnectLimitProviderCheckboxName(checkbox, nameNode, 'codex');`,
+    { checkbox, nameNode }
+  );
+
+  assert.equal(nameNode.id, 'limitProviderName-codex');
+  assert.equal(checkbox.attributes['aria-labelledby'], nameNode.id);
+  assert.equal(nameNode.textContent, 'Codex');
+  assert.match(renderSettings, /connectLimitProviderCheckboxName\(cb, text, id\)/);
 });
 
 test('account validation does not use a remote aggregate when the local device lacks the provider', () => {
@@ -1299,7 +1803,7 @@ test('Z.ai, Volcengine, Qoder, and Ollama source labels and setup statuses', () 
 });
 
 test('Kimi capability tags and source label', () => {
-  assert.deepEqual(presentation.limitProviderCapabilityTags('kimi'), ['Membership/Coding Plan', 'Web/API']);
+  assert.deepEqual(presentation.limitProviderCapabilityTags('kimi'), ['Coding Plan', 'Web/API']);
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'kimi', source: 'api' }), 'API');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'kimi', source: 'web' }), 'Web');
   assert.deepEqual(
