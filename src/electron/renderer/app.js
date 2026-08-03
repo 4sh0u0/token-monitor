@@ -7,6 +7,8 @@ const windowsGlassApi = window.TokenMonitorWindowsGlass;
 const glassRenderingApi = window.TokenMonitorGlassRendering;
 const wslStatusPresentationApi = window.TokenMonitorWslStatusPresentation;
 const statsRenderSchedulerApi = window.TokenMonitorStatsRenderScheduler;
+const tokenRateApi = window.TokenMonitorTokenRate;
+const { tokenRatePerSecond, tokenBurnPerMinute } = tokenRateApi;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const clientsWithIcon = new Set([
   'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma',
@@ -165,6 +167,8 @@ const homeModulePreferencesApi = window.TokenMonitorHomeModulePreferences;
 const { limitFillPercent, limitModeSuffix } = window.TokenMonitorLimitDisplayMode;
 const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
+const subscriptionApi = window.TokenMonitorSubscriptionDisplay;
+const compactTokenApi = window.TokenMonitorCompactTokens;
 const trayLayoutApi = window.TokenMonitorTrayLayout;
 const sessionRowsApi = window.TokenMonitorSessionRows;
 const breakdownRenderPolicyApi = window.TokenMonitorBreakdownRenderPolicy;
@@ -273,7 +277,7 @@ const TOKEN_MONITOR_ISSUES_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/issues/new/cho
 const TOKEN_MONITOR_WEBSITE_URL = 'https://javis-ai.com/token-monitor/';
 const TOKEN_MONITOR_WSL_SQLITE_GUIDE_URL = `${TOKEN_MONITOR_REPOSITORY_URL}/blob/main/docs/wsl-sqlite-setup.md`;
 const serviceStatusProviderPreferencesApi = window.TokenMonitorServiceStatusProviderPreferences;
-const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'sync'];
+const SETTINGS_SECTION_IDS = ['general', 'main', 'window', 'appearance', 'tools', 'limits', 'subscriptions', 'sync'];
 const REFRESH_BUTTON_FEEDBACK_MS = 700;
 const CODEX_PENDING_ACTIVE_GRACE_MS = 30000;
 const initialFloatingBubble = window.__TOKEN_MONITOR_INITIAL_FLOATING_BUBBLE__ || { collapsed: false, side: null };
@@ -285,7 +289,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, limitProviderSettingsExpanded: '', serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, claudeAccountExpanded: false, claudePendingCheckSince: 0, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, thirdPartyProfileCount: 0, thirdPartyAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, limitProviderSettingsExpanded: '', subscriptionEditingId: '', subscriptionTopUps: [], subscriptionFormBase: null, subscriptionEditorTransitionId: 0, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, claudeAccountExpanded: false, claudePendingCheckSince: 0, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, thirdPartyProfileCount: 0, thirdPartyAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.homeHistoryLoadedSignature = '';
 state.homeHistoryRetrySignature = '';
 state.homeReturnVisible = false;
@@ -303,9 +307,11 @@ let viewSwitcherLongPressTimer = null;
 let viewSwitcherLongPressTriggered = false;
 let viewSwitcherHoverCloseTimer = null;
 const els = {
-  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), utilityActions: document.getElementById('utilityActions'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInputs: Array.from(document.querySelectorAll('input[name="showLimitUsed"]')), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInputs: Array.from(document.querySelectorAll('input[name="floatingBubbleTrigger"]')), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleComposer: document.getElementById('floatingBubbleComposer'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), showTrayProviderBadgeInput: document.getElementById('showTrayProviderBadgeInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), trayComposer: document.getElementById('trayComposer'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
+  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), tokenRateReveal: document.getElementById('tokenRateReveal'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), utilityActions: document.getElementById('utilityActions'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInputs: Array.from(document.querySelectorAll('input[name="showLimitUsed"]')), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInputs: Array.from(document.querySelectorAll('input[name="floatingBubbleTrigger"]')), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleComposer: document.getElementById('floatingBubbleComposer'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), showTrayProviderBadgeInput: document.getElementById('showTrayProviderBadgeInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), trayComposer: document.getElementById('trayComposer'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab'),
+  subscriptionList: document.getElementById('subscriptionList'), subscriptionAddForm: document.getElementById('subscriptionAddForm'), subscriptionAddToggle: document.getElementById('subscriptionAddToggle'), subscriptionAddDetails: document.getElementById('subscriptionAddDetails'), subscriptionProviderInput: document.getElementById('subscriptionProviderInput'), subscriptionAccountInput: document.getElementById('subscriptionAccountInput'), subscriptionPlanNameInput: document.getElementById('subscriptionPlanNameInput'), subscriptionAmountInput: document.getElementById('subscriptionAmountInput'), subscriptionCurrencyInput: document.getElementById('subscriptionCurrencyInput'), subscriptionIntervalCountInput: document.getElementById('subscriptionIntervalCountInput'), subscriptionIntervalInput: document.getElementById('subscriptionIntervalInput'), subscriptionStartDateInput: document.getElementById('subscriptionStartDateInput'), subscriptionAutoRenewInput: document.getElementById('subscriptionAutoRenewInput'), subscriptionNextRenewalInput: document.getElementById('subscriptionNextRenewalInput'), subscriptionNote: document.getElementById('subscriptionNote'), subscriptionOrphanNotice: document.getElementById('subscriptionOrphanNotice'), subscriptionOrphanText: document.getElementById('subscriptionOrphanText'), subscriptionOrphanAdopt: document.getElementById('subscriptionOrphanAdopt'), subscriptionOrphanDiscard: document.getElementById('subscriptionOrphanDiscard'), subscriptionSyncError: document.getElementById('subscriptionSyncError'), subscriptionNextRenewalLabel: document.getElementById('subscriptionNextRenewalLabel'), subscriptionNextRenewalNote: document.getElementById('subscriptionNextRenewalNote'), subscriptionSubmit: document.getElementById('subscriptionSubmit'), subscriptionCancelEdit: document.getElementById('subscriptionCancelEdit'), subscriptionTotalRow: document.getElementById('subscriptionTotalRow'), subscriptionErrorMessage: document.getElementById('subscriptionErrorMessage'), subscriptionPlanFields: document.getElementById('subscriptionPlanFields'), subscriptionTopUpFields: document.getElementById('subscriptionTopUpFields'), subscriptionTopUpList: document.getElementById('subscriptionTopUpList'), subscriptionTopUpDateInput: document.getElementById('subscriptionTopUpDateInput'), subscriptionTopUpAmountInput: document.getElementById('subscriptionTopUpAmountInput'), subscriptionTopUpAddButton: document.getElementById('subscriptionTopUpAddButton'), subscriptionAmountRow: document.getElementById('subscriptionAmountRow'), subscriptionTopUpHeadingRow: document.getElementById('subscriptionTopUpHeadingRow'), subscriptionKindInputs: [...document.querySelectorAll('input[name="subscriptionKind"]')]
 };
 Object.assign(els, {
+  appTitleMark: document.querySelector('.app-title-mark'),
   viewBackRow: document.getElementById('viewBackRow'),
   backHomeButton: document.getElementById('backHomeButton'),
   systemGlassInputs: Array.from(document.querySelectorAll('input[name="systemGlassOption"]')),
@@ -397,6 +403,7 @@ Object.assign(els, {
   mainSettingsSummary: document.getElementById('mainSettingsSummary'),
   windowSettingsSummary: document.getElementById('windowSettingsSummary'),
   appearanceSettingsSummary: document.getElementById('appearanceSettingsSummary'),
+  subscriptionsSettingsSummary: document.getElementById('subscriptionsSettingsSummary'),
   themePresetChips: document.getElementById('themePresetChips'),
   themeColorGrid: document.getElementById('themeColorGrid'),
   themeCodeInput: document.getElementById('themeCodeInput'),
@@ -450,14 +457,16 @@ document.addEventListener('pointerdown', (event) => {
   }
 });
 
-document.addEventListener('pointerup', () => {
+document.addEventListener('pointerup', (event) => {
+  releaseTokenRateBoost(event);
   clearViewSwitcherLongPress();
   if (viewSwitcherLongPressTriggered) {
     setTimeout(() => { viewSwitcherLongPressTriggered = false; }, 0);
   }
 });
 
-document.addEventListener('pointercancel', () => {
+document.addEventListener('pointercancel', (event) => {
+  cancelTokenRateBoost(event);
   clearViewSwitcherLongPress();
   viewSwitcherLongPressTriggered = false;
 });
@@ -471,18 +480,19 @@ function currentLanguage() {
 }
 
 function currentLocale() {
-  return i18n.resolveLocale(currentLanguage(), preferredLanguages());
+  return i18n.resolveLocale(state.settings?.locale || currentLanguage(), preferredLanguages());
 }
 
 function supportsLocalizedCompactTokenUnits(locale) {
-  return /^(zh|ja|ko)(?:-|$)/i.test(String(locale || ''));
+  return compactTokenApi.supportsLocalizedCompactTokenUnits(locale);
 }
 
 function effectiveCompactTokenUnits() {
-  return supportsLocalizedCompactTokenUnits(currentLocale())
-    && state.settings?.compactTokenUnits === 'localized'
-    ? 'localized'
-    : 'western';
+  return compactTokenApi.effectiveCompactTokenUnits(state.settings?.compactTokenUnits, currentLocale());
+}
+
+function compactTokenDisplayOptions() {
+  return { ...(state.settings || {}), locale: currentLocale() };
 }
 
 function t(key, params) {
@@ -503,6 +513,7 @@ function applySettingsTranslations() {
   if (els.languageInput) els.languageInput.value = currentLanguage();
   i18n.applyTranslations(document, currentLocale());
   setThirdPartyAdapterFields();
+  setSubscriptionFormMode();
 }
 
 function applySettingsSectionDom(id, open) {
@@ -631,6 +642,21 @@ function settingsSectionSummary(section) {
       refresh: refreshIntervalLabel(state.settings.limitsRefreshMs)
     });
   }
+  if (section === 'subscriptions') {
+    const list = subscriptionList();
+    if (list.length === 0) return t('settings.subscriptions.summaryEmpty');
+    // The monthly total in the collapsed summary is the whole reason this is a
+    // top-level section rather than a subgroup: the number people want is
+    // visible without opening anything.
+    //
+    // Counted over the same set the total sums, so the two halves never
+    // disagree — a lapsed plan costs nothing this month and is not one of them.
+    const active = subscriptionApi.activeSubscriptions(list);
+    return t('settings.subscriptions.summary', {
+      count: active.length,
+      total: formatCost(subscriptionApi.monthlyTotalUsd(active, currencyApi))
+    });
+  }
   if (section === 'main') {
     return viewsSummary();
   }
@@ -660,56 +686,18 @@ function renderSettingsSummaries() {
 }
 
 function formatNumber(value) { return Math.round(Number(value || 0)).toLocaleString('en-US'); }
-function formatCompact(value, unitSystem = 'western', locale = 'en') {
-  const num = Math.round(Number(value || 0));
-  const abs = Math.abs(num);
-  const localized = unitSystem === 'localized';
-  const language = String(locale || '').toLowerCase();
-  const localizedSuffixes = language.startsWith('ko')
-    ? ['만', '억']
-    : language.startsWith('zh-cn')
-      ? ['万', '亿']
-      : language.startsWith('ja')
-        ? ['万', '億']
-        : ['萬', '億'];
-  const units = localized
-    ? [
-        { divisor: 1e4, suffix: localizedSuffixes[0] },
-        { divisor: 1e8, suffix: localizedSuffixes[1] }
-      ]
-    : [
-        { divisor: 1e3, suffix: 'K' },
-        { divisor: 1e6, suffix: 'M' },
-        { divisor: 1e9, suffix: 'B' }
-      ];
-  let unitIndex = -1;
-  for (let index = units.length - 1; index >= 0; index -= 1) {
-    if (abs >= units[index].divisor) {
-      unitIndex = index;
-      break;
-    }
-  }
-  if (unitIndex < 0) return String(num);
-
-  let unit = units[unitIndex];
-  const formatted = () => {
-    const scaled = num / unit.divisor;
-    const digits = localized && Math.abs(scaled) < 10 ? 2 : 1;
-    return scaled.toFixed(digits);
-  };
-  let display = formatted();
-  const promotionBoundary = localized ? 10000 : 1000;
-  if (Math.abs(Number(display)) >= promotionBoundary && unitIndex < units.length - 1) {
-    unit = units[unitIndex + 1];
-    display = formatted();
-  }
-  return `${display.replace(/\.?0+$/, '')}${unit.suffix}`;
+function formatCompact(value, unitSystem, locale) {
+  return compactTokenApi.formatCompactTokens(
+    value,
+    unitSystem === undefined ? effectiveCompactTokenUnits() : unitSystem,
+    locale === undefined ? currentLocale() : locale
+  );
 }
 function updateTotalCompact(value) {
   if (!els.totalTokensCompact) return;
   const num = Math.round(Number(value || 0));
   const unitSystem = effectiveCompactTokenUnits();
-  const threshold = unitSystem === 'localized' ? 1e4 : 1e3;
+  const threshold = compactTokenApi.compactTokenUnitThreshold(unitSystem, currentLocale());
   if (state.settings?.showCompactTotalTokens !== true || Math.abs(num) < threshold) {
     hideTotalCompact();
   } else {
@@ -722,6 +710,81 @@ function hideTotalCompact() {
   if (!els.totalTokensCompact) return;
   els.totalTokensCompact.textContent = '';
   els.totalTokensCompact.classList.add('hidden');
+}
+function currentTokenRateValue() {
+  const period = state.stats?.periods?.[state.period];
+  const burn = state.settings?.tokenRateMode === 'burn';
+  return {
+    burn,
+    mode: burn ? 'burn' : 'speed',
+    rate: burn ? tokenBurnPerMinute(period) : tokenRatePerSecond(period)
+  };
+}
+const tokenRateBoost = tokenRateApi.createTokenRateBoostController({
+  readValue: currentTokenRateValue,
+  canStart: () => els.shell?.classList.contains('title-icon-only') || els.shell?.classList.contains('title-collapsed'),
+  prefersReducedMotion,
+  onChange: () => renderTokenRate()
+});
+function tokenRateText(rate, burn) {
+  // formatCompact rounds, so a sub-0.5 rate would render as a bare "0". Treat that as no
+  // data and stay hidden rather than claim a zero pace.
+  return Math.round(rate) > 0
+    ? t(burn ? 'home.tokenRateBurn' : 'home.tokenRate', {
+      value: formatCompact(rate, effectiveCompactTokenUnits(), currentLocale())
+    })
+    : '';
+}
+function renderTokenRate() {
+  if (!els.tokenRateReveal) return;
+  tokenRateBoost.refresh();
+  const { burn, rate } = currentTokenRateValue();
+  const boost = tokenRateBoost.getSnapshot();
+  const displayRate = boost ? boost.displayRate : rate;
+  const text = tokenRateText(displayRate, boost ? boost.mode === 'burn' : burn);
+  els.tokenRateReveal.textContent = text;
+  els.tokenRateReveal.classList.toggle('has-value', Boolean(text));
+  els.tokenRateReveal.classList.toggle('boosting', boost?.phase === 'boosting');
+  els.tokenRateReveal.classList.toggle('settling', boost?.phase === 'settling');
+}
+function startTokenRateBoost(event) {
+  if (!tokenRateBoost.start(event)) return;
+  try { event.currentTarget?.setPointerCapture?.(event.pointerId); } catch (_) {}
+}
+function releaseTokenRateBoost(event) {
+  tokenRateBoost.release(event);
+}
+function cancelTokenRateBoost(event, options) {
+  tokenRateBoost.cancel(event, options);
+}
+function suppressTokenRateClickAfterHold(event) {
+  if (!tokenRateBoost.consumeClick()) return;
+  event.stopImmediatePropagation();
+}
+// The title mark is the only pixel of the reveal that can take a click: a drag region does
+// not deliver mouse events, so this control and its hover target are the same no-drag island.
+//
+// Deliberately pointer-only, and the mark stays a non-focusable aria-hidden span. A focusable
+// control here is worse than no keyboard path: the window assigns focus to a control when it
+// is shown, and Chromium then derives :focus-visible from that activation rather than from
+// any click, so the reveal reopens with a focus ring on a window the user just summoned with
+// the pointer nowhere near the title. Visibility cancellation keeps transient state from
+// surviving a hide/show, but it does not make this hover-only reading a useful keyboard control.
+// Short clicks still switch the reading; a sustained pointer hold is the transient boost affordance.
+function toggleTokenRateMode() {
+  // A mode switch during settling would relabel the old reading with the new unit. End the
+  // transient state first; the next render then starts from the selected framing's real rate.
+  tokenRateBoost.cancel(undefined, { suppressClick: false });
+  const next = state.settings?.tokenRateMode === 'burn' ? 'speed' : 'burn';
+  // Repaint before the settings round trip. saveSettings re-syncs the entire settings form,
+  // which is orders of magnitude heavier than this label and would make the switch lag.
+  if (state.settings) state.settings.tokenRateMode = next;
+  renderTokenRate();
+  // Repaint again if the write failed: saveSettings re-reads settings from the main process on
+  // rejection, so state has already reverted to the persisted framing while the label is still
+  // showing the one the click asked for. Without this the label stays wrong until some later
+  // tick silently flips it back.
+  saveSettings({ tokenRateMode: next }).catch(() => renderTokenRate());
 }
 // Scale the exact total to fit the width it is actually given instead of clipping
 // it to an ellipsis. The compact chip (when shown) is flex:0 0 auto and claims its
@@ -1283,6 +1346,7 @@ function prefersReducedMotion() {
 }
 
 function settleMotionAnimations() {
+  cancelTokenRateBoost(undefined, { suppressClick: false });
   cancelNumberAnimation();
   numberAnimValue = state.currentTotal;
   els.totalTokens.textContent = formatNumber(state.currentTotal);
@@ -2022,6 +2086,1421 @@ function limitProviderPlan(provider) {
   return provider?.status && provider.status !== 'ok' ? limitStatusLabel(provider.status, false) : '';
 }
 
+// ---------------------------------------------------------------------------
+// Subscriptions
+//
+// What each account actually costs, entered by hand. Nothing here talks to a
+// provider — the numbers are the user's own. The value comes from pairing them
+// with usage this app already measures.
+// ---------------------------------------------------------------------------
+
+function subscriptionList() {
+  return subscriptionApi.normalizeSubscriptions(state.settings?.subscriptions, { currencyApi });
+}
+
+function subscriptionProviderLabel(providerId) {
+  const entry = LIMIT_PROVIDERS.find((provider) => provider.id === providerId);
+  return entry?.settingsLabel || entry?.label || providerId;
+}
+
+// Keyed off the same list the label comes from, because a `.row-icon-<id>` with
+// no mask rule behind it paints a solid square rather than nothing — so a record
+// still bound to a provider that has since left the list gets no icon at all.
+function subscriptionProviderIconClass(providerId) {
+  const known = LIMIT_PROVIDERS.some((provider) => provider.id === providerId);
+  return known ? `row-icon row-icon-${providerId}` : '';
+}
+
+function isCreditsProvider(provider) {
+  return subscriptionApi.isBalanceOnlyAccount(provider);
+}
+
+// Every account the limits page renders, which is the cross-device aggregate —
+// a shared list names accounts that may be signed in on another machine.
+// Preferring this device's own list hid those rows, and worse, left a single
+// local account as the only candidate: matchProviderAccount()'s sole-account
+// fallback would then bind a remote subscription to whatever is signed in here.
+// Local entries come first so this device wins a tie on identical accounts.
+function limitProvidersForSubscriptions() {
+  const seen = new Set();
+  const merged = [];
+  for (const provider of [...(localDeviceLimitsProviders() || []), ...(state.stats?.limits?.providers || [])]) {
+    const key = subscriptionAccountValue(provider);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(provider);
+  }
+  return merged;
+}
+
+// Every configured account, balance ones included. They used to be hidden behind
+// a toggle because the form could only describe a subscription; now the record
+// kind says which shape is being recorded, so hiding the accounts only got in
+// the way of reaching them.
+function subscriptionAccountChoices() {
+  const visible = limitProvidersForSubscriptions()
+    .filter((provider) => provider?.provider && provider.status !== 'notConfigured');
+  return visible.map((provider, index) => ({
+    provider,
+    value: subscriptionAccountValue(provider),
+    label: accountIdentityApi.accountTitleLabel(provider, visible, {
+      maskEmail: state.settings?.maskLimitAccountEmails === true,
+      index
+    }) || subscriptionProviderLabel(provider.provider)
+  }));
+}
+
+function subscriptionAccountValue(provider) {
+  return [provider?.provider || '', provider?.accountKey || '', provider?.accountName || ''].join(' ');
+}
+
+// The plan the account already reports ("Pro", "Plus") is nearly always what the
+// user would type, so the picker seeds it. limitProviderPlan() doubles as the
+// status-label producer, so a provider that is down would otherwise seed the
+// field with "Offline" — only a live account may.
+function subscriptionSuggestedPlanName(provider) {
+  if (!provider) return '';
+  if (provider.status && provider.status !== 'ok' && !provider.stale) return '';
+  return limitProviderPlan(provider);
+}
+
+function subscriptionSelectedAccount() {
+  const value = String(els.subscriptionAccountInput?.value || '');
+  return subscriptionAccountChoices().find((choice) => choice.value === value)?.provider || null;
+}
+
+function subscriptionAmountText(subscription) {
+  const code = currencyApi.normalizeCurrency(subscription?.currency);
+  const symbol = currencyApi.CURRENCY_RATES[code]?.symbol || `${code} `;
+  return `${symbol}${subscriptionApi.amountUnits(subscription).toFixed(2)}`;
+}
+
+function subscriptionCadenceText(subscription) {
+  const count = Number(subscription?.intervalCount) || 1;
+  const unit = subscription?.interval === 'year'
+    ? t('settings.subscriptions.unitYear')
+    : t('settings.subscriptions.unitMonth');
+  return count === 1 ? unit : t('settings.subscriptions.everyN', { count, unit });
+}
+
+function subscriptionPriceText(subscription) {
+  return `${subscriptionAmountText(subscription)} / ${subscriptionCadenceText(subscription)}`;
+}
+
+// "0 days left" reads like a bug on the day itself, which is exactly the day the
+// user is most likely to be looking.
+function subscriptionDaysText(days) {
+  return days === 0
+    ? t('subscription.tooltip.today')
+    : t('subscription.tooltip.daysLeft', { days });
+}
+
+function subscriptionDateText(dateString) {
+  if (!dateString) return '';
+  // Construct in local time from the calendar parts so the rendered day always
+  // matches the stored one, whatever the timezone.
+  return subscriptionLocalDate(dateString)?.toLocaleDateString(currentLocale(), {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  }) || '';
+}
+
+// The settings rows are two dense lines inside a ~300px panel and the date is the
+// longest thing on the second one, so there it is the numeric short form the
+// locale itself defines. Everywhere with room to spell it out — the tooltip
+// above all — still uses subscriptionDateText().
+function subscriptionShortDateText(dateString) {
+  if (!dateString) return '';
+  return subscriptionLocalDate(dateString)?.toLocaleDateString(currentLocale(), { dateStyle: 'short' }) || '';
+}
+
+function subscriptionLocalDate(dateString) {
+  const [year, month, day] = String(dateString).split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return new Date(year, month - 1, day);
+}
+
+// Usage cost is keyed by client, and every provider whose id names a tracked
+// client can be compared against it. Providers with no same-named client
+// (openrouter, deepseek, thirdparty, zai…) simply produce nothing, which is the
+// correct answer: their spend is either pay-as-you-go or spread across clients
+// with no way to attribute it.
+function subscriptionUsageCostUsd(providerId) {
+  if (!Object.prototype.hasOwnProperty.call(clientLabels, providerId)) return null;
+  const month = state.stats?.periods?.month;
+  const cost = Number(month?.clientCosts?.[providerId] || 0);
+  return cost > 0 ? cost : null;
+}
+
+// Matched against every account the provider has, never against a one-element
+// list of the row being rendered: matchProviderAccount() falls back to "the
+// provider has exactly one account, so there is no ambiguity", and a single-row
+// universe makes that fallback true for every sibling. That is what put one
+// Codex subscription's card on all three Codex accounts.
+function subscriptionForProvider(provider) {
+  const id = String(provider?.provider || '').toLowerCase();
+  const accounts = limitProvidersForSubscriptions();
+  const identity = subscriptionAccountValue(provider);
+  for (const subscription of subscriptionList()) {
+    if (subscription.provider !== id) continue;
+    const account = subscriptionApi.matchProviderAccount(subscription, accounts);
+    if (account && subscriptionAccountValue(account) === identity) return subscription;
+  }
+  return null;
+}
+
+// Every subscription recorded against a provider, paired with the account it
+// resolves to. Drives the group header, which stands for all of them at once.
+function subscriptionsForProviderGroup(providerId) {
+  const id = String(providerId || '').toLowerCase();
+  const accounts = limitProvidersForSubscriptions();
+  return subscriptionList()
+    .filter((subscription) => subscription.provider === id)
+    .map((subscription) => ({
+      subscription,
+      account: subscriptionApi.matchProviderAccount(subscription, accounts)
+    }));
+}
+
+// The record already held against an account, if any. One account holds one
+// record: a second one saved without complaint and then never appeared — the
+// card resolves the first match and stops — which read as the new entry having
+// replaced the old one.
+function subscriptionForAccountValue(list, providerId, accountValue, excludeId) {
+  const accounts = limitProvidersForSubscriptions();
+  return list.find((entry) => {
+    if (entry.id === excludeId || entry.provider !== providerId) return false;
+    const bound = subscriptionApi.matchProviderAccount(entry, accounts);
+    return Boolean(bound) && subscriptionAccountValue(bound) === accountValue;
+  }) || null;
+}
+
+// Rows are {label, value} pairs so the tooltip stays a table and the caller does
+// not have to know which shape it is looking at.
+// Keyed off what the user recorded, never off the account's balance marker: the
+// marker only seeds the choice, and reading it here would show subscription rows
+// for a ledger the moment a provider started reporting a balance.
+function subscriptionTooltipRows(subscription, provider, includeRollup) {
+  const today = subscriptionApi.todayString();
+  return subscriptionApi.isTopUp(subscription)
+    ? topUpTooltipRows(subscription, provider, today, includeRollup)
+    : subscriptionPlanTooltipRows(subscription, provider, today, includeRollup);
+}
+
+// How long the user has been paying, plus what that adds up to. Months is the
+// unit people quote a subscription in, but it rounds a three-week-old plan down
+// to "0 months" — which reads as a bug beside a non-zero total, and does so for
+// most of the first month of every subscription anyone records. Below a month
+// the honest unit is days. A start date that has not arrived yet has no elapsed
+// time and nothing paid, so it says so instead of reporting zero of both.
+//
+// Once coverage has lapsed the clock stops there: a plan bought for one month
+// and never renewed stays "1 month", it does not keep ageing after it ended.
+function subscriptionElapsedText(subscription, today) {
+  const stop = subscriptionApi.coverageStopDate(subscription);
+  const asOf = stop && stop < today ? stop : today;
+  const daysSinceStart = subscriptionApi.daysBetween(subscription.startDate, asOf);
+  if (daysSinceStart !== null && daysSinceStart < 0) return t('subscription.tooltip.notStarted');
+
+  const months = subscriptionApi.subscribedMonths(subscription, asOf);
+  const elapsed = months >= 1
+    ? t('subscription.tooltip.months', { months })
+    : t('subscription.tooltip.daysCount', { days: Math.max(0, daysSinceStart || 0) });
+  const code = currencyApi.normalizeCurrency(subscription.currency);
+  const symbol = currencyApi.CURRENCY_RATES[code]?.symbol || `${code} `;
+  const paid = subscriptionApi.paidToDateMinor(subscription, today) / 100;
+  return `${elapsed} · ${t('subscription.tooltip.paidTotal', { total: `${symbol}${paid.toFixed(2)}` })}`;
+}
+
+function subscriptionPlanTooltipRows(subscription, provider, today, includeRollup) {
+  const rows = [];
+  rows.push({ label: t('subscription.tooltip.price'), value: subscriptionPriceText(subscription) });
+
+  const endDate = subscriptionApi.coverageEndDate(subscription, today);
+  const daysLeft = subscriptionApi.daysUntilRenewal(subscription, today);
+  const whenLabel = subscription.autoRenew
+    ? t('subscription.tooltip.nextCharge')
+    : t('subscription.tooltip.validUntil');
+  // A lapsed plan has no days left to count down. Saying so beats a negative
+  // number, and beats the silent roll-forward that used to keep a cancelled
+  // plan permanently four days from renewing.
+  const whenSuffix = daysLeft === null
+    ? ''
+    : ` · ${daysLeft < 0 ? t('subscription.tooltip.expired') : subscriptionDaysText(daysLeft)}`;
+  rows.push({ label: whenLabel, value: `${subscriptionDateText(endDate)}${whenSuffix}` });
+  if (!subscription.autoRenew) {
+    rows.push({ label: t('subscription.tooltip.autoRenew'), value: t('subscription.tooltip.autoRenewOff') });
+  }
+
+  rows.push({
+    label: t('subscription.tooltip.subscribed'),
+    value: subscriptionElapsedText(subscription, today)
+  });
+
+  // The rollup covers every account of the provider at once, so it belongs on
+  // whichever row stands for the provider as a whole. When a group header is
+  // rendered that is the header, and repeating the same three lines under each
+  // member is the noise the header exists to avoid.
+  if (!includeRollup) return rows;
+
+  // tokscale records which client produced the tokens, never which signed-in
+  // account did, so three logins share one usage figure. Charging that figure
+  // against a single account would claim it three times over; the rollup is the
+  // only honest denominator.
+  const usageCostUsd = subscriptionUsageCostUsd(subscription.provider);
+  if (usageCostUsd === null) return rows;
+  const rollup = subscriptionApi.providerRollup(subscriptionList(), subscription.provider, currencyApi, today);
+  const multiple = subscriptionApi.valueMultiple(rollup.monthlyUsd, usageCostUsd);
+  if (multiple === null) return rows;
+
+  rows.push({ separator: true });
+  if (rollup.count > 1) {
+    rows.push({
+      label: t('subscription.tooltip.providerTotal', { provider: subscriptionProviderLabel(subscription.provider) }),
+      value: t('subscription.tooltip.providerTotalValue', {
+        count: rollup.count,
+        total: formatCost(rollup.monthlyUsd)
+      })
+    });
+  }
+  rows.push({
+    label: t('subscription.tooltip.monthUsage'),
+    // Prefixed with "≈" and titled below: this is tokscale's equivalent API
+    // pricing, not money owed. Under a subscription nothing is billed per token.
+    value: `≈ ${formatCost(usageCostUsd)}${rollup.count > 1 ? ` · ${t('subscription.tooltip.allAccounts')}` : ''}`,
+    title: t('subscription.tooltip.monthUsageNote')
+  });
+  rows.push({
+    label: t('subscription.tooltip.valueMultiple'),
+    value: `${multiple.toFixed(1)}×`
+  });
+  return rows;
+}
+
+// The group header stands for every account at once, so it summarises rather
+// than picking one of them. Usage and the value multiple are already provider
+// level on the per-account card; here the price is too.
+function subscriptionGroupTooltipRows(providerId, today) {
+  const rollup = subscriptionApi.providerRollup(subscriptionList(), providerId, currencyApi, today);
+  const rows = [{
+    label: t('subscription.tooltip.providerTotal', { provider: subscriptionProviderLabel(providerId) }),
+    value: t('subscription.tooltip.providerTotalValue', {
+      count: rollup.count,
+      total: formatCost(rollup.monthlyUsd)
+    })
+  }];
+
+  const usageCostUsd = subscriptionUsageCostUsd(providerId);
+  if (usageCostUsd === null) return rows;
+  rows.push({ separator: true });
+  rows.push({
+    label: t('subscription.tooltip.monthUsage'),
+    value: `≈ ${formatCost(usageCostUsd)} · ${t('subscription.tooltip.allAccounts')}`,
+    title: t('subscription.tooltip.monthUsageNote')
+  });
+  const multiple = subscriptionApi.valueMultiple(rollup.monthlyUsd, usageCostUsd);
+  if (multiple !== null) {
+    rows.push({ label: t('subscription.tooltip.valueMultiple'), value: `${multiple.toFixed(1)}×` });
+  }
+  return rows;
+}
+
+function topUpMinorText(subscription, amountMinor) {
+  const code = currencyApi.normalizeCurrency(subscription?.currency);
+  const symbol = currencyApi.CURRENCY_RATES[code]?.symbol || `${code} `;
+  return `${symbol}${(amountMinor / 100).toFixed(2)}`;
+}
+
+function topUpTooltipRows(subscription, provider, today, includeRollup) {
+  const rows = [];
+  const last = subscriptionApi.lastTopUp(subscription);
+  if (last) {
+    rows.push({
+      label: t('subscription.tooltip.lastTopUp'),
+      value: `${subscriptionDateText(last.date)} · ${topUpMinorText(subscription, last.amountMinor)}`
+    });
+  }
+  const monthMinor = subscriptionApi.topUpMonthMinor(subscription, today);
+  if (monthMinor > 0) {
+    rows.push({
+      label: t('subscription.tooltip.topUpMonth'),
+      value: topUpMinorText(subscription, monthMinor)
+    });
+  }
+  const entries = subscriptionApi.topUpEntries(subscription);
+  if (entries.length > 1) {
+    rows.push({
+      label: t('subscription.tooltip.topUpTotal'),
+      value: `${topUpMinorText(subscription, subscriptionApi.topUpTotalMinor(subscription))} · ${t('subscription.tooltip.topUpCount', { count: entries.length })}`
+    });
+  }
+
+  const creditsWindow = (provider?.windows || []).find(isCreditsWindow) || null;
+  const balance = creditsAmount(provider, creditsWindow);
+  if (balance === null) return topUpRollupRows(rows, subscription, today, includeRollup);
+  const balanceCurrency = String(creditsWindow?.currency || provider?.balance?.currency || subscription.currency);
+  rows.push({ label: t('subscription.tooltip.balance'), value: formatMoney(balance, balanceCurrency) });
+
+  const projection = subscriptionApi.topUpProjection(subscription, balance, today, {
+    currencyApi,
+    balanceCurrency
+  });
+  if (!projection || projection.dailyBurn <= 0) return topUpRollupRows(rows, subscription, today, includeRollup);
+  rows.push({
+    label: t('subscription.tooltip.burnRate'),
+    value: t('subscription.tooltip.perDay', { amount: formatMoney(projection.dailyBurn, balanceCurrency) })
+  });
+  if (projection.exhaustDate) {
+    rows.push({
+      label: t('subscription.tooltip.exhausts'),
+      value: `${subscriptionDateText(projection.exhaustDate)} · ${subscriptionDaysText(projection.daysRemaining)}`
+    });
+  }
+  return topUpRollupRows(rows, subscription, today, includeRollup);
+}
+
+// A ledger earns the same provider-level comparison a plan gets: what went in
+// this month against what the month's tokens would have cost.
+function topUpRollupRows(rows, subscription, today, includeRollup) {
+  if (!includeRollup) return rows;
+  const usageCostUsd = subscriptionUsageCostUsd(subscription.provider);
+  if (usageCostUsd === null) return rows;
+  const rollup = subscriptionApi.providerRollup(subscriptionList(), subscription.provider, currencyApi, today);
+  const multiple = subscriptionApi.valueMultiple(rollup.monthlyUsd, usageCostUsd);
+  if (multiple === null) return rows;
+  rows.push({ separator: true });
+  rows.push({
+    label: t('subscription.tooltip.monthUsage'),
+    value: `≈ ${formatCost(usageCostUsd)}`,
+    title: t('subscription.tooltip.monthUsageNote')
+  });
+  rows.push({ label: t('subscription.tooltip.valueMultiple'), value: `${multiple.toFixed(1)}×` });
+  return rows;
+}
+
+// No heading. The card is already reached by hovering a plan label, and every
+// row names itself — a "Subscription" line above them only repeats what the
+// gesture said, and the other tooltips in this panel carry no title either.
+function subscriptionCardNode(rows) {
+  if (rows.length === 0) return null;
+  const card = document.createElement('span');
+  card.className = 'limit-detail-tooltip subscription-tooltip';
+  for (const row of rows) {
+    if (row.separator) {
+      const rule = document.createElement('span');
+      rule.className = 'subscription-tooltip-rule';
+      card.append(rule);
+      continue;
+    }
+    // display:contents on the row lets label and value land directly in the
+    // card's two-column grid, so the existing tooltip cell styling applies.
+    const line = document.createElement('span');
+    line.className = 'limit-detail-tooltip-row';
+    const label = document.createElement('span');
+    label.textContent = row.label;
+    const value = document.createElement('span');
+    if (row.warn) value.className = 'subscription-tooltip-warn';
+    value.textContent = row.value;
+    if (row.title) {
+      label.title = row.title;
+      value.title = row.title;
+    }
+    line.append(label, value);
+    card.append(line);
+  }
+  return card;
+}
+
+// A group header is rendered whenever a provider has more than one account, and
+// it is the row that stands for the provider as a whole — which is what decides
+// where the provider-wide rollup goes.
+//
+// Counted from the list renderLimits() groups on, deliberately not from
+// limitProvidersForSubscriptions(): that one narrows to this device so a
+// subscription binds to an account you actually hold, while the question here is
+// only what the panel drew. In sync mode the two lists differ, and answering
+// from the wrong one puts the rollup on every member row of a group.
+function subscriptionProviderHasGroupHeader(providerId) {
+  const id = String(providerId || '').toLowerCase();
+  return (state.stats?.limits?.providers || [])
+    .filter((account) => String(account?.provider || '').toLowerCase() === id).length > 1;
+}
+
+// An account row shows its own subscription and nothing else. A group header
+// stands for all of them, so it summarises — except when only one account is
+// recorded, where the summary would just restate that one card with less in it.
+function subscriptionCardForRow(provider) {
+  if (provider?.accountGroup === true) {
+    const entries = subscriptionsForProviderGroup(provider.provider);
+    if (entries.length === 0) return null;
+    if (entries.length === 1) {
+      return subscriptionCardNode(
+        subscriptionTooltipRows(entries[0].subscription, entries[0].account || provider, true)
+      );
+    }
+    return subscriptionCardNode(
+      subscriptionGroupTooltipRows(provider.provider, subscriptionApi.todayString())
+    );
+  }
+  const subscription = subscriptionForProvider(provider);
+  if (!subscription) return null;
+  return subscriptionCardNode(
+    subscriptionTooltipRows(subscription, provider, !subscriptionProviderHasGroupHeader(provider.provider))
+  );
+}
+
+// The card opens upward, but the limits list scrolls inside a clipping panel, so
+// on the topmost row every pixel of it landed outside that panel and vanished.
+// Measured on open rather than on render: the row's offset within the panel
+// changes as the user scrolls. Kept to a class flip so the card's own placement
+// stays declarative.
+function positionSubscriptionTooltip(wrap, card) {
+  const clip = wrap.closest('.limits-panel');
+  if (!clip) return;
+  const roomAbove = wrap.getBoundingClientRect().top - clip.getBoundingClientRect().top;
+  card.classList.toggle('is-below', roomAbove < card.offsetHeight + 5);
+}
+
+// Wraps the plan label so hovering it reveals the subscription card. Reuses the
+// limit-detail tooltip plumbing, which already holds off the six-second list
+// re-render while the pointer is inside (limitDetailTooltipShouldHoldRender).
+//
+// Deliberately not behind a preference: an account with no record decorates
+// nothing, so having recorded one IS the switch. A separate toggle only made it
+// possible to enter the data and see nothing happen.
+function decoratePlanWithSubscription(plan, provider) {
+  const card = subscriptionCardForRow(provider);
+  if (!card) return plan;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'limit-plan limit-detail-tooltip-wrap subscription-plan-wrap';
+  wrap.classList.toggle('has-opened', state.limitDetailTooltipHasOpened);
+  wrap.tabIndex = 0;
+  const trigger = document.createElement('span');
+  trigger.className = 'subscription-plan-trigger';
+  trigger.textContent = plan.textContent;
+  wrap.append(trigger, card);
+
+  const markOpened = () => {
+    state.limitDetailTooltipHasOpened = true;
+    state.limitDetailTooltipActive = true;
+    wrap.classList.add('has-opened');
+    positionSubscriptionTooltip(wrap, card);
+  };
+  const release = () => {
+    state.limitDetailTooltipActive = false;
+    flushPendingLimitDetailTooltipRender();
+  };
+  wrap.addEventListener('pointerenter', markOpened);
+  wrap.addEventListener('focusin', markOpened);
+  wrap.addEventListener('pointerleave', release);
+  wrap.addEventListener('focusout', release);
+  return wrap;
+}
+
+// The title's job is to say WHICH record this is, so it names the account. The
+// plan name is not an identity — three Codex rows all reading "Codex · Plus"
+// name nothing — so it moved to the meta line, where it always shows.
+//
+// When the live account list cannot resolve the row, the fallback is the record's
+// own stored binding rather than the plan name: the binding is what the user
+// picked, it survives the provider being signed out or still loading, and it
+// keeps sibling rows distinct in exactly the moment the plan name could not.
+function subscriptionRowTitle(subscription, account) {
+  const providerLabel = subscriptionProviderLabel(subscription.provider);
+  return [providerLabel, subscriptionRowAccountLabel(subscription, account) || subscription.planName]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function subscriptionRowAccountLabel(subscription, account) {
+  const identity = account || {
+    provider: subscription.provider,
+    accountName: subscription.binding?.profileName,
+    accountEmail: subscription.binding?.accountEmail
+  };
+  return accountIdentityApi.accountTitleLabel(identity, [identity], {
+    maskEmail: state.settings?.maskLimitAccountEmails === true
+  });
+}
+
+function subscriptionRowMeta(subscription, account) {
+  const today = subscriptionApi.todayString();
+  // The plan name only earns a slot here when the title did not already fall back
+  // to it. An account with no label of its own would otherwise spend both lines
+  // saying "Go" twice, and the second line is the one that runs out of room.
+  const parts = subscriptionRowAccountLabel(subscription, account) && subscription.planName
+    ? [subscription.planName]
+    : [];
+  if (subscriptionApi.isTopUp(subscription)) {
+    const monthMinor = subscriptionApi.topUpMonthMinor(subscription, today);
+    parts.push(t('settings.subscriptions.topUpMonthMeta', {
+      total: topUpMinorText(subscription, monthMinor)
+    }));
+    const last = subscriptionApi.lastTopUp(subscription);
+    if (last) {
+      parts.push(t('settings.subscriptions.topUpLastMeta', { date: subscriptionShortDateText(last.date) }));
+    }
+    return parts.join(' · ');
+  }
+  parts.push(subscriptionPriceText(subscription));
+  const endDate = subscriptionApi.coverageEndDate(subscription, today);
+  if (endDate) {
+    const date = subscriptionShortDateText(endDate);
+    parts.push(t(subscription.autoRenew ? 'settings.subscriptions.renewsOn' : 'settings.subscriptions.endsOn', { date }));
+  }
+  return parts.join(' · ');
+}
+
+function syncSubscriptionAddControl() {
+  const toggle = els.subscriptionAddToggle;
+  const form = els.subscriptionAddForm;
+  const details = els.subscriptionAddDetails;
+  if (!toggle || !form) return;
+
+  // While editing, this button is a mode switch, not the disclosure control for
+  // the editor that is currently parked beneath another row. Keeping the add
+  // action's disclosure state separate prevents a plus from turning into an x
+  // and avoids two controls claiming the same expanded region.
+  if (state.subscriptionEditingId) {
+    toggle.removeAttribute('aria-expanded');
+    toggle.removeAttribute('aria-controls');
+    form.classList.remove('expanded');
+    return;
+  }
+
+  const open = Boolean(details && !details.classList.contains('hidden'));
+  toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  toggle.setAttribute('aria-controls', 'subscriptionAddDetails');
+  form.classList.toggle('expanded', open);
+}
+
+// Rebuild only the list-owned rows. The editor is a live child of this list
+// while editing, and removing it from the DOM would drop focus from whichever
+// field the user is typing in before positionSubscriptionEditor() can put it
+// back.
+function clearSubscriptionListChildren(listEl, preservedNode) {
+  for (const child of [...listEl.children]) {
+    if (child !== preservedNode) child.remove();
+  }
+}
+
+function positionSubscriptionEditor() {
+  const listEl = els.subscriptionList;
+  const form = els.subscriptionAddForm;
+  const details = els.subscriptionAddDetails;
+  if (!listEl || !form || !details) return;
+
+  const editingId = String(state.subscriptionEditingId || '');
+  const editingRow = editingId
+    ? [...listEl.children].find((child) => child.dataset?.subscriptionId === editingId)
+    : null;
+  if (editingRow) editingRow.after(details);
+  else form.append(details);
+
+  for (const row of listEl.querySelectorAll('[data-subscription-id]')) {
+    row.classList.toggle('is-editing', row.dataset.subscriptionId === editingId);
+  }
+  syncSubscriptionAddControl();
+  syncSubscriptionEditControls();
+}
+
+function syncSubscriptionEditControls() {
+  const listEl = els.subscriptionList;
+  const details = els.subscriptionAddDetails;
+  if (!listEl) return;
+  const editingId = String(state.subscriptionEditingId || '');
+  const editorOpen = Boolean(details && !details.classList.contains('hidden'));
+  for (const row of listEl.querySelectorAll('[data-subscription-id]')) {
+    const edit = row.querySelector('.subscription-row-edit');
+    if (!edit) continue;
+    const editOpen = editorOpen && row.dataset.subscriptionId === editingId;
+    const editLabel = editOpen ? t('settings.subscriptions.cancelEdit') : t('settings.subscriptions.edit');
+    edit.textContent = editOpen ? '×' : '✎';
+    edit.title = editLabel;
+    edit.setAttribute('aria-label', editLabel);
+    edit.setAttribute('aria-expanded', editOpen ? 'true' : 'false');
+  }
+}
+
+function renderSubscriptionRows() {
+  const listEl = els.subscriptionList;
+  if (!listEl) return;
+  const editor = els.subscriptionAddDetails?.parentElement === listEl
+    ? els.subscriptionAddDetails
+    : null;
+  clearSubscriptionListChildren(listEl, editor);
+  const list = subscriptionList();
+  if (list.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'opencode-empty';
+    empty.textContent = t('settings.subscriptions.emptyList');
+    listEl.append(empty);
+    positionSubscriptionEditor();
+    return;
+  }
+
+  const providers = limitProvidersForSubscriptions();
+  for (const subscription of list) {
+    const account = subscriptionApi.matchProviderAccount(subscription, providers);
+    const row = document.createElement('div');
+    row.className = `subscription-row${state.subscriptionEditingId === subscription.id ? ' is-editing' : ''}`;
+    row.dataset.subscriptionId = subscription.id;
+
+    // The provider name is in the title too, but these rows are a dense stack of
+    // near-identical text — four Codex accounts read as one block until the mark
+    // in front of them differs. Gated on the same preference as every other tool
+    // icon in the app, so turning icons off turns them off here as well.
+    const iconClass = toolIconsEnabled(state.settings?.showToolIcons)
+      ? subscriptionProviderIconClass(subscription.provider)
+      : '';
+    if (iconClass) {
+      const icon = document.createElement('span');
+      icon.className = `subscription-row-icon ${iconClass}`;
+      row.append(icon);
+    }
+
+    const main = document.createElement('div');
+    main.className = 'subscription-row-main';
+    const title = document.createElement('span');
+    title.className = 'subscription-row-title';
+    title.textContent = subscriptionRowTitle(subscription, account);
+    const meta = document.createElement('span');
+    meta.className = 'subscription-row-meta';
+    meta.textContent = subscriptionRowMeta(subscription, account);
+    main.append(title, meta);
+
+    // Only a real ambiguity is surfaced. A provider that is simply not signed in
+    // right now keeps its subscription quietly; the data is never dropped.
+    if (subscriptionApi.needsRebinding(subscription, providers)) {
+      const warn = document.createElement('span');
+      warn.className = 'subscription-row-warn';
+      warn.textContent = t('settings.subscriptions.needsRebind');
+      main.append(warn);
+    }
+
+    // Keep the edit control as a disclosure toggle: the active row gets an
+    // explicit cancel state, and the accessible state follows the editor.
+    const actions = document.createElement('div');
+    actions.className = 'subscription-row-actions';
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'subscription-row-edit';
+    const editing = state.subscriptionEditingId === subscription.id;
+    const editOpen = editing && Boolean(els.subscriptionAddDetails && !els.subscriptionAddDetails.classList.contains('hidden'));
+    const editLabel = editOpen ? t('settings.subscriptions.cancelEdit') : t('settings.subscriptions.edit');
+    edit.textContent = editOpen ? '×' : '✎';
+    edit.title = editLabel;
+    edit.setAttribute('aria-label', editLabel);
+    edit.setAttribute('aria-expanded', editOpen ? 'true' : 'false');
+    edit.setAttribute('aria-controls', 'subscriptionAddDetails');
+    edit.addEventListener('click', () => {
+      if (state.subscriptionEditingId === subscription.id && els.subscriptionAddDetails && !els.subscriptionAddDetails.classList.contains('hidden')) {
+        closeSubscriptionEditor();
+        return;
+      }
+      beginSubscriptionEdit(subscription.id);
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'subscription-row-delete';
+    remove.textContent = '✕';
+    remove.title = t('settings.subscriptions.delete');
+    let armed = false;
+    remove.addEventListener('click', async () => {
+      if (!armed) {
+        armed = true;
+        remove.textContent = '✓';
+        remove.title = t('settings.subscriptions.deleteConfirm');
+        remove.classList.add('is-armed');
+        setTimeout(() => {
+          armed = false;
+          remove.textContent = '✕';
+          remove.title = t('settings.subscriptions.delete');
+          remove.classList.remove('is-armed');
+        }, 4000);
+        return;
+      }
+      // Read now rather than reused from the render this row was drawn in, so the
+      // list and the version sent with it come from the same moment.
+      const current = subscriptionList();
+      if (!await saveSubscriptions(
+        current.filter((entry) => entry.id !== subscription.id),
+        subscriptionSettingsVersion(),
+        { render: false }
+      )) return;
+      if (state.subscriptionEditingId === subscription.id) resetSubscriptionForm();
+      preserveSettingsPanelScroll(renderSubscriptionSettings);
+    });
+    actions.append(edit, remove);
+    row.append(main, actions);
+    listEl.append(row);
+  }
+  positionSubscriptionEditor();
+}
+
+function renderSubscriptionPickers() {
+  const providerSelect = els.subscriptionProviderInput;
+  const accountSelect = els.subscriptionAccountInput;
+  if (!providerSelect || !accountSelect) return;
+
+  const choices = subscriptionAccountChoices();
+  const providerIds = [...new Set(choices.map((choice) => choice.provider.provider))];
+  const previousProvider = providerSelect.value;
+  providerSelect.replaceChildren();
+  for (const id of providerIds) {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = subscriptionProviderLabel(id);
+    providerSelect.append(option);
+  }
+  if (providerIds.includes(previousProvider)) providerSelect.value = previousProvider;
+
+  const activeProvider = providerSelect.value;
+  const previousAccount = accountSelect.value;
+  accountSelect.replaceChildren();
+  for (const choice of choices.filter((entry) => entry.provider.provider === activeProvider)) {
+    const option = document.createElement('option');
+    option.value = choice.value;
+    option.textContent = choice.label;
+    accountSelect.append(option);
+  }
+  if ([...accountSelect.options].some((option) => option.value === previousAccount)) {
+    accountSelect.value = previousAccount;
+  }
+
+  const currencySelect = els.subscriptionCurrencyInput;
+  if (currencySelect && currencySelect.options.length === 0) {
+    for (const code of currencyApi.CURRENCY_CODES) {
+      const option = document.createElement('option');
+      option.value = code;
+      option.textContent = code;
+      currencySelect.append(option);
+    }
+    currencySelect.value = currencyApi.normalizeCurrency(state.settings?.currency);
+  }
+}
+
+function renderSubscriptionTotal() {
+  const totalEl = els.subscriptionTotalRow;
+  if (!totalEl) return;
+  const list = subscriptionList();
+  totalEl.classList.toggle('hidden', list.length === 0);
+  if (list.length === 0) return;
+  totalEl.textContent = t('settings.subscriptions.total', {
+    total: formatCost(subscriptionApi.monthlyTotalUsd(list, currencyApi))
+  });
+}
+
+function renderSubscriptionSettings() {
+  renderSubscriptionNote();
+  renderSubscriptionOrphanNotice();
+  renderSubscriptionSyncError();
+  renderSubscriptionRows();
+  renderSubscriptionPickers();
+  renderSubscriptionTotal();
+  renderSettingsSummaries();
+}
+
+// The list may live on a hub shared with other devices, so writing it is a
+// network round trip that can be refused. Whatever happens, what is on screen
+// afterwards is what is actually stored: on failure the optimistic list is
+// thrown away and main.js's copy is re-read and re-rendered.
+// The version of the shared list on screen and the hub that issued it, which are
+// only worth anything together: a hub nobody has written to reports no version,
+// and so does the next one, so a version alone cannot say which list it describes.
+function subscriptionSettingsVersion() {
+  return {
+    hub: state.settings?.subscriptionsHub || '',
+    updatedAt: state.settings?.subscriptionsUpdatedAt || ''
+  };
+}
+
+// Every settings snapshot that arrives because THIS device acted — a save, an
+// adopt, a discard, or the re-read after one of them was refused. An open form
+// re-anchors on the version in it: the user made the change, or has just been
+// shown it, so it is not one they need to be stopped over. Which is also the
+// rule stated in one place rather than at each write, because the paths that
+// move the shared list on have outnumbered the ones that remember to say so.
+// A version arriving from another device does not come through here, and that is
+// the only reason the form holds one at all.
+function applySubscriptionSettings(settings) {
+  state.settings = settings;
+  if (state.subscriptionFormBase === null) return;
+  const current = subscriptionSettingsVersion();
+  // Unless the hub itself changed under it. Then the form is holding an edit made
+  // for a hub the user has left, and re-anchoring would let that edit be saved
+  // into the one they moved to — there is nothing here it could belong to, so it
+  // stops being a form rather than becoming a form for the wrong list.
+  if (state.subscriptionFormBase.hub !== current.hub) {
+    if (typeof closeSubscriptionEditor === 'function') {
+      closeSubscriptionEditor();
+    } else {
+      setSubscriptionFormOpen(false);
+      resetSubscriptionForm();
+    }
+    return;
+  }
+  state.subscriptionFormBase = current;
+}
+
+// base is what the list being saved was built from — the open form's snapshot, or
+// what is on screen for a row action. Passed in rather than read here, because
+// those two stop being the same the moment a push lands.
+async function saveSubscriptions(list, base, { render = true } = {}) {
+  try {
+    applySubscriptionSettings(await window.tokenMonitor.saveSubscriptions(list, base));
+    state.subscriptionSyncError = '';
+    if (render) renderSubscriptionSettings();
+    return true;
+  } catch (error) {
+    // Four different problems with four different answers: look at what changed,
+    // fix the secret, retry later, or free some disk. One message for all of
+    // them would send the user looking in the wrong place.
+    state.subscriptionSyncError = subscriptionWriteErrorKey(error);
+    // Refused, so the list on screen is now the current one and the form still
+    // holds what was typed. Re-anchoring lets the user look at what changed and
+    // save again; keeping the version they opened on would refuse the second
+    // attempt too, and every one after it.
+    try { applySubscriptionSettings(await window.tokenMonitor.getSettings()); } catch (_) {}
+    renderSubscriptionSettings();
+    return false;
+  }
+}
+
+function subscriptionWriteErrorKey(error) {
+  const message = error?.message || '';
+  if (/stale_write/.test(message)) return 'settings.subscriptions.errorStaleWrite';
+  if (/hub_rejected/.test(message)) return 'settings.subscriptions.errorHubRejected';
+  if (/write_failed/.test(message)) return 'settings.subscriptions.errorWriteFailed';
+  if (/hub_changed/.test(message)) return 'settings.subscriptions.errorHubChanged';
+  return 'settings.subscriptions.errorHubWrite';
+}
+
+// This device joined a hub that already had a list, so its own records are not
+// in it. Neither dropping them nor merging them is safe to decide here: the same
+// plan recorded on two machines has two ids and would become two charges.
+function renderSubscriptionOrphanNotice() {
+  const notice = els.subscriptionOrphanNotice;
+  if (!notice) return;
+  const orphans = state.settings?.subscriptionsOrphaned || [];
+  notice.classList.toggle('hidden', orphans.length === 0);
+  if (orphans.length === 0) return;
+  if (els.subscriptionOrphanText) {
+    els.subscriptionOrphanText.textContent = t('settings.subscriptions.orphanNotice', { count: orphans.length });
+  }
+}
+
+function renderSubscriptionSyncError() {
+  const el = els.subscriptionSyncError;
+  if (!el) return;
+  const key = state.subscriptionSyncError;
+  el.textContent = key ? t(key) : '';
+  el.classList.toggle('hidden', !key);
+}
+
+// The note promises the data never leaves this device, which stops being true
+// the moment a hub is configured. Retargeting data-i18n as well as the text
+// keeps a later language switch on whichever key currently applies.
+function renderSubscriptionNote() {
+  const el = els.subscriptionNote;
+  if (!el) return;
+  const key = state.settings?.subscriptionsShared
+    ? 'settings.subscriptions.noteShared'
+    : 'settings.subscriptions.note';
+  el.dataset.i18n = key;
+  el.textContent = t(key);
+}
+
+function setSubscriptionError(message) {
+  const errorEl = els.subscriptionErrorMessage;
+  if (!errorEl) return;
+  errorEl.textContent = message || '';
+  errorEl.classList.toggle('hidden', !message);
+}
+
+function setSubscriptionFormOpen(open, formBase = null) {
+  els.subscriptionAddDetails?.classList.toggle('hidden', !open);
+  syncSubscriptionAddControl();
+  if (typeof syncSubscriptionEditControls === 'function') syncSubscriptionEditControls();
+  // What the form was filled from, held for as long as it stays open. A push
+  // landing mid-edit replaces state.settings, and reading the version at save
+  // time would claim to have seen a change the form was never shown — the save is
+  // then accepted, taking another device's edit to the same record with it. Null
+  // while closed, so the paths that save without a form say so.
+  state.subscriptionFormBase = open
+    ? (formBase || subscriptionSettingsVersion())
+    : null;
+}
+
+const SUBSCRIPTION_EDITOR_TRANSITION_MS = 250;
+let subscriptionEditorCloseCleanup = null;
+let subscriptionEditorCloseOnCanceled = null;
+
+function cancelSubscriptionEditorClose() {
+  const onCanceled = subscriptionEditorCloseOnCanceled;
+  subscriptionEditorCloseOnCanceled = null;
+  subscriptionEditorCloseCleanup?.();
+  subscriptionEditorCloseCleanup = null;
+  // A successful write defers the full render until the collapse has settled so
+  // the transition can paint. If a new mode cancels that collapse, settle the
+  // deferred render here instead of silently dropping it with the old timer.
+  onCanceled?.();
+}
+
+// The class change has to happen in a later frame than the initial collapsed
+// layout. Otherwise Chromium batches both states into one paint and there is no
+// transition for the grid track to animate between.
+function openSubscriptionEditor() {
+  const details = els.subscriptionAddDetails;
+  if (!details) return;
+  // Capture the concurrency context before the visual transition yields to the
+  // browser. A settings push can arrive before the next frame, but it must not
+  // make fields loaded from the previous list look like a newer edit.
+  const formBase = subscriptionSettingsVersion();
+  cancelSubscriptionEditorClose();
+  const transitionId = (state.subscriptionEditorTransitionId || 0) + 1;
+  state.subscriptionEditorTransitionId = transitionId;
+  details.classList.add('hidden');
+  details.getBoundingClientRect();
+  const schedule = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame
+    : (callback) => setTimeout(callback, 0);
+  schedule(() => {
+    if (transitionId !== state.subscriptionEditorTransitionId) return;
+    setSubscriptionFormOpen(true, formBase);
+  });
+}
+
+// Keep the editor in place until its collapse has finished. Moving it back to
+// the add form in the same task as hiding it cancels the transition entirely.
+function closeSubscriptionEditor({ onClosed, onCanceled } = {}) {
+  cancelSubscriptionEditorClose();
+  const details = els.subscriptionAddDetails;
+  const editingId = String(state.subscriptionEditingId || '');
+  const activeElement = typeof document !== 'undefined' ? document.activeElement : null;
+  const editingRow = editingId && els.subscriptionList
+    ? [...els.subscriptionList.querySelectorAll('[data-subscription-id]')]
+      .find((row) => row.dataset?.subscriptionId === editingId)
+    : null;
+  const editingButton = editingRow?.querySelector('.subscription-row-edit');
+  const returnFocusTarget = editingId ? editingButton : els.subscriptionAddToggle;
+  // Keep the focus contract of a disclosure: when the editor closes, keyboard
+  // users return to the control that opened it. Do not steal focus from a user
+  // who moved elsewhere while the close animation ran.
+  const shouldRestoreFocus = Boolean(
+    activeElement && (
+      activeElement === returnFocusTarget
+      || activeElement === details
+      || details?.contains?.(activeElement)
+    )
+  );
+  const restoreFocus = () => {
+    if (!shouldRestoreFocus) return;
+    const current = typeof document !== 'undefined' ? document.activeElement : null;
+    const body = typeof document !== 'undefined' ? document.body : null;
+    const stillInClosingContext = current === activeElement
+      || current === body
+      || current === returnFocusTarget
+      || current === details
+      || details?.contains?.(current);
+    if (!stillInClosingContext) return;
+    if (editingId) {
+      const row = [...(els.subscriptionList?.querySelectorAll?.('[data-subscription-id]') || [])]
+        .find((candidate) => candidate.dataset?.subscriptionId === editingId);
+      row?.querySelector('.subscription-row-edit')?.focus();
+      return;
+    }
+    returnFocusTarget?.focus();
+  };
+  const transitionId = (state.subscriptionEditorTransitionId || 0) + 1;
+  state.subscriptionEditorTransitionId = transitionId;
+
+  if (!details || details.classList.contains('hidden')) {
+    setSubscriptionFormOpen(false);
+    resetSubscriptionForm();
+    if (typeof renderSubscriptionRows === 'function') renderSubscriptionRows();
+    onClosed?.();
+    restoreFocus();
+    return;
+  }
+
+  setSubscriptionFormOpen(false);
+  subscriptionEditorCloseOnCanceled = onCanceled;
+  let finished = false;
+  let timer = null;
+  const onTransitionEnd = (event) => {
+    if (event.target === details && event.propertyName === 'grid-template-rows') finish();
+  };
+  const cleanup = () => {
+    details.removeEventListener('transitionend', onTransitionEnd);
+    if (timer !== null) clearTimeout(timer);
+    if (subscriptionEditorCloseCleanup === cleanup) {
+      subscriptionEditorCloseCleanup = null;
+      subscriptionEditorCloseOnCanceled = null;
+    }
+  };
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    cleanup();
+    if (transitionId !== state.subscriptionEditorTransitionId) return;
+    resetSubscriptionForm();
+    if (typeof renderSubscriptionRows === 'function') renderSubscriptionRows();
+    onClosed?.();
+    restoreFocus();
+  };
+  details.addEventListener('transitionend', onTransitionEnd);
+  subscriptionEditorCloseCleanup = cleanup;
+  timer = setTimeout(finish, SUBSCRIPTION_EDITOR_TRANSITION_MS + 50);
+}
+
+// Seeded on explicit picker changes and on opening the form — never from a
+// render, which runs again on every settings save and would wipe whatever the
+// user is halfway through typing. Editing is not exempt: switching the account
+// mid-edit is exactly as deliberate as switching it while adding, and leaving
+// the previous account's plan name behind is the surprising outcome.
+// beginSubscriptionEdit assigns the selects programmatically, which fires no
+// change event, so the saved plan name still survives opening an edit.
+function seedSubscriptionPlanName() {
+  const input = els.subscriptionPlanNameInput;
+  if (!input) return;
+  input.value = subscriptionSuggestedPlanName(subscriptionSelectedAccount());
+}
+
+// A top-up is not a subscription with different words on it — it is a ledger of
+// irregular payments — so the form swaps whole field groups rather than
+// relabelling one set. Both groups live in the markup with their own data-i18n,
+// which is what keeps them correct across a language change.
+function setSubscriptionFormMode() {
+  const topUp = subscriptionFormIsTopUp();
+  els.subscriptionPlanFields?.classList.toggle('hidden', topUp);
+  els.subscriptionTopUpFields?.classList.toggle('hidden', !topUp);
+  // One record, one currency — so the select is moved to sit beside whichever
+  // money field is on screen rather than taking a labelled row of its own. It is
+  // a static element that nothing re-renders, so relocating it is safe.
+  const slot = topUp ? els.subscriptionTopUpHeadingRow : els.subscriptionAmountRow;
+  if (slot && els.subscriptionCurrencyInput && els.subscriptionCurrencyInput.parentElement !== slot) {
+    slot.append(els.subscriptionCurrencyInput);
+  }
+  renderSubscriptionTopUpEntries();
+  setSubscriptionRenewalFieldMode();
+}
+
+// Auto-renew off means there is no next charge, so the date field stops asking
+// for one and asks when the plan runs out instead — the one thing that cannot be
+// derived once a plan has been cancelled after several renewals. Retargeting
+// data-i18n as well as the text keeps a later language switch on the right key.
+function setSubscriptionRenewalFieldMode() {
+  const renewing = els.subscriptionAutoRenewInput?.checked !== false;
+  const labelKey = renewing ? 'settings.subscriptions.nextRenewal' : 'settings.subscriptions.coverageEnd';
+  const noteKey = renewing ? 'settings.subscriptions.nextRenewalNote' : 'settings.subscriptions.coverageEndNote';
+  if (els.subscriptionNextRenewalLabel) {
+    els.subscriptionNextRenewalLabel.dataset.i18n = labelKey;
+    els.subscriptionNextRenewalLabel.textContent = t(labelKey);
+  }
+  if (els.subscriptionNextRenewalNote) {
+    els.subscriptionNextRenewalNote.dataset.i18n = noteKey;
+    els.subscriptionNextRenewalNote.textContent = t(noteKey);
+  }
+}
+
+function subscriptionFormIsTopUp() {
+  return (els.subscriptionKindInputs || []).some((input) => input.checked && input.value === 'topup');
+}
+
+function setSubscriptionFormKind(kind) {
+  for (const input of els.subscriptionKindInputs || []) input.checked = input.value === kind;
+}
+
+// The account's balance marker picks the kind, but only as a starting point —
+// the same rule the plan name follows. Both are seeded on an explicit picker
+// change, never from a render, so neither can overwrite a deliberate choice
+// made after that.
+function applySubscriptionAccountSelection() {
+  seedSubscriptionPlanName();
+  setSubscriptionFormKind(isCreditsProvider(subscriptionSelectedAccount()) ? 'topup' : 'subscription');
+  setSubscriptionFormMode();
+}
+
+// The ledger being edited, held in form state until the record is saved so that
+// adding a row is not itself a settings write.
+function subscriptionFormTopUps() {
+  return subscriptionApi.normalizeTopUps(state.subscriptionTopUps);
+}
+
+function renderSubscriptionTopUpEntries() {
+  const listEl = els.subscriptionTopUpList;
+  if (!listEl) return;
+  listEl.replaceChildren();
+  const entries = subscriptionFormTopUps();
+  if (entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'opencode-empty';
+    empty.textContent = t('settings.subscriptions.topUpEmpty');
+    listEl.append(empty);
+    return;
+  }
+  const code = currencyApi.normalizeCurrency(els.subscriptionCurrencyInput?.value);
+  const symbol = currencyApi.CURRENCY_RATES[code]?.symbol || `${code} `;
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'subscription-topup-row';
+    const date = document.createElement('span');
+    date.className = 'subscription-topup-date';
+    date.textContent = subscriptionDateText(entry.date);
+    const amount = document.createElement('span');
+    amount.className = 'subscription-topup-amount';
+    amount.textContent = `${symbol}${(entry.amountMinor / 100).toFixed(2)}`;
+    // Armed the same way as the record rows above: a mis-click here silently
+    // rewrites the month total the ledger exists to report, and the entry cannot
+    // be recovered from anywhere else.
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'subscription-topup-remove';
+    remove.textContent = '✕';
+    remove.title = t('settings.subscriptions.topUpRemove');
+    let armed = false;
+    remove.addEventListener('click', () => {
+      if (!armed) {
+        armed = true;
+        remove.textContent = '✓';
+        remove.title = t('settings.subscriptions.topUpRemoveConfirm');
+        remove.classList.add('is-armed');
+        setTimeout(() => {
+          armed = false;
+          remove.textContent = '✕';
+          remove.title = t('settings.subscriptions.topUpRemove');
+          remove.classList.remove('is-armed');
+        }, 4000);
+        return;
+      }
+      state.subscriptionTopUps = subscriptionFormTopUps().filter((other) => other.id !== entry.id);
+      renderSubscriptionTopUpEntries();
+      setSubscriptionError('');
+    });
+    row.append(date, amount, remove);
+    listEl.append(row);
+  }
+}
+
+function addSubscriptionTopUpEntry() {
+  const date = String(els.subscriptionTopUpDateInput?.value || '').trim();
+  const amount = Number(els.subscriptionTopUpAmountInput?.value);
+  if (!date) {
+    setSubscriptionError(t('settings.subscriptions.errorTopUpDate'));
+    return;
+  }
+  if (date > subscriptionApi.todayString()) {
+    setSubscriptionError(t('settings.subscriptions.errorFutureDate'));
+    return;
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    setSubscriptionError(t('settings.subscriptions.errorAmount'));
+    return;
+  }
+  // Normalized on the way in, not on the way out: normalizeTopUps() mints an id
+  // for any entry lacking one, so leaving raw entries in state re-minted every
+  // id on every render and the delete button never matched the row it was on.
+  //
+  // Two top-ups on one day is a real thing, so entries are never merged by date.
+  state.subscriptionTopUps = subscriptionApi.normalizeTopUps([
+    ...subscriptionFormTopUps(),
+    { date, amountMinor: Math.round(amount * 100) }
+  ]);
+  if (els.subscriptionTopUpDateInput) els.subscriptionTopUpDateInput.value = '';
+  if (els.subscriptionTopUpAmountInput) els.subscriptionTopUpAmountInput.value = '';
+  renderSubscriptionTopUpEntries();
+  setSubscriptionError('');
+}
+
+// Writing min/max on a date input rebuilds its internal editor, which throws
+// away the segment the user is halfway through typing. This runs on the input's
+// own change event — which fires the moment the year reaches one digit — so an
+// unconditional write restarted the year field mid-entry, and the next keystroke
+// produced year 0000 and blanked the whole value. Only write a bound that
+// actually changed.
+function setSubscriptionDateBound(input, attribute, value) {
+  if (!input || input.getAttribute(attribute) === value) return;
+  input.setAttribute(attribute, value);
+}
+
+// A first charge cannot be in the future, and a next-charge override only means
+// anything at or after it. Bounding the native picker is most of what makes it
+// usable: its "today" button then lands on a date the form will accept.
+function syncSubscriptionDateBounds() {
+  const today = subscriptionApi.todayString();
+  setSubscriptionDateBound(els.subscriptionStartDateInput, 'max', today);
+  setSubscriptionDateBound(
+    els.subscriptionNextRenewalInput,
+    'min',
+    String(els.subscriptionStartDateInput?.value || '') || today
+  );
+}
+
+function resetSubscriptionForm() {
+  state.subscriptionEditingId = '';
+  state.subscriptionTopUps = [];
+  if (els.subscriptionTopUpDateInput) els.subscriptionTopUpDateInput.value = '';
+  if (els.subscriptionTopUpAmountInput) els.subscriptionTopUpAmountInput.value = '';
+  if (els.subscriptionPlanNameInput) els.subscriptionPlanNameInput.value = '';
+  if (els.subscriptionAmountInput) els.subscriptionAmountInput.value = '';
+  if (els.subscriptionIntervalCountInput) els.subscriptionIntervalCountInput.value = '1';
+  if (els.subscriptionIntervalInput) els.subscriptionIntervalInput.value = 'month';
+  if (els.subscriptionStartDateInput) els.subscriptionStartDateInput.value = '';
+  if (els.subscriptionNextRenewalInput) els.subscriptionNextRenewalInput.value = '';
+  if (els.subscriptionAutoRenewInput) els.subscriptionAutoRenewInput.checked = true;
+  if (els.subscriptionSubmit) els.subscriptionSubmit.textContent = t('settings.subscriptions.save');
+  els.subscriptionCancelEdit?.classList.add('hidden');
+  setSubscriptionFormMode();
+  syncSubscriptionDateBounds();
+  positionSubscriptionEditor();
+  setSubscriptionError('');
+}
+
+function openSubscriptionAddEditor() {
+  renderSubscriptionPickers();
+  applySubscriptionAccountSelection();
+  openSubscriptionEditor();
+}
+
+function beginSubscriptionAdd() {
+  resetSubscriptionForm();
+  renderSubscriptionRows();
+  openSubscriptionAddEditor();
+}
+
+function beginSubscriptionEdit(id) {
+  const subscription = subscriptionList().find((entry) => entry.id === id);
+  if (!subscription) return;
+  if (state.subscriptionEditingId === id && els.subscriptionAddDetails && !els.subscriptionAddDetails.classList.contains('hidden')) {
+    closeSubscriptionEditor();
+    return;
+  }
+  state.subscriptionEditingId = id;
+
+  const account = subscriptionApi.matchProviderAccount(subscription, limitProvidersForSubscriptions());
+  if (els.subscriptionProviderInput) els.subscriptionProviderInput.value = subscription.provider;
+  renderSubscriptionPickers();
+  if (account && els.subscriptionAccountInput) {
+    els.subscriptionAccountInput.value = subscriptionAccountValue(account);
+  }
+  setSubscriptionFormKind(subscription.kind);
+  state.subscriptionTopUps = subscription.topUps;
+  if (els.subscriptionPlanNameInput) els.subscriptionPlanNameInput.value = subscription.planName;
+  if (els.subscriptionAmountInput) els.subscriptionAmountInput.value = String(subscriptionApi.amountUnits(subscription));
+  if (els.subscriptionCurrencyInput) els.subscriptionCurrencyInput.value = subscription.currency;
+  if (els.subscriptionIntervalCountInput) els.subscriptionIntervalCountInput.value = String(subscription.intervalCount);
+  if (els.subscriptionIntervalInput) els.subscriptionIntervalInput.value = subscription.interval;
+  if (els.subscriptionStartDateInput) els.subscriptionStartDateInput.value = subscription.startDate;
+  // One field, whichever date the record actually carries.
+  if (els.subscriptionNextRenewalInput) {
+    els.subscriptionNextRenewalInput.value =
+      (subscription.autoRenew ? subscription.nextRenewalOverride : subscription.endDate) || '';
+  }
+  if (els.subscriptionAutoRenewInput) els.subscriptionAutoRenewInput.checked = subscription.autoRenew;
+  if (els.subscriptionSubmit) els.subscriptionSubmit.textContent = t('settings.subscriptions.update');
+  els.subscriptionCancelEdit?.classList.remove('hidden');
+  setSubscriptionFormMode();
+  syncSubscriptionDateBounds();
+  positionSubscriptionEditor();
+  openSubscriptionEditor();
+  setSubscriptionError('');
+}
+
+async function submitSubscription() {
+  const providerId = String(els.subscriptionProviderInput?.value || '').trim();
+  const accountValue = String(els.subscriptionAccountInput?.value || '').trim();
+  const amount = Number(els.subscriptionAmountInput?.value);
+  const startDate = String(els.subscriptionStartDateInput?.value || '').trim();
+  const autoRenew = els.subscriptionAutoRenewInput?.checked !== false;
+  const renewalDate = String(els.subscriptionNextRenewalInput?.value || '').trim();
+
+  if (!providerId || !accountValue) {
+    setSubscriptionError(t('settings.subscriptions.errorAccount'));
+    return;
+  }
+  const topUps = subscriptionFormTopUps();
+  const kind = subscriptionFormIsTopUp() ? 'topup' : 'subscription';
+  if (kind === 'topup') {
+    if (topUps.length === 0) {
+      setSubscriptionError(t('settings.subscriptions.errorTopUpEntries'));
+      return;
+    }
+  } else {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setSubscriptionError(t('settings.subscriptions.errorAmount'));
+      return;
+    }
+    if (!startDate) {
+      setSubscriptionError(t('settings.subscriptions.errorStartDate'));
+      return;
+    }
+    // The input's `max` only styles an out-of-range value as invalid; it never
+    // blocks one from being typed. A first charge is an event that has already
+    // happened, and a future one makes every figure derived from it meaningless.
+    if (startDate > subscriptionApi.todayString()) {
+      setSubscriptionError(t('settings.subscriptions.errorFutureDate'));
+      return;
+    }
+    // Whichever meaning the field currently carries, a date at or before the
+    // first charge describes coverage that ends before it begins.
+    if (renewalDate && renewalDate <= startDate) {
+      setSubscriptionError(t('settings.subscriptions.errorRenewalDate'));
+      return;
+    }
+  }
+
+  const account = subscriptionAccountChoices().find((choice) => choice.value === accountValue)?.provider;
+  const list = subscriptionList();
+  const editing = state.subscriptionEditingId
+    ? list.find((entry) => entry.id === state.subscriptionEditingId)
+    : null;
+
+  if (subscriptionForAccountValue(list, providerId, accountValue, editing?.id)) {
+    setSubscriptionError(t('settings.subscriptions.errorDuplicate'));
+    return;
+  }
+
+  const next = subscriptionApi.normalizeSubscription({
+    ...(editing || {}),
+    id: editing?.id,
+    provider: providerId,
+    kind,
+    binding: account ? subscriptionApi.bindingFromAccount(account) : editing?.binding,
+    planName: String(els.subscriptionPlanNameInput?.value || '').trim(),
+    amountMinor: Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) : 0,
+    currency: String(els.subscriptionCurrencyInput?.value || 'USD'),
+    interval: String(els.subscriptionIntervalInput?.value || 'month'),
+    intervalCount: Number(els.subscriptionIntervalCountInput?.value) || 1,
+    // Each kind keeps only its own anchor, so switching kind on an existing
+    // record cannot leave the other one's stale dates behind it.
+    startDate: kind === 'topup' ? null : startDate,
+    topUps: kind === 'topup' ? topUps : [],
+    autoRenew,
+    // The one date field feeds whichever of the two dates it currently means,
+    // and always clears the other — a stale override left behind by a toggle
+    // would silently keep scheduling charges on a cancelled plan.
+    nextRenewalOverride: kind === 'topup' || !autoRenew ? null : renewalDate || null,
+    endDate: kind === 'topup' || autoRenew ? null : renewalDate || null,
+    updatedAt: new Date().toISOString()
+  }, { currencyApi });
+  if (!next) {
+    setSubscriptionError(t(kind === 'topup' ? 'settings.subscriptions.errorTopUpEntries' : 'settings.subscriptions.errorStartDate'));
+    return;
+  }
+
+  const updated = editing
+    ? list.map((entry) => (entry.id === editing.id ? next : entry))
+    : [...list, next];
+  if (!await saveSubscriptions(updated, state.subscriptionFormBase, { render: false })) return;
+  closeSubscriptionEditor({
+    onClosed: renderSubscriptionSettings,
+    onCanceled: renderSubscriptionSettings
+  });
+}
+
 function configuredLimitProviderOrder() {
   const enabled = enabledLimitProviderSet();
   return limitProviderOrderApi
@@ -2409,9 +3888,11 @@ function claudeBalanceNode(provider) {
 }
 
 const {
+  creditsAmount,
   creditsMeterPercent,
   formatCompactMoney,
   formatMoney,
+  isCreditsWindow,
   spendWindow
 } = window.TokenMonitorLimitBalanceDisplay;
 
@@ -2858,7 +4339,7 @@ function renderLimitProviderHead(id, label, provider, color, options = {}) {
   const plan = document.createElement('div');
   plan.className = 'limit-plan';
   plan.textContent = options.planText ?? limitProviderPlan(provider);
-  head.append(titleBlock, plan);
+  head.append(titleBlock, decoratePlanWithSubscription(plan, provider));
   return head;
 }
 
@@ -3307,7 +4788,7 @@ function codexAccountTitle(provider, index, providers = [provider]) {
 function renderCodexAccountGroup(label, providers, color) {
   const row = document.createElement('div');
   row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
-  const groupProvider = { provider: 'codex', status: 'ok', windows: [] };
+  const groupProvider = { provider: 'codex', status: 'ok', windows: [], accountGroup: true };
   const head = renderLimitProviderHead('codex', label, groupProvider, color, {
     planText: t('settings.codex.nAccounts', { count: providers.length }),
     hideMeta: true
@@ -3330,7 +4811,7 @@ function renderCodexAccountGroup(label, providers, color) {
 function renderClaudeAccountGroup(label, providers, color) {
   const row = document.createElement('div');
   row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
-  const groupProvider = { provider: 'claude', status: 'ok', windows: [] };
+  const groupProvider = { provider: 'claude', status: 'ok', windows: [], accountGroup: true };
   const head = renderLimitProviderHead('claude', label, groupProvider, color, {
     planText: t('settings.claude.nAccounts', { count: providers.length }),
     hideMeta: true
@@ -3355,7 +4836,7 @@ function mimoSettingsAccountTitle(account, index) {
 function renderMimoAccountGroup(label, providers, color) {
   const row = document.createElement('div');
   row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
-  const groupProvider = { provider: 'mimo', status: 'ok', windows: [] };
+  const groupProvider = { provider: 'mimo', status: 'ok', windows: [], accountGroup: true };
   const head = renderLimitProviderHead('mimo', label, groupProvider, color, {
     planText: t('settings.mimo.nAccounts', { count: providers.length }),
     hideMeta: true
@@ -3388,7 +4869,7 @@ function opencodeAccountTitle(provider, index) {
 function renderOpenCodeAccountGroup(label, providers, color) {
   const row = document.createElement('div');
   row.className = 'limit-row limit-row-group';
-  const groupProvider = { provider: 'opencode', status: 'ok', windows: [] };
+  const groupProvider = { provider: 'opencode', status: 'ok', windows: [], accountGroup: true };
   const head = renderLimitProviderHead('opencode', label, groupProvider, color, {
     planText: t('settings.opencode.nAccounts', { count: providers.length }),
     hideMeta: true
@@ -3428,7 +4909,7 @@ function thirdPartyPlanText(provider) {
 function renderNamedApiAccountGroup(providerId, label, providers, color, options = {}) {
   const row = document.createElement('div');
   row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
-  const groupProvider = { provider: providerId, status: 'ok', windows: [] };
+  const groupProvider = { provider: providerId, status: 'ok', windows: [], accountGroup: true };
   const head = renderLimitProviderHead(providerId, label, groupProvider, color, {
     planText: options.groupPlanText,
     hideMeta: true
@@ -3725,16 +5206,17 @@ function stopServiceStatusTicker() {
 }
 
 async function openSessionDetail({ client, sessionId, sessionCost, title }) {
-  state.openSession = { client, sessionId, sessionCost, title, detail: null };
+  const request = { client, sessionId, sessionCost, title, period: state.period, detail: null };
+  state.openSession = request;
   renderSessionDetail({ loading: true });
   try {
-    const detail = await window.tokenMonitor.getSessionDetail({ client, sessionId, period: state.period, sessionCost });
-    if (state.openSession && state.openSession.sessionId === sessionId) {
-      state.openSession.detail = detail;
+    const detail = await window.tokenMonitor.getSessionDetail({ client, sessionId, period: request.period, sessionCost });
+    if (state.openSession === request) {
+      request.detail = detail;
       renderSessionDetail({ detail });
     }
   } catch (_) {
-    if (state.openSession && state.openSession.sessionId === sessionId) renderSessionDetail({ error: true });
+    if (state.openSession === request) renderSessionDetail({ error: true });
   }
 }
 
@@ -4962,6 +6444,7 @@ function render() {
   }
   state.currentTotal = nextTotal;
   els.cost.textContent = formatCost(period.costUsd || 0);
+  renderTokenRate();
   if (!state.refreshBusy && !state.refreshFeedbackTimer) setRefreshButtonState('idle');
   els.shell.classList.toggle('session-mode', state.breakdown === 'session');
   els.shell.classList.toggle('home-mode', state.breakdown === 'home');
@@ -5766,13 +7249,13 @@ function renderFloatingBubbleContent() {
       return;
     }
     el.classList.remove('bars');
-    el.textContent = (state.stats && window.TokenMonitorTrayText.formatTrayText(state.stats, mode, currentCurrency(), state.settings)) || 'Σ';
+    el.textContent = (state.stats && window.TokenMonitorTrayText.formatTrayText(state.stats, mode, currentCurrency(), compactTokenDisplayOptions())) || 'Σ';
   } else if (mode === 'icon') {
     el.classList.remove('bars');
     el.textContent = 'Σ';
   } else {
     el.classList.remove('bars');
-    el.textContent = state.stats ? (window.TokenMonitorTrayText.formatTrayText(state.stats, mode, currentCurrency(), state.settings) || '0') : '0';
+    el.textContent = state.stats ? (window.TokenMonitorTrayText.formatTrayText(state.stats, mode, currentCurrency(), compactTokenDisplayOptions()) || '0') : '0';
   }
   reportFloatingBubbleSize();
 }
@@ -6114,6 +7597,7 @@ function syncSettingsForm() {
   els.limitsRefreshInput.value = String(LIMIT_REFRESH_OPTIONS.includes(Number(state.settings.limitsRefreshMs)) ? state.settings.limitsRefreshMs : 300000);
   els.showLimitSourceInput.checked = Boolean(state.settings.showLimitSource);
   els.maskLimitAccountEmailsInput.checked = Boolean(state.settings.maskLimitAccountEmails);
+  renderSubscriptionSettings();
   const showLimitUsed = state.settings.showLimitUsed ? 'used' : 'remaining';
   for (const input of els.showLimitUsedInputs || []) input.checked = input.value === showLimitUsed;
   if (els.syncUploadIntervalInput) {
@@ -6166,7 +7650,7 @@ function syncSettingsForm() {
   }
   els.compactTokenUnitsRow?.classList.toggle(
     'hidden',
-    state.settings.showCompactTotalTokens !== true || !supportsLocalizedCompactTokenUnits(currentLocale())
+    !supportsLocalizedCompactTokenUnits(currentLocale())
   );
   els.swapSettingsRefreshInput.checked = state.settings.settingsInTitlebar === true;
   els.discordRpcInput.checked = Boolean(state.settings.discordRpcEnabled);
@@ -8131,6 +9615,7 @@ els.backHomeButton?.addEventListener('click', (event) => {
 });
 
 window.addEventListener('blur', () => {
+  cancelTokenRateBoost();
   clearViewSwitcherLongPress();
   clearViewSwitcherHoverClose();
   viewSwitcherLongPressTriggered = false;
@@ -8246,9 +9731,28 @@ els.hubModeOptions.addEventListener('change', async (event) => {
   await refreshStats();
 });
 
+// Both, not just the mark: either one reveals the reading on hover, so a click or hold that
+// only worked on one of them would leave the other looking broken. The suppression listener
+// must be registered before the existing toggle listener so a long hold does not also toggle
+// the persisted speed/burn framing when its pointerup synthesizes a click.
+els.appTitleMark?.addEventListener('pointerdown', startTokenRateBoost);
+els.liveDot?.addEventListener('pointerdown', startTokenRateBoost);
+els.appTitleMark?.addEventListener('lostpointercapture', (event) => {
+  // A normal pointerup has already entered settling before capture is released. Only an
+  // unexpected loss while boosting is a cancellation; otherwise the release animation would
+  // be cut off immediately by the browser's follow-up lostpointercapture event.
+  cancelTokenRateBoost(event, { preserveSettling: true });
+});
+els.liveDot?.addEventListener('lostpointercapture', (event) => {
+  cancelTokenRateBoost(event, { preserveSettling: true });
+});
+els.appTitleMark?.addEventListener('click', suppressTokenRateClickAfterHold);
+els.liveDot?.addEventListener('click', suppressTokenRateClickAfterHold);
+els.appTitleMark?.addEventListener('click', toggleTokenRateMode);
+els.liveDot?.addEventListener('click', toggleTokenRateMode);
+
 els.languageInput?.addEventListener('change', async () => {
   await saveSettings({ language: els.languageInput.value });
-  if (!numberAnimHandle) updateTotalCompact(state.currentTotal);
 });
 
 els.currencyInput?.addEventListener('change', async () => {
@@ -8315,6 +9819,58 @@ els.maskLimitAccountEmailsInput.addEventListener('change', async () => {
   await saveSettings({ maskLimitAccountEmails: els.maskLimitAccountEmailsInput.checked });
   renderLimits();
 });
+els.subscriptionAddToggle?.addEventListener('click', () => {
+  const opening = els.subscriptionAddDetails?.classList.contains('hidden');
+  if (opening) {
+    beginSubscriptionAdd();
+    return;
+  }
+  if (state.subscriptionEditingId) {
+    closeSubscriptionEditor({ onClosed: openSubscriptionAddEditor });
+    return;
+  }
+  closeSubscriptionEditor();
+});
+els.subscriptionProviderInput?.addEventListener('change', () => {
+  renderSubscriptionPickers();
+  applySubscriptionAccountSelection();
+});
+els.subscriptionAccountInput?.addEventListener('change', applySubscriptionAccountSelection);
+els.subscriptionStartDateInput?.addEventListener('change', syncSubscriptionDateBounds);
+els.subscriptionAutoRenewInput?.addEventListener('change', setSubscriptionRenewalFieldMode);
+els.subscriptionOrphanAdopt?.addEventListener('click', async () => {
+  try {
+    applySubscriptionSettings(await window.tokenMonitor.adoptOrphanedSubscriptions());
+    state.subscriptionSyncError = '';
+  } catch (error) {
+    // The records stay set aside on failure — they are only cleared once the
+    // shared list has actually accepted them.
+    state.subscriptionSyncError = subscriptionWriteErrorKey(error);
+    try { applySubscriptionSettings(await window.tokenMonitor.getSettings()); } catch (_) {}
+  }
+  renderSubscriptionSettings();
+});
+els.subscriptionOrphanDiscard?.addEventListener('click', async () => {
+  try {
+    applySubscriptionSettings(await window.tokenMonitor.discardOrphanedSubscriptions());
+    // A discard that worked resolves whatever the failed adopt was complaining
+    // about; leaving the message up would describe a state that is over.
+    state.subscriptionSyncError = '';
+  } catch (error) {
+    state.subscriptionSyncError = subscriptionWriteErrorKey(error);
+    try { applySubscriptionSettings(await window.tokenMonitor.getSettings()); } catch (_) {}
+  }
+  renderSubscriptionSettings();
+});
+for (const input of els.subscriptionKindInputs || []) {
+  input.addEventListener('change', setSubscriptionFormMode);
+}
+// The ledger prints its amounts in the picked currency, so it has to redraw when
+// that changes.
+els.subscriptionCurrencyInput?.addEventListener('change', renderSubscriptionTopUpEntries);
+els.subscriptionTopUpAddButton?.addEventListener('click', addSubscriptionTopUpEntry);
+els.subscriptionSubmit?.addEventListener('click', submitSubscription);
+els.subscriptionCancelEdit?.addEventListener('click', () => closeSubscriptionEditor());
 for (const input of els.showLimitUsedInputs || []) {
   input.addEventListener('change', async () => {
     if (input.checked) await saveSettings({ showLimitUsed: input.value === 'used' });
@@ -8449,16 +10005,10 @@ els.toolIconsInput.addEventListener('change', async () => {
 });
 els.titleIconInput.addEventListener('change', saveAppearanceFromControls);
 els.showCompactTotalTokensInput.addEventListener('change', async () => {
-  els.compactTokenUnitsRow?.classList.toggle(
-    'hidden',
-    !els.showCompactTotalTokensInput.checked || !supportsLocalizedCompactTokenUnits(currentLocale())
-  );
   await saveAppearanceFromControls();
-  if (!numberAnimHandle) updateTotalCompact(state.currentTotal);
 });
 els.compactTokenUnitsInput?.addEventListener('change', async () => {
   await saveAppearanceFromControls();
-  if (!numberAnimHandle) updateTotalCompact(state.currentTotal);
 });
 window.addEventListener('resize', () => { if (!numberAnimHandle) fitTotalNumber(); });
 els.swapSettingsRefreshInput.addEventListener('change', () => {
@@ -8656,12 +10206,22 @@ els.appUpdateReleaseNotesButton.addEventListener('click', async () => {
 window.tokenMonitor.onSettingsPush?.((next) => {
   if (!next) return;
   const prevMetric = state.settings?.heatmapMetric;
+  const prevLanguage = state.settings?.language;
+  const prevCompactTokenUnits = state.settings?.compactTokenUnits;
+  const prevShowCompactTotalTokens = state.settings?.showCompactTotalTokens;
   state.settings = next;
   applyEffectiveCurrencyRates();
-  syncSettingsForm();
+  preserveSettingsPanelScroll(syncSettingsForm);
   maybeUpdateBarsIcon();
   if ((prevMetric || 'cost') !== (next.heatmapMetric || 'cost')) {
     render();
+  } else if (
+    prevLanguage !== next.language
+    || prevCompactTokenUnits !== next.compactTokenUnits
+  ) {
+    render();
+  } else if (prevShowCompactTotalTokens !== next.showCompactTotalTokens) {
+    updateTotalCompact(state.currentTotal);
   }
 });
 
@@ -8721,7 +10281,10 @@ const statsRenderScheduler = statsRenderSchedulerApi.createStatsRenderScheduler(
   isHidden: () => document.hidden,
   render: renderStatsUpdate
 });
-document.addEventListener('visibilitychange', () => statsRenderScheduler.flush());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) cancelTokenRateBoost();
+  statsRenderScheduler.flush();
+});
 
 window.tokenMonitor.onStatsPush?.((payload) => {
   if (!payload) return;
@@ -9430,6 +10993,7 @@ function renderCustomTrayLayout(stats, layout, height = 44, colors = {}, options
     : '';
   const resolved = trayLayoutApi.resolveTrayLayout(layout, stats, {
     currency: currentCurrency(),
+    ...compactTokenDisplayOptions(),
     nowMs: Date.now(),
     activeAccountKeys: activeCodexKey ? { codex: activeCodexKey } : {},
     availableProviderIds: Object.keys(trayProviderImages)
@@ -9656,7 +11220,7 @@ function renderStandardUsageTrayPreview(mode, stats) {
     stats,
     mode,
     currentCurrency(),
-    state.settings
+    compactTokenDisplayOptions()
   );
   const title = text
     ? renderCustomTrayItemCanvas({ type: 'text', text, fontStyle: 'normal' }, height, colors)
@@ -9705,7 +11269,7 @@ function trayComposerPreview(surface) {
       stats,
       mode,
       currentCurrency(),
-      state.settings
+      compactTokenDisplayOptions()
     ) || '—'
   };
 }

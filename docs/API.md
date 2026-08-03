@@ -60,6 +60,9 @@ Example payload:
     "cacheReadTokens": 1100,
     "cacheWriteTokens": 0,
     "outputTokens": 34,
+    "timedTokens": 1230,
+    "timedOutputTokens": 34,
+    "timedDurationMs": 4200,
     "clients": {
       "codex": 1234
     },
@@ -187,6 +190,20 @@ The hub normalizes records before storing them. The Node hub accepts JSON ingest
 
 Authenticated stats expose `projectsIncomplete: true` when a device omitted its rollup, disabled project tracking while contributing usage, or could not preserve exact all-time attribution after its tracked-client list changed. Affected device entries expose `allTimeProjectsOmitted`, `allTimeProjectsIncomplete`, or `projectsEnabled: false` as the reason. The public Worker stats endpoint removes the entire `projects` map, including both display labels and canonical keys.
 
+`timedTokens`, `timedOutputTokens` and `timedDurationMs` are optional throughput inputs, summed from tokscale's per-entry `performance` block. `timedDurationMs` is the sum of per-message durations, not a wall-clock span — concurrent sessions contribute their durations separately — and `timedTokens` counts the tokens of the messages that carried a duration. Coverage is only meaningful per tokscale entry and must **not** be reconstructed as `timedTokens / totalTokens` after aggregation: that ratio mixes clients with completely different coverage, and it is not even bounded by 1, because tokscale counts reasoning in its own token total while `totalTokens` deliberately does not.
+
+`timedOutputTokens` is the output of the entries that carried a duration — an entry contributes its output exactly when it contributes its duration, so `timedOutputTokens / timedDurationMs` always divides two totals describing the same entries. The gate is applied per entry rather than rebuilt from period totals: several tracked clients report no durations at all, so anything derived from summed totals lets one client's output ride on another client's clock, and the resulting rate drifts with the client mix rather than with throughput.
+
+tokscale also reports a per-entry `tokenCoverage`, and this deliberately does not scale by it. Doing so would assume output is spread evenly across an entry's tokens; in practice output is ~0.3–3% of an entry's tokens while the untimed remainder measures several times an entry's entire output, so that remainder is cache and input rather than generation, and scaling would discount output that was almost certainly timed. Ignoring it also keeps the field a plain integer counter that merges and deltas like every other token count.
+
+All three are reported as raw sums rather than a pre-divided rate because a ratio cannot be summed: consumers add each field across devices and periods and divide only at the point of display, which makes a fleet-wide rate duration-weighted. Payloads without these fields are accepted and normalize to `0`, which consumers must read as "no throughput data" rather than "zero throughput".
+
+Because the gate is all-or-nothing per entry, `timedOutputTokens ≤ outputTokens` is a physical bound: a period cannot have timed more output than it produced. The two are equal when every entry in the period reported durations. A partly timed entry — 1230 of 1234 tokens in the example above — still contributes all of its output, since the untimed remainder is cache and input rather than generation.
+
+The collector satisfies that bound by construction, but the hub and the Worker normalize records posted by any agent, so normalization **enforces** it: a `timedOutputTokens` larger than the record's own `outputTokens` is capped rather than trusted. Ingest is a trust boundary here, and this value divides straight into a headline rate.
+
+All three are additive over append-only messages, which keeps them exact under the delta path a watch-triggered scan uses to carry a `today` rescan into `month` and `allTime`. The one case where `timedOutputTokens` and a full rescan can disagree is a session that spans the boundary and starts or stops reporting durations partway through, since a rescan then re-gates the whole session on its combined state; the next full scan reconciles it. Closing even that needs a per-message timed-output counter from tokscale.
+
 `trackedClients` is optional but recommended for agents and widgets. When it is present, the hub treats omitted clients as intentionally not collected in this payload and preserves their previous usage for that device. This keeps "tracking" as "collect future data" rather than "hide existing history".
 
 Current agents and widgets include `osName` and, when known, `osVersion` so device details can show a user-facing operating-system release. macOS uses the product version from Electron or `sw_vers`; Windows uses the product family and display version from the registry; Linux uses the distribution name and version from `os-release`. Detection failures fall back to an explicitly labelled Windows build or Linux kernel release. The hub continues to accept older payloads without these fields.
@@ -226,6 +243,7 @@ Response includes:
 - `projectsIncomplete` plus the corresponding `devices[].allTimeProjectsOmitted`, `devices[].allTimeProjectsIncomplete`, or `devices[].projectsEnabled` diagnostic
 - `historyPreview.daily[].activeTimeMs`, `historyPreview.monthly[].activeTimeMs`, and `historyPreview.summary.activeTimeMs` when tokscale graph exposes session active-time metrics
 - `limits.providers` aggregated by provider account
+- `subscriptionsUpdatedAt`, the `updatedAt` of the hub's shared subscription list, or `""` if nothing has been written to it. The version only, never the records: a device compares it against the copy it holds and re-reads `/api/subscriptions` only when it has been overtaken. This is how an edit made on one device reaches the others, so a client that does not consult it will only see the shared list as it stood when it connected. Omitted from public Worker stats. An absent field means "no news" rather than an empty list.
 - `devices`, including each device's normalized `periods`, `limits`, `receivedAt`, `osName` / `osVersion` when reported, optional `syncUploadIntervalMs`, and optional `periodWindows`
 - stale status for devices that have not reported recently
 
@@ -240,3 +258,64 @@ Returns normalized records for all stored devices.
 Deletes one device record from the hub store.
 
 This is useful after renaming a device id.
+
+## `GET /api/subscriptions`
+
+Returns the hub's shared subscription list.
+
+```json
+{
+  "ok": true,
+  "version": 1,
+  "updatedAt": "2026-08-02T09:14:11.204Z",
+  "subscriptions": [
+    {
+      "id": "sub_1754126051204_k3xq",
+      "provider": "codex",
+      "kind": "subscription",
+      "binding": { "profileName": "", "accountKey": "sha256:…", "accountEmail": "you@example.com" },
+      "planName": "Plus",
+      "amountMinor": 9000,
+      "currency": "HKD",
+      "interval": "month",
+      "intervalCount": 1,
+      "startDate": "2026-05-31",
+      "topUps": [],
+      "autoRenew": true,
+      "nextRenewalOverride": null,
+      "endDate": null,
+      "note": "",
+      "updatedAt": "2026-08-02T09:14:11.204Z"
+    }
+  ]
+}
+```
+
+Unlike usage and limits, subscriptions are **not** part of a device record. A subscription describes an account rather than a machine, and account keys are not stable across platforms — the same OAuth login hashes differently on macOS and Windows — so per-device copies could not be reliably deduplicated and a two-machine setup would double its own monthly total. The hub therefore stores exactly one list, shared by every device connected to it, and a delete is a delete with no tombstone needed to stop another device resurrecting it.
+
+Devices in `local` mode keep their own list in the widget's `settings.json` and never call these endpoints. In `client` and `host` mode `settings.json` holds only the last-known copy, so a hub that is unreachable at startup still shows the records; writes made while it is unreachable are refused rather than applied locally, which would fork the shared list.
+
+Both endpoints sit behind the same `secret` gate as every other data route, and the list is never included in `publicStats` / `publicLimits`, which are built from device records alone.
+
+`topUps[]` entries are `{ id, date, amountMinor }`, newest first. Amounts are integer hundredths of a unit in the record's own `currency`. Dates are plain `YYYY-MM-DD` calendar days, never timestamps.
+
+## `PUT /api/subscriptions`
+
+Replaces the shared list.
+
+```json
+{
+  "subscriptions": [],
+  "baseUpdatedAt": "2026-08-02T09:14:11.204Z"
+}
+```
+
+`subscriptions` must be an array; anything else responds `400` and stores nothing. An empty array is a valid clear, but a malformed or truncated body would otherwise normalize to an empty list and be stored as a perfectly successful replacement.
+
+`baseUpdatedAt` is the `updatedAt` the client last read. If it does not match the stored document the hub responds `409` with the current document and writes nothing: a device showing a stale copy would otherwise erase every record added elsewhere since it last looked, and this data exists nowhere else. An empty `baseUpdatedAt` is accepted only against a hub that has never been written to — a hub whose list is empty but whose `updatedAt` is set has had its records deleted, and re-seeding it from a stale cache would undo that.
+
+Because `updatedAt` doubles as the concurrency token, it is guaranteed to increase strictly on every accepted write: two writes landing in the same millisecond would otherwise share a token, and a third holding the older one would pass the staleness check against a document it never read.
+
+Records are re-normalized on ingest exactly as `POST /api/ingest` normalizes device records; unknown fields are dropped and malformed records are discarded rather than stored. `currency` is validated against the display currencies the app carries rates for (`USD`, `TWD`, `HKD`, `CNY`); a record naming anything else responds `400` and stores nothing, because coercing it would report an amount the user never entered. A successful write responds `200` with the stored document in the same shape as `GET`.
+
+An accepted write also broadcasts stats to connected stream clients with `reason: "subscriptions"`, the same way an ingest does. That frame carries the new `subscriptionsUpdatedAt`, which is how the other devices learn their copy has been overtaken.
