@@ -162,6 +162,7 @@ const customPricingFormApi = window.TokenMonitorCustomPricingForm;
 const viewDisplayPreferencesApi = window.TokenMonitorViewDisplayPreferences;
 const preferenceDragSortApi = window.TokenMonitorPreferenceDragSort;
 const verticalDragSortApi = window.TokenMonitorVerticalDragSort;
+const rowDragControllerApi = window.TokenMonitorRowDragController;
 const homeOverviewApi = window.TokenMonitorHomeOverview;
 const homeModulePreferencesApi = window.TokenMonitorHomeModulePreferences;
 const { limitFillPercent, limitModeSuffix } = window.TokenMonitorLimitDisplayMode;
@@ -7902,12 +7903,12 @@ function onPreferencePointerMove(event) {
 function onPreferencePointerUp(event) {
   if (!preferenceDrag || preferenceDrag.pointerId !== event.pointerId) return;
   event.preventDefault();
-  const { kind, id } = preferenceDrag;
+  const { kind } = preferenceDrag;
   const order = applyPreferenceLiveOrder(kind, event.clientY) || preferenceDrag.order;
   const changed = preferenceDrag.changed;
   releasePreferencePointer(event.pointerId);
   finishPreferenceDrag();
-  if (changed) void onPreferenceOrderCommit(kind, order, id);
+  if (changed) void onPreferenceOrderCommit(kind, order);
 }
 
 function onPreferencePointerCancel(event) {
@@ -7922,17 +7923,13 @@ function createPreferenceOrderHandle({ kind, id, label, count }) {
   handle.type = 'button';
   handle.className = 'preference-order-handle';
   handle.dataset.preferenceOrderHandle = kind;
-  const titleKey = kind === 'client'
-    ? 'settings.tools.reorderClient'
-    : kind === 'view'
-      ? 'settings.views.reorderView'
-      : kind === 'statusProvider'
-        ? 'serviceStatus.reorderProvider'
-        : kind === 'homeModule'
-          ? 'settings.home.reorderModule'
-          : kind === 'homeLimitProvider'
-            ? 'settings.home.reorderProvider'
-            : 'settings.limits.reorderProvider';
+  const titleKey = kind === 'view'
+    ? 'settings.views.reorderView'
+    : kind === 'statusProvider'
+      ? 'serviceStatus.reorderProvider'
+      : kind === 'homeModule'
+        ? 'settings.home.reorderModule'
+        : 'settings.home.reorderProvider';
   handle.title = t(titleKey, { name: label });
   handle.setAttribute('aria-label', handle.title);
   handle.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
@@ -7942,268 +7939,32 @@ function createPreferenceOrderHandle({ kind, id, label, count }) {
   return handle;
 }
 
-// The limit provider list drags from the whole row instead of a handle: the
-// pointer must travel this far vertically before the gesture counts as a drag
-// rather than a click. Same threshold the tray composer uses horizontally.
-const LIMIT_PROVIDER_DRAG_THRESHOLD = 4;
-let limitProviderDrag = null;
-
-// Rows are measured in the settings panel's content space (client Y plus its
-// scrollTop) so edge auto-scrolling never invalidates the snapshot: when the
-// panel scrolls the pointer's content Y advances on its own, with no
-// compensation term anywhere else.
-function limitProviderContentY(clientY) {
-  const panel = els.settingsPanel;
-  if (!panel) return clientY;
-  return clientY - panel.getBoundingClientRect().top + panel.scrollTop;
-}
-
-function limitProviderRowElements() {
-  return Array.from(els.limitProviderCheckboxes?.querySelectorAll('.limit-provider-row[data-provider]') || []);
-}
-
-function limitProviderContentTop(el) {
-  const panel = els.settingsPanel;
-  const panelTop = panel ? panel.getBoundingClientRect().top - panel.scrollTop : 0;
-  return el.getBoundingClientRect().top - panelTop;
-}
-
-function limitProviderDragRows() {
-  const panel = els.settingsPanel;
-  const panelTop = panel ? panel.getBoundingClientRect().top - panel.scrollTop : 0;
-  return limitProviderRowElements().map((el) => {
-    const rect = el.getBoundingClientRect();
-    return { el, id: el.dataset.provider, top: rect.top - panelTop, height: rect.height };
-  });
-}
-
+// The limit provider list drags from the whole row instead of a handle. The
+// gesture itself is generic and lives in `rowDragController.js`; what stays
+// here is the wiring to this list's DOM, ordering setting, and accordion.
+//
 // The checkbox, nested controls, and options panel own their clicks. The main
 // disclosure button is deliberately the drag surface too: below the threshold
 // it clicks, above it the drag suppresses that click.
 const LIMIT_PROVIDER_DRAG_EXCLUDED = 'button:not(.limit-provider-main), input, select, textarea, a, .accordion-animated-container';
 
-function startLimitProviderRowDrag(event, id) {
-  if (event.button !== 0) return;
-  const rowEl = event.currentTarget;
-  // Scoped to the row on purpose: `closest` keeps walking past it, and the
-  // whole settings section is itself an `.accordion-animated-container`, so an
-  // unscoped match excludes every row and no drag ever starts.
-  const excluded = event.target?.closest?.(LIMIT_PROVIDER_DRAG_EXCLUDED);
-  if (excluded && rowEl.contains(excluded)) return;
-  if (limitProviderDrag) finishLimitProviderDrag(false);
-  if (limitProviderRowElements().length <= 1) return;
-  const pressY = limitProviderContentY(event.clientY);
-  limitProviderDrag = {
-    id,
-    pointerId: event.pointerId,
-    // Where in the row the pointer landed. The origin is rebuilt from this once
-    // the rows are measured, so a collapse between press and measurement cannot
-    // leave the row hanging off the cursor.
-    grabOffset: pressY - limitProviderContentTop(rowEl),
-    pressY,
-    lastClientY: event.clientY,
-    started: false,
-    changed: false,
-    expandedBefore: state.limitProviderSettingsExpanded,
-    captureEl: rowEl,
-    rows: [],
-    snapshot: null,
-    order: null,
-    scrollFrame: 0,
-    renderPending: false
-  };
-  setLimitProviderDragListeners(true);
-}
-
-function setLimitProviderDragListeners(active) {
-  const method = active ? 'addEventListener' : 'removeEventListener';
-  window[method]('pointermove', onLimitProviderPointerMove, true);
-  window[method]('pointerup', onLimitProviderPointerUp, true);
-  window[method]('pointercancel', onLimitProviderDragAbort, true);
-  window[method]('keydown', onLimitProviderDragKeydown, true);
-  // Deliberately not capture. `blur` does not bubble, so a capture listener on
-  // `window` is the standard way to observe *every* element's blur — including
-  // the one the press itself causes when focus leaves whatever the user last
-  // clicked. That cancelled the drag before it could start. Without capture only
-  // the window's own blur arrives, which is the case worth aborting on.
-  window[method]('blur', onLimitProviderDragAbort);
-}
-
-// Order matters: freeze the accordion, collapse, and only then measure. With
-// the transition disabled the collapse lands synchronously, so the snapshot
-// sees settled geometry instead of a mid-animation height.
-function beginLimitProviderDrag() {
-  const drag = limitProviderDrag;
-  const list = els.limitProviderCheckboxes;
-  drag.started = true;
-  list?.classList.add('is-reordering');
-  if (drag.expandedBefore) setLimitProviderSettingsExpanded('');
-  drag.rows = limitProviderDragRows();
-  drag.snapshot = verticalDragSortApi.createVerticalDragSnapshot(
-    drag.rows.map(({ id, top, height }) => ({ id, top, height })),
-    drag.id,
-    drag.grabOffset
-  );
-  if (drag.snapshot.sourceIndex < 0) {
-    finishLimitProviderDrag(false);
-    return false;
-  }
-  drag.rows[drag.snapshot.sourceIndex].el.classList.add('dragging');
-  list?.classList.add('drag-active');
-  startLimitProviderDragScroll();
-  return true;
-}
-
-function updateLimitProviderDragPositions() {
-  const drag = limitProviderDrag;
-  if (!drag?.started) return;
-  const offsetY = limitProviderContentY(drag.lastClientY) - drag.snapshot.originY;
-  const resolved = verticalDragSortApi.resolveVerticalDrag(drag.snapshot, offsetY);
-  drag.order = resolved.order;
-  drag.changed = resolved.targetIndex !== drag.snapshot.sourceIndex;
-  for (const [index, { el }] of drag.rows.entries()) {
-    if (index === drag.snapshot.sourceIndex) el.style.setProperty('--drag-y', `${offsetY}px`);
-    else el.style.setProperty('--drag-shift', `${resolved.shifts[index]}px`);
-  }
-}
-
-function startLimitProviderDragScroll() {
-  const step = () => {
-    const drag = limitProviderDrag;
-    const panel = els.settingsPanel;
-    if (!drag?.started || !panel) return;
-    const rect = panel.getBoundingClientRect();
-    const delta = verticalDragSortApi.edgeScrollDelta({
-      pointerY: drag.lastClientY,
-      top: rect.top,
-      bottom: rect.bottom
-    });
-    if (delta) {
-      panel.scrollTop += delta;
-      updateLimitProviderDragPositions();
-    }
-    drag.scrollFrame = requestAnimationFrame(step);
-  };
-  limitProviderDrag.scrollFrame = requestAnimationFrame(step);
-}
-
-function onLimitProviderPointerMove(event) {
-  const drag = limitProviderDrag;
-  if (!drag || drag.pointerId !== event.pointerId) return;
-  drag.lastClientY = event.clientY;
-  if (!drag.started) {
-    if (Math.abs(limitProviderContentY(event.clientY) - drag.pressY) < LIMIT_PROVIDER_DRAG_THRESHOLD) return;
-    // Capture only after the gesture crosses the drag threshold. Capturing on
-    // pointerdown retargets the eventual click from the nested disclosure
-    // button to the outer row, so an ordinary press can no longer expand it.
-    // Once dragging, capture still guarantees that an outside-window release
-    // reaches cleanup instead of leaving the repaint gate stuck.
-    drag.captureEl?.addEventListener('lostpointercapture', onLimitProviderDragAbort);
-    try { drag.captureEl?.setPointerCapture?.(event.pointerId); } catch (_) {}
-    if (!beginLimitProviderDrag()) return;
-  }
-  event.preventDefault();
-  updateLimitProviderDragPositions();
-}
-
-function onLimitProviderPointerUp(event) {
-  const drag = limitProviderDrag;
-  if (!drag || drag.pointerId !== event.pointerId) return;
-  const { started, changed, order } = drag;
-  if (!started || !changed || !order?.length) {
-    finishLimitProviderDrag(true);
-    return;
-  }
-  // Mirror the new order locally before anything can repaint. A stats update
-  // held back during the drag is flushed on drop, and every repaint sorts from
-  // `state.settings` — which the deferred save has not written yet, so without
-  // this the list rebuilds into the old order and flips again a frame later.
-  const value = order.join(',');
-  state.settings = { ...state.settings, limitProviderOrder: value };
-  finishLimitProviderDrag(true);
-  // The drop itself is already in the DOM. Persisting re-renders the whole
-  // settings form, which on a populated install is a long task — run it only
-  // once the browser has painted the landed row, or that paint gets swallowed
-  // and the drop reads as a freeze. rAF fires before paint, so the timeout
-  // inside it is what lands after. Saved directly rather than through
-  // `onPreferenceOrderCommit`, whose no-op guard compares against the value we
-  // just mirrored and would drop the write.
-  requestAnimationFrame(() => {
-    setTimeout(() => void saveSettings({ limitProviderOrder: value }), 0);
-  });
-}
-
-function onLimitProviderDragAbort(event) {
-  if (!limitProviderDrag) return;
-  if (event?.pointerId != null && event.pointerId !== limitProviderDrag.pointerId) return;
-  finishLimitProviderDrag(false);
-}
-
-function onLimitProviderDragKeydown(event) {
-  if (event.key !== 'Escape' || !limitProviderDrag) return;
-  event.preventDefault();
-  finishLimitProviderDrag(false);
-}
-
-function releaseLimitProviderLandingStyleAfterPaint(list) {
-  requestAnimationFrame(() => {
-    setTimeout(() => list?.classList.remove('is-landing'), 0);
-  });
-}
-
-// The final DOM positions and the drag transforms both encode the same move.
-// Keep transform transitions disabled through the first landed paint so rows
-// do not briefly apply both offsets and animate back from a double displacement.
-function finishLimitProviderDrag(commit) {
-  const drag = limitProviderDrag;
-  if (!drag) return;
-  // The DOM reorder itself runs before the asynchronous settings save. Moving
-  // the focused row (and every sibling via appendChild) can trigger browser
-  // scroll anchoring immediately, so the save-time scroll guard is already too
-  // late. Preserve the panel around the whole landing transaction, including a
-  // deferred repaint that was held while dragging.
-  preserveSettingsPanelScroll(() => {
-    if (drag.scrollFrame) cancelAnimationFrame(drag.scrollFrame);
-    setLimitProviderDragListeners(false);
-    // Released before the reorder moves the node: relocating a captured element
-    // fires `lostpointercapture`, which would re-enter this as an abort.
-    const captureEl = drag.captureEl;
-    captureEl?.removeEventListener('lostpointercapture', onLimitProviderDragAbort);
-    try {
-      if (captureEl?.hasPointerCapture?.(drag.pointerId)) captureEl.releasePointerCapture(drag.pointerId);
-    } catch (_) {}
-    const list = els.limitProviderCheckboxes;
-    if (drag.started) {
-      const landing = Boolean(commit && drag.changed && drag.order?.length);
-      if (landing) list?.classList.add('is-landing');
-      if (landing) applyPreferenceOrder('provider', drag.order);
-      for (const { el } of drag.rows) {
-        el.style.removeProperty('--drag-y');
-        el.style.removeProperty('--drag-shift');
-        el.classList.remove('dragging');
-      }
-      list?.classList.remove('drag-active');
-      list?.classList.remove('is-reordering');
-      if (drag.expandedBefore) setLimitProviderSettingsExpanded(drag.expandedBefore);
-      suppressNextLimitProviderClick();
-      if (landing) releaseLimitProviderLandingStyleAfterPaint(list);
-    }
-    const renderPending = drag.renderPending;
-    limitProviderDrag = null;
-    if (renderPending) renderLimitProviderCheckboxes();
-  });
-}
-
-// The same main-row button owns click-to-expand and drag-to-reorder. Cancelling
-// its click after a completed drag prevents the drop from also toggling details.
-function suppressNextLimitProviderClick() {
-  const swallow = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
-  window.addEventListener('click', swallow, true);
-  setTimeout(() => window.removeEventListener('click', swallow, true), 0);
-}
+const limitProviderRowDrag = rowDragControllerApi.createRowDragController({
+  dragSort: verticalDragSortApi,
+  getList: () => els.limitProviderCheckboxes,
+  getScrollPanel: () => els.settingsPanel,
+  rowSelector: '.limit-provider-row[data-provider]',
+  idKey: 'provider',
+  dragExcluded: LIMIT_PROVIDER_DRAG_EXCLUDED,
+  getExpanded: () => state.limitProviderSettingsExpanded,
+  setExpanded: setLimitProviderSettingsExpanded,
+  applyOrder: (order) => applyPreferenceOrder('provider', order),
+  preserveScroll: preserveSettingsPanelScroll,
+  mirrorOrder: (order) => { state.settings = { ...state.settings, limitProviderOrder: order.join(',') }; },
+  // Saved directly rather than through `onPreferenceOrderCommit`, whose no-op
+  // guard compares against the value `mirrorOrder` just wrote and would drop it.
+  persistOrder: (order) => void saveSettings({ limitProviderOrder: order.join(',') }),
+  requestRender: () => renderLimitProviderCheckboxes()
+});
 
 function renderViewPreferences() {
   if (!els.viewDisplayList) return;
@@ -8922,8 +8683,44 @@ function renderWslPanel() {
   }
 }
 
+// The tracked-tools list drags from the whole row too, on the same controller
+// as the limits list. What differs is the commit: its order is not one setting.
+// While the list is on its default order the pinned block is the only thing
+// shaping it, so a drop can mean either a pin change or an explicit order.
+// `clientDisplayOrderCommit` decides, and the patch it returns is carried from
+// the local mirror to the save rather than derived twice — the mirror writes
+// the very keys that decision reads.
+const CLIENT_PREFERENCE_DRAG_EXCLUDED = 'button, input, select, textarea, a, label, .accordion-animated-container';
+
+const clientPreferenceRowDrag = rowDragControllerApi.createRowDragController({
+  dragSort: verticalDragSortApi,
+  getList: () => els.clientDisplayList,
+  getScrollPanel: () => els.settingsPanel,
+  rowSelector: '.tool-preference-row[data-client]',
+  idKey: 'client',
+  dragExcluded: CLIENT_PREFERENCE_DRAG_EXCLUDED,
+  applyOrder: (order) => applyPreferenceOrder('client', order),
+  preserveScroll: preserveSettingsPanelScroll,
+  mirrorOrder: (order, id) => {
+    const patch = clientDisplayPreferencesApi.clientDisplayOrderCommit(order, KNOWN_CLIENTS, state.settings?.clientDisplayOrder, state.settings?.pinnedClients, id);
+    state.settings = { ...state.settings, ...patch };
+    return patch;
+  },
+  persistOrder: (_order, _id, patch) => void saveSettings(patch),
+  requestRender: () => renderToolPreferences()
+});
+
 function renderToolPreferences() {
   if (!els.clientDisplayList) return;
+  // A stats update mid-drag would replace the rows under the pointer and kill
+  // the gesture silently. Defer the repaint until the drop.
+  if (clientPreferenceRowDrag.deferRender()) return;
+  return preserveSettingsPanelScroll(renderToolPreferencesNow);
+}
+
+function renderToolPreferencesNow() {
+  const previousRows = Array.from(els.clientDisplayList.children);
+  const focusedId = document.activeElement?.id || '';
   const enabled = enabledClientSet();
   const hidden = hiddenClientSet();
   const pinned = pinnedClientSet();
@@ -8934,7 +8731,6 @@ function renderToolPreferences() {
   const hasHiddenClients = hidden.size > 0;
   if (els.resetClientDisplayOrderButton) els.resetClientDisplayOrderButton.disabled = !hasCustomOrder && !hasPinnedClients;
   if (els.showAllClientsButton) els.showAllClientsButton.disabled = !hasHiddenClients;
-  els.clientDisplayList.replaceChildren();
   for (const { id, label } of clients) {
     const row = document.createElement('div');
     row.className = 'tool-preference-row';
@@ -8964,11 +8760,17 @@ function renderToolPreferences() {
     track.className = 'tool-preference-toggle';
     const trackInput = document.createElement('input');
     trackInput.type = 'checkbox';
+    trackInput.id = `toolTrackEnabled-${id}`;
     trackInput.dataset.client = id;
     trackInput.dataset.preference = 'track';
     trackInput.checked = enabled.has(id);
     trackInput.setAttribute('aria-label', t('settings.tools.trackClient', { name: label }));
     trackInput.addEventListener('change', onToolTrackingToggle);
+    // The drag handle is gone, so the checkbox carries the keyboard reorder
+    // shortcuts. A checkbox has no native arrow-key behaviour, so the existing
+    // key bindings transfer unchanged.
+    trackInput.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
+    trackInput.addEventListener('keydown', (event) => onPreferenceOrderKeydown(event, 'client', id));
     track.append(trackInput);
     const visibility = document.createElement('button');
     visibility.type = 'button';
@@ -8988,12 +8790,18 @@ function renderToolPreferences() {
     pin.setAttribute('aria-pressed', String(isPinned));
     pin.append(pinIcon());
     pin.addEventListener('click', () => onClientPinnedToggle(id));
-    const handle = createPreferenceOrderHandle({ kind: 'client', id, label, count: clients.length });
     const actions = document.createElement('div');
     actions.className = 'tool-preference-actions';
-    actions.append(track, visibility, pin, handle);
+    actions.append(track, visibility, pin);
     row.append(labelGroup, actions);
+    row.addEventListener('pointerdown', (event) => clientPreferenceRowDrag.startRowDrag(event, id));
     els.clientDisplayList.appendChild(row);
+  }
+  // Appended first and only then swapped out: replacing the list wholesale
+  // would destroy the row under the pointer on every stats tick.
+  for (const row of previousRows) row.remove();
+  if (focusedId && document.activeElement === document.body) {
+    document.getElementById(focusedId)?.focus({ preventScroll: true });
   }
 }
 
@@ -9012,10 +8820,7 @@ function renderLimitProviderCheckboxes() {
   if (!els.limitProviderCheckboxes) return;
   // A stats update mid-drag would replace the rows under the pointer and kill
   // the gesture silently. Defer the repaint until the drop.
-  if (limitProviderDrag) {
-    limitProviderDrag.renderPending = true;
-    return;
-  }
+  if (limitProviderRowDrag.deferRender()) return;
   return preserveSettingsPanelScroll(renderLimitProviderCheckboxesNow);
 }
 
@@ -9141,7 +8946,7 @@ function renderLimitProviderCheckboxesNow() {
     } else {
       row.append(wrap, copy, actions);
     }
-    row.addEventListener('pointerdown', (event) => startLimitProviderRowDrag(event, id));
+    row.addEventListener('pointerdown', (event) => limitProviderRowDrag.startRowDrag(event, id));
     // Kept inside the row rather than as a sibling: reordering moves only
     // `.limit-provider-row` nodes, so a sibling panel would be stranded when the
     // list is dragged.
@@ -9464,24 +9269,11 @@ async function onPreferenceReorder(kind, id, targetIndex) {
   else await onLimitProviderReorder(id, targetIndex);
 }
 
-async function onPreferenceOrderCommit(kind, order, id) {
+// Only the handle-based lists commit through here; the two whole-row lists save
+// from their own drag wiring, because this compares against the value they have
+// already mirrored into `state.settings` and would read the write as a no-op.
+async function onPreferenceOrderCommit(kind, order) {
   const value = (order || []).join(',');
-  if (kind === 'client') {
-    const pinned = clientDisplayPreferencesApi.normalizePinnedClients(state.settings?.pinnedClients, KNOWN_CLIENTS).split(',').filter(Boolean);
-    const hasCustomOrder = clientDisplayPreferencesApi.hasCustomDisplayOrder(state.settings?.clientDisplayOrder);
-    if (!hasCustomOrder && pinned.includes(id)) {
-      const pinnedSet = new Set(pinned);
-      const nextPinned = (order || []).slice(0, pinned.length);
-      if (nextPinned.length === pinned.length && nextPinned.every((clientId) => pinnedSet.has(clientId))) {
-        const pinnedValue = nextPinned.join(',');
-        if (pinnedValue !== pinned.join(',')) await saveSettings({ pinnedClients: pinnedValue });
-        return;
-      }
-    }
-    const current = clientDisplayPreferencesApi.normalizeClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS).join(',');
-    if (value !== current || pinned.length > 0) await saveSettings({ clientDisplayOrder: value, pinnedClients: '' });
-    return;
-  }
   if (kind === 'view') {
     const current = viewDisplayPreferencesApi.normalizeViewDisplayOrder(effectiveViewDisplayOrderValue(), VIEW_DISPLAY_OPTIONS).join(',');
     if (value !== current) await saveSettings({ viewDisplayOrder: value });
@@ -9500,10 +9292,7 @@ async function onPreferenceOrderCommit(kind, order, id) {
   if (kind === 'statusProvider') {
     const current = serviceStatusProviderPreferencesApi.normalizeOrder(state.settings?.serviceProviderDisplayOrder, SERVICE_PROVIDER_OPTIONS).join(',');
     if (value !== current) await saveSettings({ serviceProviderDisplayOrder: value });
-    return;
   }
-  const current = limitProviderOrderApi.normalizeLimitProviderOrder(state.settings?.limitProviderOrder, LIMIT_PROVIDERS).join(',');
-  if (value !== current) await saveSettings({ limitProviderOrder: value });
 }
 
 function onPreferenceOrderKeydown(event, kind, id) {
