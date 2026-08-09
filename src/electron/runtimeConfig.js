@@ -1,7 +1,11 @@
 'use strict';
 
 const { clientsCsvForSetting } = require('../shared/clientTracking');
+const { normalizeHistoryIntervalMs } = require('../shared/collector');
 const { normalizeLimitsRefreshMs, parseLimitProviders } = require('../shared/limitCollector');
+const { normalizeSyncUploadIntervalMs } = require('../shared/syncUploadInterval');
+
+const DEFAULT_ALL_TIME_SINCE = '2024-01-01';
 
 const MODE_STRUCTURAL_KEYS = Object.freeze([
   'hubMode',
@@ -57,10 +61,17 @@ function changedAny(previous, next, keys) {
   return keys.some((key) => !equalSetting(previous?.[key], next?.[key]));
 }
 
+function normalizeAllTimeSince(value, fallback = DEFAULT_ALL_TIME_SINCE) {
+  const raw = String(value ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return fallback;
+  const date = new Date(`${raw}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === raw ? raw : fallback;
+}
+
 function usageConfigFromSettings(settings = {}, context = {}) {
   return {
     clients: clientsCsvForSetting(settings.clients),
-    allTimeSince: settings.allTimeSince || '2024-01-01',
+    allTimeSince: normalizeAllTimeSince(settings.allTimeSince),
     commandTimeoutMs: Number(context.commandTimeoutMs || 120 * 1000),
     deviceId: settings.deviceId || context.defaultDeviceId,
     agentVersion: context.agentVersion,
@@ -121,6 +132,23 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
   };
 }
 
+function diagnosticConfigurationFromSettings(settings = {}, context = {}) {
+  const usage = usageConfigFromSettings(settings, context.usage || {});
+  const limits = limitsConfigFromSettings(settings, context.limits || {});
+  return {
+    configurationSource: 'effective-normalized',
+    allTimeSince: usage.allTimeSince,
+    historyEnabled: usage.historyEnabled,
+    historyIntervalMs: normalizeHistoryIntervalMs(usage.historyIntervalMs),
+    projectsEnabled: usage.projectsEnabled,
+    wslScanEnabled: usage.wslScanEnabled,
+    syncUploadIntervalMs: normalizeSyncUploadIntervalMs(
+      context.syncUploadIntervalMs ?? settings.syncUploadIntervalMs
+    ),
+    limitsRefreshMs: limits.limitsRefreshMs
+  };
+}
+
 function envelopeFromSettings(settings = {}, context = {}) {
   return {
     deviceId: settings.deviceId || context.defaultDeviceId,
@@ -144,10 +172,33 @@ function classifySettingsChange(previous = {}, next = {}) {
   };
 }
 
+// How long to wait before assuming an update install never handed off, or null
+// when waiting at all would be wrong. electron-updater's two install paths fail
+// in opposite ways, so this cannot be one number for both.
+//
+// BaseUpdater (Windows, Linux) runs install() synchronously and quits on the next
+// tick when it worked. When it did not, it silently resets its own state and
+// emits nothing at all, so a timer is the only thing that can ever restore the
+// quit flags, and it can be short because success never takes this long.
+//
+// MacUpdater often does not quit from quitAndInstall() at all: when Squirrel has
+// not finished it registers an update-downloaded listener, kicks off a native
+// check, and the real quit follows whenever that completes, with no upper bound.
+// A timer there would clear the flags mid-handoff and let the forced exit
+// pre-empt the installer, which is the one thing they exist to prevent. Native
+// errors are forwarded to the updater's error event, so that path is covered
+// without guessing at a deadline.
+function updateInstallQuitGraceMs(platform = process.platform) {
+  return platform === 'darwin' ? null : 10 * 1000;
+}
+
 module.exports = {
   LIMIT_PROVIDER_SETTING_KEYS,
   classifySettingsChange,
+  diagnosticConfigurationFromSettings,
   envelopeFromSettings,
   limitsConfigFromSettings,
+  normalizeAllTimeSince,
+  updateInstallQuitGraceMs,
   usageConfigFromSettings
 };
