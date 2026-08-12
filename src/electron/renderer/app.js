@@ -1,6 +1,7 @@
 'use strict';
 
-const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes Agent', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma' };
+const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes Agent', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', reasonix: 'Reasonix' };
+const reasonixSessionGuard = window.TokenMonitorReasonixSessionGuard;
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
 const windowsGlassApi = window.TokenMonitorWindowsGlass;
@@ -11,8 +12,8 @@ const tokenRateApi = window.TokenMonitorTokenRate;
 const { tokenRatePerSecond, tokenBurnPerMinute } = tokenRateApi;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const clientsWithIcon = new Set([
-  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma',
-  'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama', 'thirdparty'
+  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'reasonix',
+  'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama', 'thirdparty', 'hunyuan'
 ]);
 
 function osIconFor(platform) {
@@ -67,7 +68,8 @@ const KNOWN_CLIENTS = [
   { id: 'kiro', label: 'Kiro' },
   { id: 'codebuddy', label: 'CodeBuddy' },
   { id: 'workbuddy', label: 'WorkBuddy' },
-  { id: 'proma', label: 'Proma' }
+  { id: 'proma', label: 'Proma' },
+  { id: 'reasonix', label: 'Reasonix' }
 ];
 const LIMIT_PROVIDERS = [
   { id: 'claude', label: 'Claude', settingsLabel: 'Claude Code' },
@@ -302,6 +304,9 @@ state.clientRescans = clientRescanStateApi.createClientRescanState({
 state.toolPreferenceRenderSignature = '';
 state.toolPreferenceDetailSignature = '';
 state.toolPreferenceSourceSignature = '';
+state.limitProviderRenderSignature = '';
+state.limitPanelRenderSignature = '';
+state.settingsPushRevision = 0;
 state.homeHistoryLoadedSignature = '';
 state.homeHistoryRetrySignature = '';
 state.homeReturnVisible = false;
@@ -919,13 +924,6 @@ function formatUpdatedAge(value) {
 function versionText(value) {
   return value ? `v${value}` : 'unknown';
 }
-function appUpdateActionMode(s) {
-  if (!s) return '';
-  if (s.downloaded) return 'install';
-  if (!s.hasUpdate) return '';
-  if (s.installSupported) return 'download';
-  return s.latest?.htmlUrl ? 'release' : '';
-}
 function setAppUpdatePillDisclosure(available) {
   const action = els.appUpdatePillAction;
   if (available) {
@@ -942,7 +940,7 @@ function renderAppUpdatePill() {
   const s = state.appUpdate;
   const pill = els.appUpdatePill;
   if (!pill) return;
-  const mode = appUpdateActionMode(s);
+  const mode = appUpdatePresentationApi.appUpdateActionMode(s);
   const version = s?.latest?.version || s?.installVersion || '';
   if (!s || !mode || !version || !s.showUpdateNotice) {
     pill.classList.add('hidden');
@@ -1010,7 +1008,7 @@ function buildAppUpdateNoteGroupNodes(groups) {
 function renderAppUpdatePopover(s) {
   const version = s?.latest?.version || '';
   const groups = releaseNoteGroupsForCurrentLocale(s?.latest);
-  const mode = appUpdateActionMode(s);
+  const mode = appUpdatePresentationApi.appUpdateActionMode(s);
   if (!version || groups.length === 0 || !mode) {
     if (els.appUpdatePopover.matches(':popover-open')) els.appUpdatePopover.hidePopover();
     els.appUpdatePopoverTitle.textContent = '';
@@ -1080,7 +1078,7 @@ function renderSettingsAppUpdateRow() {
     els.appUpdateLatest.textContent = status
       ? t('settings.appUpdate.latestWithStatus', { version: displayVersion, status })
       : `v${displayVersion}`;
-    const actionMode = appUpdateActionMode(s);
+    const actionMode = appUpdatePresentationApi.appUpdateActionMode(s);
     els.appUpdateViewReleaseButton.classList.toggle('hidden', !actionMode);
     els.appUpdateViewReleaseButton.disabled = Boolean(s.installBusy);
     els.appUpdateViewReleaseButton.textContent = actionMode === 'install'
@@ -1096,18 +1094,25 @@ function renderSettingsAppUpdateRow() {
         : t('settings.common.notChecked');
     els.appUpdateViewReleaseButton.classList.add('hidden');
   }
-  els.appUpdateCheckButton.disabled = Boolean(s.checking || s.installBusy);
+  // installRetryBlocked as well as busy: the main process stops running checks once
+  // an attempt is spent, so without this the button would sit live and do nothing.
+  // It is not folded into installBusy, which would disable View release along with
+  // it and take away the one path a spent attempt leaves working.
+  els.appUpdateCheckButton.disabled = Boolean(s.checking || s.installBusy || s.installRetryBlocked);
   els.appUpdateCheckButton.textContent = s.checking ? t('settings.appUpdate.checking') : t('settings.appUpdate.check');
   renderAppUpdateNotes(s);
   if (s.installPhase === 'downloading') {
     const percent = Number.isFinite(s.installProgress) ? Math.round(s.installProgress) : 0;
     els.appUpdateMessage.textContent = t('settings.appUpdate.downloading', { percent });
     els.appUpdateMessage.classList.remove('error');
+  } else if (s.installStarting) {
+    els.appUpdateMessage.textContent = t('settings.appUpdate.installStarting');
+    els.appUpdateMessage.classList.remove('error');
   } else if (s.downloaded) {
     els.appUpdateMessage.textContent = t('settings.appUpdate.ready');
     els.appUpdateMessage.classList.remove('error');
   } else if (s.installError) {
-    els.appUpdateMessage.textContent = t('settings.appUpdate.installError');
+    els.appUpdateMessage.textContent = t(appUpdatePresentationApi.appUpdateInstallErrorMessageKey(s.installErrorKind));
     els.appUpdateMessage.classList.add('error');
   } else if (s.lastError) {
     const error = t(presentation.errorKey);
@@ -1457,12 +1462,27 @@ function animateRowNumber(el, from, to, duration = 420) {
   rowNumberAnimations.set(el, motion);
 }
 
+function cancelRowNumberAnimation(el) {
+  if (!el) return;
+  const motion = rowNumberAnimations.get(el);
+  if (motion) cancelAnimationFrame(motion.handle);
+  rowNumberAnimations.delete(el);
+  delete el.dataset.motionTarget;
+}
+
 function animateBreakdownFrom(snapshot, { duration = 420 } = {}) {
   if (!snapshot) return;
   const rows = Array.from(els.breakdown?.querySelectorAll('.row[data-key]') || []);
   if (!shouldAnimateBreakdownRows(rows.length, { reducedMotion: prefersReducedMotion() })) return;
   let enteringIndex = 0;
   for (const row of rows) {
+    // An unavailable native session value must stay a semantic label. The
+    // ordinary row-number tween formats its zero placeholder as "0", which
+    // would turn unknown data into a false numeric reading after every render.
+    if (row.dataset.tokenDataUnavailable === 'true') {
+      cancelRowNumberAnimation(row.querySelector('.row-value'));
+      continue;
+    }
     const previous = snapshot.get(row.dataset.key);
     const value = Number(row.dataset.motionValue || 0);
     const fill = row.querySelector('.bar-fill');
@@ -1705,7 +1725,7 @@ function renderDeviceAccordion(accordionInner, deviceDetail) {
   accordionInner.dataset.signature = signature;
 }
 
-function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens }) {
+function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, tokenDataUnavailable, sessionDetailAvailable }) {
   const width = rowWidth(value, max);
   const isExpanded = row.classList.contains('expanded');
   row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}`;
@@ -1720,6 +1740,11 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
   if (platform !== undefined) row.dataset.platform = platform || '';
   if (client !== undefined) row.dataset.client = client || '';
   if (kind !== undefined) row.dataset.kind = kind || '';
+  if (kind === 'session' && client === 'reasonix') {
+    row.dataset.detailUnavailable = sessionDetailAvailable === true ? 'false' : 'true';
+  } else if (row.hasAttribute('data-detail-unavailable')) {
+    row.removeAttribute('data-detail-unavailable');
+  }
   const mark = row.querySelector('.row-mark');
   const iconKind = iconKindFor({ key: row.dataset.key, platform: row.dataset.platform || '', client: row.dataset.client || '' }, state.breakdown);
   if (iconKind.kind === 'icon') {
@@ -1737,10 +1762,17 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
   detailEl.textContent = detail || '';
   detailEl.classList.toggle('hidden', !detail);
   const valueEl = row.querySelector('.row-value');
-  valueEl.textContent = formatNumber(value);
+  if (tokenDataUnavailable === true) {
+    row.dataset.tokenDataUnavailable = 'true';
+    cancelRowNumberAnimation(valueEl);
+    valueEl.textContent = t('detailTokenUnavailable') || 'Unavailable';
+  } else {
+    delete row.dataset.tokenDataUnavailable;
+    valueEl.textContent = formatNumber(value);
+  }
   valueEl.dataset.motionValue = String(Number(value) || 0);
   row.dataset.motionValue = String(Number(value) || 0);
-  row.querySelector('.row-cost').textContent = formatCost(cost || 0);
+  row.querySelector('.row-cost').textContent = tokenDataUnavailable === true ? '' : formatCost(cost || 0);
   const fill = row.querySelector('.bar-fill');
   fill.style.background = barBackground || color;
   applyBarScale(fill, width / 100);
@@ -1818,7 +1850,11 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
     if (row.tabIndex !== 0) row.tabIndex = 0;
     setAttributeIfChanged(row, 'role', 'button');
     setAttributeIfChanged(row, 'aria-expanded', String(row.classList.contains('expanded')));
-    setAttributeIfChanged(row, 'aria-label', `${name}, ${t('dashboard.stat.totalTokens')}: ${formatNumber(value)}, ${t('dashboard.stat.totalCost')}: ${formatCost(cost || 0)}`);
+    const tokenLabel = tokenDataUnavailable === true
+      ? (t('detailTokenUnavailable') || 'Unavailable')
+      : formatNumber(value);
+    const costLabel = tokenDataUnavailable === true ? '' : `, ${t('dashboard.stat.totalCost')}: ${formatCost(cost || 0)}`;
+    setAttributeIfChanged(row, 'aria-label', `${name}, ${t('dashboard.stat.totalTokens')}: ${tokenLabel}${costLabel}`);
   } else {
     if (row.hasAttribute('tabindex')) row.removeAttribute('tabindex');
     if (row.hasAttribute('role')) row.removeAttribute('role');
@@ -1992,7 +2028,8 @@ function sessionRowsForPeriod(period) {
     modelColor,
     stableColor,
     fallbackColors: fallbackModelColors,
-    archivedLabel: t('session.archived')
+    archivedLabel: t('session.archived'),
+    nativeSessions: state.stats?.nativeSessions?.[state.period] || {}
   });
   if (rows.length > 0) return rows.sort((a, b) => b.sortTime - a.sortTime || b.value - a.value || b.cost - a.cost || a.name.localeCompare(b.name));
   if (Number(period?.totalTokens || 0) === 0) return [];
@@ -2005,7 +2042,9 @@ function projectRowsForPeriod(period) {
     clientColors,
     stableColor,
     fallbackColors: fallbackModelColors,
-    unknownClientLabel: t('projects.unknownTool')
+    unknownClientLabel: t('projects.unknownTool'),
+    nativeProjects: state.stats?.nativeProjects?.[state.period] || {},
+    nativeSessions: state.stats?.nativeSessions?.[state.period] || {}
   });
 }
 
@@ -4375,15 +4414,21 @@ function renderProviderWindows(provider, color) {
   if (provider.provider === 'codex') {
     const session = windowForKind(provider, 'session');
     const weekly = windowForKind(provider, 'weekly');
+    const monthly = windowForKind(provider, 'billing');
     if (session) {
       const sessionNode = limitWindowNode(session.label || 'Session', session, color, 0.95);
-      if (!weekly) sessionNode.classList.add('limit-window-wide');
+      if (!weekly && !monthly) sessionNode.classList.add('limit-window-wide');
       windows.append(sessionNode);
     }
     if (weekly) {
       const weeklyNode = limitWindowNode(weekly.label || 'Weekly', weekly, color, 0.68);
-      if (!session) weeklyNode.classList.add('limit-window-wide');
+      if (!session && !monthly) weeklyNode.classList.add('limit-window-wide');
       windows.append(weeklyNode);
+    }
+    if (monthly) {
+      const monthlyNode = limitWindowNode(monthly.label || 'Monthly', monthly, color, 0.68);
+      monthlyNode.classList.add('limit-window-wide');
+      windows.append(monthlyNode);
     }
     const resetNode = codexResetCreditsNode(provider.resetCredits);
     if (resetNode) windows.append(resetNode);
@@ -4988,22 +5033,54 @@ function renderLimits() {
   const limitsEnabled = state.settings?.limitsEnabled !== false;
   const enabled = enabledLimitProviderSet();
   const providers = providersByLimitProviderId(state.stats?.limits?.providers || []);
-  const nodes = [];
-  const rows = limitProviderOrderApi
+  const orderedProviders = limitProviderOrderApi
     .orderedLimitProviders(LIMIT_PROVIDERS, state.settings?.limitProviderOrder)
     .filter(({ id }) => limitsEnabled && enabled.has(id));
+  const visibleProviderEntries = new Map(orderedProviders.map(({ id }) => {
+    const providerEntries = limitsEnabled && enabled.has(id)
+      ? (providers.get(id) || [{ provider: id, status: state.stats ? missingLimitProviderStatus() : 'unavailable', windows: [] }])
+      : [{ provider: id, status: 'disabled', windows: [] }];
+    return [id, providerEntries];
+  }));
+  const renderSignature = JSON.stringify({
+    locale: currentLocale(),
+    minute: Math.floor(Date.now() / 60000),
+    mode: state.mode,
+    hubUrl: state.settings?.hubUrl || '',
+    deviceId: state.settings?.deviceId || '',
+    settings: [
+      state.settings?.showLimitSource === true,
+      state.settings?.maskLimitAccountEmails === true,
+      state.settings?.showLimitUsed === true,
+      state.settings?.showToolIcons !== false,
+      state.settings?.claudePrepaidBalanceEnabled !== false,
+      state.settings?.currency || '',
+      state.settings?.currencyRatesEffective || null,
+      state.settings?.subscriptions || [],
+      state.settings?.codexManagedAccounts || [],
+      state.codexActiveAccount || null,
+      state.codexSystemSwitchingAccountId || '',
+      state.codexSystemSwitchErrorAccountId || '',
+      state.codexSystemSwitchError || ''
+    ],
+    providerOrder: orderedProviders.map(({ id }) => id),
+    providers: [...visibleProviderEntries.entries()]
+  });
+  if (
+    state.limitPanelRenderSignature === renderSignature
+    && els.limitsPanel.children.length === orderedProviders.length
+  ) {
+    return;
+  }
+  state.limitPanelRenderSignature = renderSignature;
+  const nodes = [];
+  const rows = orderedProviders;
   if (rows.length === 0) {
     els.limitsPanel.replaceChildren();
     return;
   }
   for (const { id, label } of rows) {
-    const providerEnabled = limitsEnabled && enabled.has(id);
-    const providerEntries = providerEnabled
-      ? (providers.get(id) || [{ provider: id, status: state.stats ? missingLimitProviderStatus() : 'unavailable', windows: [] }])
-      : [{ provider: id, status: 'disabled', windows: [] }];
-    const visibleProviders = providerEntries.length > 0
-      ? providerEntries
-      : { provider: id, status: 'disabled', windows: [] };
+    const visibleProviders = visibleProviderEntries.get(id) || [{ provider: id, status: 'disabled', windows: [] }];
     const color = id === 'mimo' ? clientColors.xiaomi : (clientColors[id] || clientColors.default);
     if (id === 'claude' && Array.isArray(visibleProviders) && visibleProviders.length > 1) {
       nodes.push(renderClaudeAccountGroup(label, visibleProviders, color));
@@ -5280,6 +5357,9 @@ function renderSessionDetail({ detail, loading, error } = {}) {
 
   const rows = sessionDetailApi.exchangeRows(detail, { now: new Date(), sortBy: state.detailSort });
   if (rows.length === 0) { container.append(detailNote(t('detailEmpty') || 'No activity in this period.')); return; }
+  if (detail?.tokenDataUnavailable === true) {
+    container.append(detailNote(t('detailTokenDataUnavailable') || 'Token data is unavailable for this session.'));
+  }
 
   const sort = document.createElement('button');
   sort.className = 'detail-sort';
@@ -5318,8 +5398,11 @@ function exchangeNode(row, max) {
   }
   exTitle.append(document.createTextNode(row.title));
   wrap.querySelector('.detail-ex-sub').textContent = row.subtitle;
-  wrap.querySelector('.detail-ex-value').textContent = formatNumber(row.value);
-  wrap.querySelector('.detail-ex-cost').textContent = formatCost(row.cost);
+  const tokensAvailable = row.tokensAvailable !== false;
+  wrap.querySelector('.detail-ex-value').textContent = tokensAvailable
+    ? formatNumber(row.value)
+    : (t('detailTokenUnavailable') || 'Unavailable');
+  wrap.querySelector('.detail-ex-cost').textContent = tokensAvailable ? formatCost(row.cost) : '';
   applyBarScale(wrap.querySelector('.bar-fill'), rowWidth(row.value, max) / 100);
 
   const turnsEl = wrap.querySelector('.detail-turns');
@@ -5345,10 +5428,15 @@ function turnNode(turn) {
   el.innerHTML = '<div class="detail-turn-label"><span class="detail-turn-title"></span><span class="detail-turn-split"></span><span class="detail-turn-tools"></span></div>'
     + '<div class="detail-turn-metrics"><span class="detail-turn-value"></span><span class="detail-turn-cost"></span></div>';
   el.querySelector('.detail-turn-title').textContent = `AI ${turn.label}`;
-  el.querySelector('.detail-turn-split').textContent = split;
+  const tokensAvailable = turn.tokensAvailable !== false;
+  el.querySelector('.detail-turn-split').textContent = tokensAvailable
+    ? split
+    : (t('detailTokenUnavailable') || 'Unavailable');
   el.querySelector('.detail-turn-tools').textContent = turn.tools ? `⊢ ${turn.tools}` : '';
-  el.querySelector('.detail-turn-value').textContent = formatNumber(turn.value);
-  el.querySelector('.detail-turn-cost').textContent = formatCost(turn.cost);
+  el.querySelector('.detail-turn-value').textContent = tokensAvailable
+    ? formatNumber(turn.value)
+    : (t('detailTokenUnavailable') || 'Unavailable');
+  el.querySelector('.detail-turn-cost').textContent = tokensAvailable ? formatCost(turn.cost) : '';
   return el;
 }
 
@@ -6650,7 +6738,11 @@ function settleRefreshButtonState(status) {
 // injectLocalDeviceStatus in main.js.
 function overlayAllTimeSessions(stats) {
   if (stats && stats.allTimeSessionsView && stats.periods?.allTime) {
-    stats.periods.allTime.sessions = stats.allTimeSessionsView;
+    const sessions = reasonixSessionGuard?.filterReasonixSyntheticSessions
+      ? reasonixSessionGuard.filterReasonixSyntheticSessions(stats.allTimeSessionsView)
+      : stats.allTimeSessionsView;
+    stats.allTimeSessionsView = sessions;
+    stats.periods.allTime.sessions = sessions;
   }
   return stats;
 }
@@ -9313,8 +9405,27 @@ function renderLimitProviderCheckboxes() {
 }
 
 function renderLimitProviderCheckboxesNow() {
+  const renderSignature = limitProviderSettingsRenderSignature();
+  if (
+    state.limitProviderRenderSignature === renderSignature
+    && els.limitProviderCheckboxes.children.length === LIMIT_PROVIDERS.length
+  ) {
+    return;
+  }
   const previousRows = Array.from(els.limitProviderCheckboxes.children);
   const focusedId = document.activeElement?.id || '';
+  const reusableSettingInputs = new Map();
+  for (const row of previousRows) {
+    const providerId = row.dataset?.provider || '';
+    const settings = LIMIT_PROVIDER_SETTINGS[providerId] || [];
+    const inputs = row.querySelectorAll?.(
+      ':scope > .accordion-animated-container .limit-provider-settings-list > .settings-item > input[type="checkbox"]'
+    ) || [];
+    settings.forEach((setting, index) => {
+      const input = inputs[index];
+      if (input) reusableSettingInputs.set(`${providerId}:${setting.key}`, input);
+    });
+  }
   const enabled = enabledLimitProviderSet();
   const collected = new Map((state.stats?.limits?.providers || []).map((provider) => [provider.provider, provider]));
   const providers = limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, state.settings?.limitProviderOrder);
@@ -9417,7 +9528,7 @@ function renderLimitProviderCheckboxesNow() {
         accountGroup.classList.add('limit-provider-account-group');
       }
       if (connectionDetailKey) optionsInner.append(limitProviderConnectionDetail(connectionDetailKey));
-      if (settings) optionsInner.append(limitProviderSettingsList(id, settings));
+      if (settings) optionsInner.append(limitProviderSettingsList(id, settings, reusableSettingInputs));
       optionsContainer.append(optionsInner);
       const toggleOptions = () => {
         const opening = state.limitProviderSettingsExpanded !== id;
@@ -9449,6 +9560,7 @@ function renderLimitProviderCheckboxesNow() {
   if (focusedId && document.activeElement === document.body) {
     document.getElementById(focusedId)?.focus({ preventScroll: true });
   }
+  state.limitProviderRenderSignature = renderSignature;
 }
 
 function limitProviderAccountGroup(providerId) {
@@ -9500,10 +9612,60 @@ const LIMIT_PROVIDER_SETTINGS = {
     descKey: 'settings.limits.prepaidBalanceDesc',
     requiresConfiguredKey: 'claudeWebCookieConfigured',
     defaultValue: true
+  }],
+  opencode: [{
+    key: 'opencodeLocalLimitsEnabled',
+    titleKey: 'settings.limits.opencodeLocalLimits',
+    descKey: 'settings.limits.opencodeLocalLimitsDesc',
+    defaultValue: false
   }]
 };
 
-function limitProviderSettingsList(providerId, settings) {
+function limitProviderSettingsRenderSignature() {
+  const settings = state.settings || {};
+  const providerSignature = (provider) => {
+    return [
+      provider?.provider || '',
+      provider?.status || '',
+      Boolean(provider?.stale),
+      provider?.source || '',
+      provider?.sourceDetail || '',
+      provider?.sourceDeviceId || '',
+      provider?.accountKey || ''
+    ];
+  };
+  const deviceSignature = (device) => [
+    device?.deviceId || '',
+    device?.hostname || '',
+    (device?.limits?.providers || []).map((provider) => [
+      provider?.provider || '',
+      provider?.status || '',
+      provider?.accountKey || ''
+    ])
+  ];
+  const settingValues = Object.values(LIMIT_PROVIDER_SETTINGS).flatMap((entries) => entries.map((setting) => [
+    setting.key,
+    settings[setting.key],
+    setting.requiresConfiguredKey ? Boolean(settings[setting.requiresConfiguredKey]) : true
+  ]));
+  return JSON.stringify({
+    locale: currentLocale(),
+    mode: state.mode,
+    hubUrl: settings.hubUrl || '',
+    settings: [
+      settings.limitsEnabled !== false,
+      [...enabledLimitProviderSet()].sort(),
+      limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, settings.limitProviderOrder).map(({ id }) => id),
+      settings.deviceId || '',
+      settingValues,
+      state.limitProviderSettingsExpanded
+    ],
+    providers: (state.stats?.limits?.providers || []).map(providerSignature),
+    devices: (state.stats?.devices || []).map(deviceSignature)
+  });
+}
+
+function limitProviderSettingsList(providerId, settings, reusableInputs = null) {
   const list = document.createElement('div');
   list.className = 'settings-nested-list limit-provider-settings-list';
   for (const setting of settings) {
@@ -9519,18 +9681,21 @@ function limitProviderSettingsList(providerId, settings) {
     title.className = 'settings-item-title';
     title.textContent = t(setting.titleKey);
     copy.append(title);
-    const input = document.createElement('input');
+    const inputKey = `${providerId}:${setting.key}`;
+    const existingInput = reusableInputs?.get(inputKey);
+    const input = existingInput || document.createElement('input');
     input.type = 'checkbox';
     const available = !setting.requiresConfiguredKey || Boolean(state.settings?.[setting.requiresConfiguredKey]);
-    input.checked = available && state.settings?.[setting.key] !== false;
+    const storedValue = state.settings?.[setting.key];
+    const defaultValue = setting.defaultValue !== false;
+    input.checked = available && (storedValue === undefined ? defaultValue : storedValue !== false);
     input.disabled = !available;
     item.classList.toggle('is-disabled', !available);
-    input.addEventListener('change', async () => {
-      await saveSettings({ [setting.key]: input.checked });
-      // Switching this off hides the row immediately; the request it also stops
-      // would otherwise only be skipped on the next refresh.
-      renderLimits();
-    });
+    if (!existingInput) {
+      input.addEventListener('change', async () => {
+        await saveSettings({ [setting.key]: input.checked });
+      });
+    }
     const desc = document.createElement('span');
     desc.className = 'settings-note settings-item-desc';
     desc.textContent = t(setting.descKey);
@@ -9839,6 +10004,7 @@ function preserveSettingsPanelScroll(callback) {
 }
 
 async function saveSettings(patch) {
+  const settingsPushRevision = state.settingsPushRevision;
   try {
     state.settings = await window.tokenMonitor.updateSettings(patch);
   } catch (error) {
@@ -9851,7 +10017,13 @@ async function saveSettings(patch) {
     throw error;
   }
   applyEffectiveCurrencyRates();
-  preserveSettingsPanelScroll(syncSettingsForm);
+  // settings:update broadcasts the normalized settings before resolving the
+  // IPC request. The push already ran the full sync; repeating it when the
+  // promise resolves rebuilds the provider rows a second time and restarts
+  // their accordion/switch layout transition.
+  if (state.settingsPushRevision === settingsPushRevision) {
+    preserveSettingsPanelScroll(syncSettingsForm);
+  }
   restartTimer();
   maybeUpdateBarsIcon();
   if (patch.showTrayProviderBadge !== undefined) {
@@ -9962,16 +10134,19 @@ els.breakdown.addEventListener('click', (event) => {
   if (!rowEl) return;
   const key = rowEl.dataset.key || '';            // "session:<client>:<sessionId>"
   const client = rowEl.dataset.client || '';
-  if (client !== 'claude' && client !== 'codex' && client !== 'opencode') return;
+  if (client !== 'claude' && client !== 'codex' && client !== 'opencode' && client !== 'reasonix') return;
+  if (client === 'reasonix' && rowEl.dataset.detailUnavailable === 'true') return;
   const match = key.match(/^session:([^:]+):(.+)$/);
   if (!match) return;
-  const sessionId = match[2];
+  const sessionId = client === 'reasonix' ? `reasonix:${match[2]}` : match[2];
   const period = state.stats?.periods?.[state.period];
-  const session = period?.sessions?.[`${client}:${sessionId}`];
+  const session = client === 'reasonix'
+    ? state.stats?.nativeSessions?.[state.period]?.[sessionId]
+    : period?.sessions?.[`${client}:${sessionId}`];
   openSessionDetail({
     client,
     sessionId,
-    sessionCost: Number(session?.costUsd || 0),
+    sessionCost: client === 'reasonix' ? Number(session?.reportedCostUsd || 0) : Number(session?.costUsd || 0),
     title: rowEl.querySelector('.row-title')?.textContent || ''
   });
 });
@@ -10394,7 +10569,7 @@ els.floatingBubbleTab.addEventListener('keydown', (event) => {
 });
 
 async function runAppUpdateAction() {
-  const mode = appUpdateActionMode(state.appUpdate);
+  const mode = appUpdatePresentationApi.appUpdateActionMode(state.appUpdate);
   if (mode === 'install') {
     state.appUpdate = await window.tokenMonitor.installAppUpdate();
   } else if (mode === 'download') {
@@ -10412,7 +10587,7 @@ async function runAppUpdateAction() {
 
 els.appUpdatePillAction.addEventListener('click', async () => {
   if (!renderAppUpdatePopover(state.appUpdate) || typeof els.appUpdatePopover.showPopover !== 'function') {
-    if (appUpdateActionMode(state.appUpdate) === 'install') {
+    if (appUpdatePresentationApi.appUpdateActionMode(state.appUpdate) === 'install') {
       const url = state.appUpdate?.latest?.htmlUrl;
       if (url) await window.tokenMonitor.openExternal(url);
       return;
@@ -10485,6 +10660,7 @@ els.appUpdateReleaseNotesButton.addEventListener('click', async () => {
 
 window.tokenMonitor.onSettingsPush?.((next) => {
   if (!next) return;
+  state.settingsPushRevision += 1;
   const prevMetric = state.settings?.heatmapMetric;
   const prevLanguage = state.settings?.language;
   const prevCompactTokenUnits = state.settings?.compactTokenUnits;
@@ -10540,6 +10716,7 @@ window.tokenMonitor.onTokscalePush?.((payload) => {
 
 function renderStatsUpdate() {
   render();
+  renderCodexAccounts();
   renderSettingsSummaries();
   renderLimitProviderCheckboxes();
   renderToolPreferences();
@@ -10577,7 +10754,7 @@ window.tokenMonitor.onStatsPush?.((payload) => {
     // Local collector overlays update client-mode data independently of the
     // Hub SSE transport. Preserve its current Offline/error state until a
     // real stream status or remote stats event proves the connection changed.
-    if (payload.data?.reason !== 'local') {
+    if (payload.data?.reason !== 'local' && payload.data?.reason !== 'presentation') {
       state.streamConnected = true;
       state.streamFailure = null;
     }
@@ -11895,6 +12072,7 @@ function renderCodexAccounts() {
     empty.textContent = t('settings.codex.empty');
     listEl.append(empty);
   } else {
+    const codexProviders = localProviderStatuses('codex');
     for (const account of accounts) {
       const enabled = account.enabled !== false;
       const row = document.createElement('div');
@@ -11934,7 +12112,11 @@ function renderCodexAccounts() {
         : account.workspaceLabel;
       const accountMetadata = [
         workspaceLabel,
-        enabled ? limitProviderPresentationApi.limitProviderDisplayLabel(account.accountLabel) : t('settings.codex.disabled')
+        enabled
+          ? limitProviderPresentationApi.limitProviderDisplayLabel(
+            accountIdentityApi.codexManagedAccountPlanLabel(account, codexProviders)
+          )
+          : t('settings.codex.disabled')
       ].filter((value, index, values) => value && values.indexOf(value) === index);
       info.textContent = accountMetadata.join(' · ');
       info.title = accountMetadata.join(' · ');

@@ -26,7 +26,7 @@
 
 ## What is Token Monitor?
 
-A desktop widget that shows live token usage and AI Tool Limits across 28+ AI coding tools — Claude Code, Codex, Cursor, GitHub Copilot, and more — with real-time multi-device sync, historical usage trends, and breakdowns by tool, device, model, session, or project.
+A desktop widget that shows live token usage and AI Tool Limits across 29+ AI coding tools — Claude Code, Codex, Cursor, GitHub Copilot, and more — with real-time multi-device sync, historical usage trends, and breakdowns by tool, device, model, session, or project.
 
 ## Supported Tools
 
@@ -55,6 +55,7 @@ Token Monitor supports token usage, account-limit checks, and session details se
 | <img src=".github/assets/tools-icon/codebuddy.png" width="28" alt="CodeBuddy" /> | CodeBuddy | `~/.codebuddy/projects/` + IDE / VS Code extension logs | ✅ | — | — |
 | <img src=".github/assets/tools-icon/workbuddy.png" width="28" alt="WorkBuddy" /> | WorkBuddy | `~/.workbuddy/projects/`, `~/.workbuddy/workbuddy.db` | ✅ | — | — |
 | <img src=".github/assets/tools-icon/proma.png" width="28" alt="Proma" /> | Proma | `~/.proma/agent-sessions/*.jsonl` | ✅ | — | — |
+| <img src=".github/assets/tools-icon/reasonix.png" width="28" alt="Reasonix" /> | Reasonix | `~/.reasonix/` (`stats/`, `sessions/`, `projects/*/sessions/`) | ✅ | — | — |
 | <img src=".github/assets/tools-icon/deepseek.png" width="28" alt="DeepSeek" /> | DeepSeek | DeepSeek API key (balance via DeepSeek API) | — | ✅ | — |
 | <img src=".github/assets/tools-icon/openrouter.png" width="28" alt="OpenRouter" /> | OpenRouter | OpenRouter API key (usage/key limit; balance when credits access is authorized, documented for Management keys) | — | ✅ | — |
 | <img src=".github/assets/tools-icon/minimax.png" width="28" alt="Minimax" /> | Minimax | Minimax API key (Token Plan quota via Minimax API) | — | ✅ | — |
@@ -68,7 +69,7 @@ Token Monitor supports token usage, account-limit checks, and session details se
 
 <br>
 
-Paths above are the defaults. Token Monitor follows the same environment overrides Tokscale does — `$XDG_DATA_HOME` for the `~/.local/share/` roots, and per-tool variables such as `$CODEX_HOME`, `$GROK_HOME`, `$HERMES_HOME`, `$KIMI_CODE_HOME` and the `$CLINE_*` family.
+Paths above are the defaults. Token Monitor follows the same environment overrides Tokscale does — `$XDG_DATA_HOME` for the `~/.local/share/` roots, and per-tool variables such as `$CODEX_HOME`, `$GROK_HOME`, `$HERMES_HOME`, `$KIMI_CODE_HOME`, `$REASONIX_STATE_HOME`, `$REASONIX_HOME` and the `$CLINE_*` family.
 
 Custom maps numeric JSON fields from one GET balance endpoint; OpenAI or Anthropic compatibility alone is not enough.
 
@@ -104,7 +105,7 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 
 ### Tracking usage
 
-- **Live token tracking** — Claude Code, Codex, Cursor, GitHub Copilot, Antigravity, OpenCode, and 21+ AI tools, with the UI updating within seconds of each turn (full list in the table above)
+- **Live token tracking** — Claude Code, Codex, Cursor, GitHub Copilot, Antigravity, OpenCode, and 22+ AI tools, with the UI updating within seconds of each turn (full list in the table above)
 - **Per-session detail** — open a Claude Code, Codex, or OpenCode session to see tokens per prompt, expandable to each reply's exact token split and tools used (read on-demand from local transcripts or databases, never synced)
 - **Cache hit statistics** — click any tool or model to expand a detailed breakdown of input tokens (cache hit vs miss), output tokens, and hit-rate percentages
 - **Cost & currency** — cost alongside token counts, shown in USD, TWD, HKD, or CNY; exchange rates auto-update daily and can be manually overridden in Settings
@@ -135,6 +136,7 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 - **Floating Bubble mode** — collapses the widget into a draggable mini-window with click or hover preview and tray-style content
 - **Menu bar layout composer** — the menu bar and the floating bubble can use a built-in preset or a layout you build yourself: pick "Custom…" to add AI tool icons, quota bars, percentages, reset times, cost, or custom text, drag to reorder against a live preview, and give each item its own AI tool, account, quota window, and typeface
 - **Appearance controls** — interface theme switching (incl. a light mode), per-tool vendor colours, glass opacity, blur, and transparent window mode
+- **Experimental native macOS Widget** — macOS 14+ support in Small, Medium, and Large sizes, with Overview, Quota, Models, Activity, and Trend pages. This source-only preview is not yet promised in published releases.
 - **Customizable tool list** — hide, pin, and reorder tools in the main dashboard without changing what gets tracked
 - **Recordable global shortcut** — show or hide the window from anywhere
 - **Discord Rich Presence** — broadcast today's tokens, cost, and top client (opt-in)
@@ -266,11 +268,11 @@ Token Monitor processes usage logs locally and sends no analytics or telemetry t
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=Javis603%2Ftoken-monitor&type=date&legend=top-left">
+<a href="https://github.com/Javis603/token-monitor/tree/star-history">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Javis603/token-monitor&type=date&theme=dark&legend=top-left&sealed_token=VEcaPQSNlH8coYjuILJy7eT6t-pGJrGDEjOAjVwP8WGwNBOeNXoLTcz-KVBaZ2Y8eSqG1tLEpWGF3-5eMvVhW5G8n1ckdYI_uMZ6UCBE7b_eANd6we__7g7yc4ShXemuWfi-8SRcxgJNLK12VZGgBIccY1ceI3T3xm7jBM1TJjTVQFWJ0MmX2e-7QBp9" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Javis603/token-monitor&type=date&legend=top-left&sealed_token=VEcaPQSNlH8coYjuILJy7eT6t-pGJrGDEjOAjVwP8WGwNBOeNXoLTcz-KVBaZ2Y8eSqG1tLEpWGF3-5eMvVhW5G8n1ckdYI_uMZ6UCBE7b_eANd6we__7g7yc4ShXemuWfi-8SRcxgJNLK12VZGgBIccY1ceI3T3xm7jBM1TJjTVQFWJ0MmX2e-7QBp9" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Javis603/token-monitor&type=date&legend=top-left&sealed_token=VEcaPQSNlH8coYjuILJy7eT6t-pGJrGDEjOAjVwP8WGwNBOeNXoLTcz-KVBaZ2Y8eSqG1tLEpWGF3-5eMvVhW5G8n1ckdYI_uMZ6UCBE7b_eANd6we__7g7yc4ShXemuWfi-8SRcxgJNLK12VZGgBIccY1ceI3T3xm7jBM1TJjTVQFWJ0MmX2e-7QBp9" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Javis603/token-monitor/star-history/star-history-dark.svg" />
+   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Javis603/token-monitor/star-history/star-history.svg" />
+   <img alt="Star History Chart" src="https://raw.githubusercontent.com/Javis603/token-monitor/star-history/star-history.svg" />
  </picture>
 </a>
 

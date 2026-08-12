@@ -29,12 +29,13 @@ const USAGE_STRUCTURAL_KEYS = Object.freeze([
 const LIMITS_RECONFIGURE_KEYS = Object.freeze([
   'limitsEnabled',
   'limitProviders',
-  'limitsRefreshMs'
+  'limitsRefreshMs',
+  'opencodeLocalLimitsEnabled'
 ]);
 const SINK_STRUCTURAL_KEYS = Object.freeze(['syncUploadIntervalMs']);
 const LIMIT_PROVIDER_SETTING_KEYS = Object.freeze({
   claude: ['claudeWebCookie'],
-  opencode: ['opencodeCookie', 'opencodeProfiles'],
+  opencode: ['opencodeCookie', 'opencodeProfiles', 'opencodeLocalLimitsEnabled'],
   openrouter: ['openrouterProfiles'],
   deepseek: ['deepseekApiKey'],
   minimax: ['minimaxApiKey'],
@@ -81,6 +82,7 @@ function usageConfigFromSettings(settings = {}, context = {}) {
     dailyHistoryArchiveEnabled: settings.sessionUsageArchiveEnabled !== false,
     dailyHistoryArchiveWriteEnabled: context.dailyHistoryArchiveWriteEnabled,
     projectsEnabled: settings.projectsEnabled !== false,
+    reasonixNativeSessionsEnabled: context.reasonixNativeSessionsEnabled === true,
     historyIntervalMs: context.historyIntervalMs ?? settings.historyIntervalMs,
     watchEnabled: context.watchEnabled,
     // Deliberately passed through as a tri-state rather than coerced: undefined
@@ -106,6 +108,7 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
       || env.CLAUDE_WEB_COOKIE
       || '',
     claudePrepaidBalanceEnabled: settings.claudePrepaidBalanceEnabled !== false,
+    opencodeLocalLimitsEnabled: settings.opencodeLocalLimitsEnabled === true,
     opencodeCookie: settings.opencodeCookie || env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     openrouterProfiles: settings.openrouterProfiles || {},
@@ -172,26 +175,6 @@ function classifySettingsChange(previous = {}, next = {}) {
   };
 }
 
-// How long to wait before assuming an update install never handed off, or null
-// when waiting at all would be wrong. electron-updater's two install paths fail
-// in opposite ways, so this cannot be one number for both.
-//
-// BaseUpdater (Windows, Linux) runs install() synchronously and quits on the next
-// tick when it worked. When it did not, it silently resets its own state and
-// emits nothing at all, so a timer is the only thing that can ever restore the
-// quit flags, and it can be short because success never takes this long.
-//
-// MacUpdater often does not quit from quitAndInstall() at all: when Squirrel has
-// not finished it registers an update-downloaded listener, kicks off a native
-// check, and the real quit follows whenever that completes, with no upper bound.
-// A timer there would clear the flags mid-handoff and let the forced exit
-// pre-empt the installer, which is the one thing they exist to prevent. Native
-// errors are forwarded to the updater's error event, so that path is covered
-// without guessing at a deadline.
-function updateInstallQuitGraceMs(platform = process.platform) {
-  return platform === 'darwin' ? null : 10 * 1000;
-}
-
 module.exports = {
   LIMIT_PROVIDER_SETTING_KEYS,
   classifySettingsChange,
@@ -199,6 +182,5 @@ module.exports = {
   envelopeFromSettings,
   limitsConfigFromSettings,
   normalizeAllTimeSince,
-  updateInstallQuitGraceMs,
   usageConfigFromSettings
 };

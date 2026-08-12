@@ -35,6 +35,14 @@ const cursorAuth = require('./cursorAuth');
 const { findSessionFiles, codexSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
 const { buildPromaHistoryGraph, buildPromaPeriods, collectPromaRows } = require('./promaUsage');
+const { resolveReasonixStatsDir, REASONIX_SOURCE_CHECK_ID } = require('./reasonixPaths');
+const {
+  createReasonixNativeSessionCache,
+  isReasonixNativeSessionPath,
+  isReasonixNativeSessionSidecar,
+  reasonixNativeSessionWatchRoots,
+  emptyNativeView
+} = require('./reasonixSessions');
 const { hashKey } = require('./hashKey');
 const { hostOsInfo, normalizeOsInfo } = require('./osVersion');
 const {
@@ -167,7 +175,7 @@ function spawnTokscaleJson(userArgs, commandTimeoutMs) {
 // id. Every alias must be a real tokscale client id: an unknown --client value is
 // rejected with exit 2 and takes the whole scan down with it (verified on 4.7.0
 // and 4.8.0), so this list is not a free-form place to invent sub-source names.
-// Clients tokscale doesn't know at all — `proma`, which we parse ourselves — are
+// Clients tokscale doesn't know at all — Proma, which we parse ourselves, is
 // stripped in collectUsageOnce before the filter is built, not dropped here.
 const TOKSCALE_CLIENT_ALIASES = { antigravity: ['antigravity-cli'] };
 
@@ -184,11 +192,15 @@ function tokscaleClientFilter(clients) {
 }
 
 function runTokscale({ clients, flags, commandTimeoutMs }) {
-  return spawnTokscaleJson(['--json', '--client', tokscaleClientFilter(clients), '--group-by', 'client,session,model', ...flags], commandTimeoutMs);
+  const clientFilter = tokscaleClientFilter(clients);
+  if (!clientFilter) return Promise.resolve({ entries: [] });
+  return spawnTokscaleJson(['--json', '--client', clientFilter, '--group-by', 'client,session,model', ...flags], commandTimeoutMs);
 }
 
 function runTokscaleGraph({ clients, commandTimeoutMs }) {
-  return spawnTokscaleJson(['graph', '--client', tokscaleClientFilter(clients), '--no-spinner'], commandTimeoutMs);
+  const clientFilter = tokscaleClientFilter(clients);
+  if (!clientFilter) return Promise.resolve({ contributions: [] });
+  return spawnTokscaleJson(['graph', '--client', clientFilter, '--no-spinner'], commandTimeoutMs);
 }
 
 function lookupModelPricing(modelId, commandTimeoutMs = 15000) {
@@ -221,7 +233,7 @@ function normalizePromaPricing(result) {
   return pricing.inputCostPerToken !== undefined || pricing.outputCostPerToken !== undefined ? pricing : null;
 }
 
-async function resolvePromaPricing(rows, options = {}) {
+async function resolveModelPricing(rows, options = {}) {
   const lookup = options.lookupModelPricing || lookupModelPricing;
   const revision = options.pricingRevision ?? promaPricingRevision();
   const nowMs = options.nowMs ?? Date.now();
@@ -229,9 +241,14 @@ async function resolvePromaPricing(rows, options = {}) {
   // live usage refresh for the normal tokscale command timeout.
   const commandTimeoutMs = options.commandTimeoutMs || PROMA_PRICING_LOOKUP_TIMEOUT_MS;
   const pricingByModel = {};
-  const modelIds = [...new Set((Array.isArray(rows) ? rows : [])
-    .map((row) => String(row?.model || '').trim().toLowerCase()).filter(Boolean))];
-  for (const modelId of modelIds) {
+  const normalizeId = options.normalizeModelId || ((value) => String(value || '').trim().toLowerCase());
+  const modelIds = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const rawModelId = String(row?.model || '').trim();
+    const modelId = normalizeId(rawModelId);
+    if (modelId) modelIds.set(modelId, true);
+  }
+  for (const [modelId] of modelIds) {
     const cached = promaPricingCache.get(modelId);
     if (cached && cached.revision === revision && nowMs - cached.at < PROMA_PRICING_CACHE_TTL_MS) {
       if (cached.pricing) pricingByModel[modelId] = cached.pricing;
@@ -248,6 +265,10 @@ async function resolvePromaPricing(rows, options = {}) {
     if (pricing) pricingByModel[modelId] = pricing;
   }
   return pricingByModel;
+}
+
+async function resolvePromaPricing(rows, options = {}) {
+  return resolveModelPricing(rows, options);
 }
 
 function resetPromaPricingCache() {
@@ -743,10 +764,11 @@ async function collectUsageOnce(options) {
     options.homeDir || os.homedir(),
     { ...localSessionMetadataDeps, retryMisses, resolveProjects: projectsEnabled }
   );
-  // tokscale doesn't know about Proma yet — filter it out of the subprocess
-  // calls so --client doesn't reject an unknown value. Proma is parsed
-  // separately below and merged back in.
-  const tokscaleClients = normalizedClients ? normalizedClients.split(',').filter((c) => c !== 'proma').join(',') : normalizedClients;
+  // Proma remains a local compatibility adapter; Reasonix aggregate usage is
+  // supplied by the same Tokscale path as every other tracked client.
+  const tokscaleClients = normalizedClients
+    ? normalizedClients.split(',').filter((c) => c !== 'proma').join(',')
+    : normalizedClients;
   const includesProma = normalizedClients.split(',').includes('proma');
   const trackedClientSet = new Set(normalizedClients.split(',').filter(Boolean));
   const targetClients = [...new Set(normalizeClientsCsv(options.targetClients).split(',').filter((client) => trackedClientSet.has(client)))];
@@ -978,10 +1000,6 @@ async function collectUsageOnce(options) {
     }
   }
 
-  if (typeof options.onAnchorComputed === 'function') {
-    options.onAnchorComputed({ windowsPeriods, todayPartitions, wslBundle, wslStatus });
-  }
-
   // One filesystem probe per tick, shared by the legacy status and the health
   // record below. Probing twice cost a second pass over every client's roots —
   // including the per-workspace walk Copilot needs — and let one snapshot report
@@ -1006,6 +1024,35 @@ async function collectUsageOnce(options) {
     month,
     allTime
   };
+  if (options.reasonixNativeSessionsEnabled === true && trackedClientSet.has('reasonix')) {
+    try {
+      const nativeCache = options.reasonixNativeSessionCache || createReasonixNativeSessionCache({
+        env: options.env || process.env,
+        homeDir: options.homeDir || os.homedir(),
+        platform: platformValue,
+        cwdDir: options.cwdDir || process.cwd(),
+        projectIdentity
+      });
+      const nativeView = nativeCache.getView({ now: collectedAt, projectsEnabled, allTimeSince });
+      summary.nativeSessions = nativeView.sessions;
+      summary.nativeProjects = nativeView.projects;
+    } catch (error) {
+      if (typeof options.logger === 'function') options.logger(`reasonix native session scan failed: ${error.message}`);
+      const empty = emptyNativeView();
+      summary.nativeSessions = empty.sessions;
+      summary.nativeProjects = empty.projects;
+    }
+  }
+  if (typeof options.onAnchorComputed === 'function') {
+    options.onAnchorComputed({
+      windowsPeriods,
+      todayPartitions,
+      wslBundle,
+      wslStatus,
+      ...(summary.nativeSessions ? { nativeSessions: summary.nativeSessions } : {}),
+      ...(summary.nativeProjects ? { nativeProjects: summary.nativeProjects } : {})
+    });
+  }
   if (options.historyEnabled === false) {
     summary.history = null;
   } else if (options.includeHistory) {
@@ -1131,8 +1178,9 @@ function hasCopilotChatSessions(workspaceRoot) {
 }
 
 // Per-client data-dir candidates, keyed by client. Drives the detection-status
-// derivation and (minus the self-synced clients below) the chokidar watch list;
-// Antigravity's read-only source roots are added back explicitly below.
+// derivation and, after the interval-only/self-synced projections below, the
+// chokidar watch list; Antigravity's read-only source roots are added back
+// explicitly below.
 // The watched roots, each tagged with a stable id for its *kind*. One id may
 // cover several paths: Copilot's workspaceStorage has a variant per platform and
 // Kiro's IDE globalStorage has four, but "the VS Code workspace storage is
@@ -1296,12 +1344,17 @@ function clientSourceRoots(clientsCsv) {
   add('workbuddy', ['workbuddy-projects', path.join(home, '.workbuddy', 'projects')]);
   // Proma — session transcripts at ~/.proma/agent-sessions/*.jsonl
   add('proma', ['proma-sessions', path.join(home, '.proma', 'agent-sessions')]);
+  add('reasonix', [
+    REASONIX_SOURCE_CHECK_ID,
+    resolveReasonixStatsDir({ env: process.env, homeDir: home, platform: process.platform, cwdDir: process.cwd() })
+  ]);
   // Kiro (AWS): tokscale reads home-relative roots — the sessions tree used by
   // both CLI and IDE, the Kiro IDE globalStorage root (native macOS / Linux /
   // Windows), and the kiro-cli sqlite dir. None falls back to a host-absolute
-  // path under --home
-  // (unlike Zed), so all are safe to watch cross-platform for seconds-level
-  // refresh and a correct waiting/missing status.
+  // path under --home (unlike Zed), so every root remains a valid source and
+  // presence signal. The globalStorage kind is deliberately interval-only in
+  // clientWatchCandidates() because real trees can contain tens of thousands of
+  // files; the sessions and sqlite roots retain seconds-level refresh.
   //
   // Note the deliberate Kiro-vs-kiro casing asymmetry below (do not "fix" it to
   // list both cases everywhere): tokscale scans both `Kiro` and `kiro` cased
@@ -1339,6 +1392,15 @@ function clientSourceRoots(clientsCsv) {
   return byClient;
 }
 
+// Sources that remain part of collection, health, and diagnostics but are too
+// broad for a persistent recursive watcher. Kiro globalStorage accepts every
+// `.chat`, `.json`, and extensionless file at any depth in tokscale, so a real
+// tree can require thousands of native directory watches; after descriptor
+// exhaustion the same tree becomes an even more expensive 2-second polling
+// watch. Regular interval ticks (five minutes by default), manual refreshes, and
+// hourly full reconciliation still scan it through the unchanged Kiro client.
+const INTERVAL_ONLY_SOURCE_CHECK_IDS = new Set(['kiro-ide-globalstorage']);
+
 // The watcher only ever wants paths, so it keeps its original shape rather than
 // learning about check ids it would immediately discard.
 function clientWatchCandidates(clientsCsv) {
@@ -1349,7 +1411,10 @@ function clientWatchCandidates(clientsCsv) {
     // hand both nested paths to chokidar or it may install two native watches
     // over the same tree.
     byClient[client] = roots
-      .filter((root) => !(client === 'copilot' && root.id === 'copilot-otel'))
+      .filter((root) => (
+        !(client === 'copilot' && root.id === 'copilot-otel')
+        && !INTERVAL_ONLY_SOURCE_CHECK_IDS.has(root.id)
+      ))
       .map((root) => root.dir);
   }
   return byClient;
@@ -1406,6 +1471,13 @@ function watchClientRootsForClients(clientsCsv) {
   const antigravityCliDir = antigravityCliDataDir();
   if (enabled.has('antigravity') && dirExists(antigravityCliDir)) {
     rootsByClient.antigravity = [...new Set([...(rootsByClient.antigravity || []), antigravityCliDir])];
+  }
+  if (enabled.has('reasonix')) {
+    const nativeRoots = reasonixNativeSessionWatchRoots();
+    const existingNativeRoots = nativeRoots.filter(dirExists);
+    if (existingNativeRoots.length > 0) {
+      rootsByClient.reasonix = [...new Set([...(rootsByClient.reasonix || []), ...existingNativeRoots])];
+    }
   }
   return rootsByClient;
 }
@@ -1607,6 +1679,22 @@ function watchPolicyEntries(clientsCsv) {
     if (ANTIGRAVITY_SHALLOW_SOURCE_DIRS.has(firstChild)) return parts.length > 2;
     return false;
   });
+
+  const reasonixEnabled = String(clientsCsv || '').split(',').map((value) => value.trim().toLowerCase()).includes('reasonix');
+  bound(
+    'reasonix',
+    reasonixEnabled ? reasonixNativeSessionWatchRoots().filter(dirExists) : [],
+    (_parts, resolved) => {
+      if (isReasonixNativeSessionSidecar(resolved)) return false;
+      try {
+        if (fs.statSync(resolved).isDirectory()) return false;
+      } catch (_) {
+        // A removed sidecar is still delivered by chokidar; other removed
+        // files do not need to invalidate the native-session cache.
+      }
+      return true;
+    }
+  );
 
   bound('opencode', candidates.opencode || [], (parts) => {
     if (parts.length === 1) {
@@ -2114,6 +2202,16 @@ function startCollector(options) {
   const watchUsePolling = resolveWatchUsePolling(options.watchUsePolling);
   const watchNativeForced = watchPollingEnvOverride() === false;
   const trackedClients = new Set(normalizeClientsCsv(clients).split(',').filter(Boolean));
+  const reasonixNativeSessionsEnabled = options.reasonixNativeSessionsEnabled === true;
+  const reasonixNativeSessionCache = reasonixNativeSessionsEnabled && trackedClients.has('reasonix')
+    ? options.reasonixNativeSessionCache || createReasonixNativeSessionCache({
+      env: options.env || process.env,
+      homeDir: options.homeDir || os.homedir(),
+      platform: options.platform || process.platform,
+      cwdDir: options.cwdDir || process.cwd(),
+      projectIdentity
+    })
+    : null;
   const deviceOsInfo = options.osInfo === undefined
     ? hostOsInfo()
     : normalizeOsInfo(options.osInfo);
@@ -2320,6 +2418,8 @@ function startCollector(options) {
         } : null,
         forceSelfSync: tickOptions.forceSelfSync ?? null,
         sourceSelfSync: tickOptions.sourceSelfSync ?? null,
+        reasonixNativeSessionsEnabled,
+        reasonixNativeSessionCache,
         // Both selections name clients whose pending source event this tick has
         // already consumed — the queue's drain for one, its acknowledgement for
         // the other — so either is a legitimate restore.
@@ -2385,7 +2485,9 @@ function startCollector(options) {
           today: captured.windowsPeriods.today,
           month: captured.windowsPeriods.month,
           allTime: captured.windowsPeriods.allTime,
-          todayPartitions: captured.todayPartitions
+          todayPartitions: captured.todayPartitions,
+          ...(captured.nativeSessions ? { nativeSessions: captured.nativeSessions } : {}),
+          ...(captured.nativeProjects ? { nativeProjects: captured.nativeProjects } : {})
         };
         wslAnchor = captured.wslBundle;
         wslStatusAnchor = captured.wslStatus || null;
@@ -2400,6 +2502,8 @@ function startCollector(options) {
               allTime: anchor.allTime,
               wslBundle: wslAnchor,
               wslStatus: wslStatusAnchor,
+              ...(anchor.nativeSessions ? { nativeSessions: anchor.nativeSessions } : {}),
+              ...(anchor.nativeProjects ? { nativeProjects: anchor.nativeProjects } : {}),
               configFingerprint: configFingerprint(clients, allTimeSince, options.projectsEnabled),
               fullScanAt: new Date().toISOString()
             }));
@@ -2409,6 +2513,8 @@ function startCollector(options) {
         // Keep the rolling per-client today partitions fresh for targeted
         // watch ticks. WSL stays independently frozen between interval ticks.
         if (captured.todayPartitions) anchor.todayPartitions = captured.todayPartitions;
+        if (captured.nativeSessions) anchor.nativeSessions = captured.nativeSessions;
+        if (captured.nativeProjects) anchor.nativeProjects = captured.nativeProjects;
         if (refreshWsl) {
           wslAnchor = captured.wslBundle;
           wslStatusAnchor = captured.wslStatus || null;
@@ -2687,6 +2793,18 @@ function startCollector(options) {
             : Math.max(pendingActivityRevision, activityRevision);
         }
         const eventClients = clientsForWatchPath(filePath, attributionRootsByClient);
+        if (
+          reasonixNativeSessionCache
+          && isReasonixNativeSessionSidecar(filePath)
+          && isReasonixNativeSessionPath(
+            filePath,
+            typeof reasonixNativeSessionCache.sessionRoots === 'function'
+              ? reasonixNativeSessionCache.sessionRoots()
+              : reasonixNativeSessionWatchRoots()
+          )
+        ) {
+          reasonixNativeSessionCache.invalidate(filePath);
+        }
         for (const client of clientsForWatchPath(filePath, sourceSyncRootsByClient)) {
           sourceSyncQueue.record(client);
         }
