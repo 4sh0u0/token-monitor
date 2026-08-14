@@ -18,6 +18,7 @@ const {
 } = require('../shared/credentialStore');
 const { installSafeStdout } = require('../shared/safeStdio');
 const { appVersion } = require('../shared/appVersion');
+const { macWidgetRuntimeSupport } = require('../shared/macSystemRequirements');
 const { exportFileSet, exportSignature, EXPORT_FILENAMES } = require('../shared/exporter');
 const { createDefaultTrayLayout, normalizeTrayLayout } = require('../shared/trayLayout');
 const motionPreferenceApi = require('./motionPreference');
@@ -51,7 +52,8 @@ const { createDiagnosticSnapshotBuilder, diagnosticStreamDetailCode, selectLocal
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
-const { claudeWebCookie, deepseekToken, fetchClaudeLimits, normalizeClaudeWebCookieInput, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken, kimiWebToken, ollamaSessionCookie } = require('../shared/limitCollector');
+const { probeHubBuild } = require('./hubBuildStatus');
+const { claudeWebCookie, deepseekToken, fetchClaudeLimits, normalizeClaudeWebCookieInput, normalizeLimitsRefreshMode, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, kimiToken, kimiWebToken, ollamaSessionCookie } = require('../shared/limitCollector');
 const { fetchOllamaLimits, rememberOllamaValidation } = require('../shared/ollamaLimits');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
 const {
@@ -115,6 +117,44 @@ const {
 const cursorAuth = require('../shared/cursorAuth');
 const cursorProbe = require('../shared/cursorProbe');
 const opencodeWeb = require('../shared/opencodeWeb');
+const opencodeGoApi = require('../shared/opencodeGoApi');
+const opencodeProfiles = require('../shared/opencodeProfiles');
+
+// The collector reaches the usage API behind a probe deadline; these settings
+// paths call it directly, so they need their own bound or a hung request leaves
+// the account panel spinning and "Save account" pending forever.
+const OPENCODE_API_PROBE_TIMEOUT_MS = 15_000;
+
+// The auto-detected key has an account of its own for exactly as long as no
+// stored account claims it. Ownership is the shared predicate the collector
+// uses, so the panel never offers a row the collector is not scanning.
+// The auto-detected account is not addressable by name, because it has none.
+// Every credential mutation queues an account-scoped refresh, and a scoped
+// refresh rebuilds only the account it names, so nothing could ever create its
+// row or retire it: removing the credential that claimed the key left the card
+// without the account that took it over, and naming it left the old synthetic
+// row behind. When ownership of the key changes, the whole provider is rebuilt.
+function refreshOpencodeAmbientOwnership(wasActive) {
+  if (opencodeAmbientKeyActive(settings.opencodeProfiles || {}) === wasActive) return;
+  void queueLimitInvalidation({ provider: 'opencode' }, 'ambient-ownership', { clear: true });
+}
+
+function opencodeAmbientKeyActive(profiles) {
+  const ambientKey = opencodeGoApi.readGoApiKey(process.env);
+  if (!ambientKey) return false;
+  const ambientIdentity = opencodeGoApi.goApiIdentity(ambientKey);
+  return !opencodeProfiles.ambientKeyClaimed(profiles, ambientKey, ambientIdentity);
+}
+
+async function probeOpenCodeApiKey(apiKey) {
+  try {
+    return await opencodeGoApi.fetchGoApi(apiKey, {
+      signal: AbortSignal.timeout(OPENCODE_API_PROBE_TIMEOUT_MS)
+    });
+  } catch (_) {
+    return { status: 'unavailable', windows: [] };
+  }
+}
 const openrouterLimits = require('../shared/openrouterLimits');
 const thirdPartyLimits = require('../shared/thirdPartyLimits');
 const subscriptionDisplay = require('../shared/subscriptionDisplay');
@@ -147,8 +187,9 @@ const {
   fetchMimoLimits,
   normalizeMimoCookieHeader
 } = require('../shared/mimoLimits');
-const { historyPreview, historyRevision } = require('../shared/history');
-const { completeHistorySource, resolveCompleteHistory } = require('./historySource');
+const { deviceHistoryRevision, historyPreview, historyRevision } = require('../shared/history');
+const { completeHistorySource, resolveCompleteHistory, resolveCompleteHistoryWithDevices } = require('./historySource');
+const { fixedPeriodHistoryMeta } = require('./fixedPeriodHistory');
 const { readSessionDetailForPlatform } = require('../shared/sessionDetailResolver');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
 const {
@@ -312,6 +353,11 @@ if (!gotLock) app.exit(0);
 
 const HOME_LIMIT_ACCOUNT_COUNT_DEFAULT = 3;
 const HOME_LIMIT_ACCOUNT_COUNT_MAX = 12;
+const PERIOD_MONTH_MODES = new Set(['month', 'week', 'last7', 'last30']);
+
+function normalizePeriodMonthMode(value) {
+  return PERIOD_MONTH_MODES.has(value) ? value : 'month';
+}
 
 function normalizeHomeLimitAccountCount(value) {
   const count = Math.trunc(Number(value));
@@ -358,6 +404,7 @@ function defaultSettings() {
     tokenRateMode: 'speed',
     heatmapMetric: 'cost',
     homeActiveDaysWindow: 'all',
+    periodMonthMode: 'month',
     themeColors: {},
     vendorColors: {},
     floatingBubbleEnabled: false,
@@ -402,10 +449,15 @@ function defaultSettings() {
     homeLimitProviderOrder: '',
     hiddenHomeLimitProviders: '',
     homeLimitAccountCount: HOME_LIMIT_ACCOUNT_COUNT_DEFAULT,
+    limitsRefreshMode: normalizeLimitsRefreshMode(process.env.TOKEN_MONITOR_LIMITS_REFRESH_MODE),
     limitsRefreshMs: normalizeLimitsRefreshMs(process.env.TOKEN_MONITOR_LIMITS_REFRESH_MS),
     showLimitSource: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_SOURCE, false),
     maskLimitAccountEmails: false,
     claudePrepaidBalanceEnabled: parseBoolean(process.env.TOKEN_MONITOR_CLAUDE_PREPAID_BALANCE, true),
+    // The key OpenCode stores for itself needs no setup, so tracking it is the
+    // default. This turns that off for a machine that is signed in to an account
+    // the user does not want reported.
+    opencodeAmbientEnabled: parseBoolean(process.env.TOKEN_MONITOR_OPENCODE_AMBIENT, true),
     opencodeLocalLimitsEnabled: false,
     showLimitUsed: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_USED, false),
     // Manual subscription metadata. Plain preferences, not credentials, so they
@@ -2022,6 +2074,7 @@ function readSettings() {
       merged.hiddenHomeLimitProviders = normalizeHiddenLimitProviders(saved.hiddenHomeLimitProviders);
     }
     merged.homeLimitAccountCount = normalizeHomeLimitAccountCount(merged.homeLimitAccountCount);
+    merged.periodMonthMode = normalizePeriodMonthMode(merged.periodMonthMode);
     if (saved.historyEnabled !== undefined) {
       merged.historyEnabled = parseBoolean(saved.historyEnabled, false);
     }
@@ -2323,9 +2376,11 @@ function applyNativeMaterial(source = settings) {
 }
 
 function withHistoryPreview(stats, devices) {
-  const history = settings?.historyEnabled === false ? aggregateHistory([]) : aggregateHistory(devices);
+  const historyDevices = settings?.historyEnabled === false ? [] : devices;
+  const history = aggregateHistory(historyDevices);
   stats.historyPreview = historyPreview(history);
   stats.historyRevision = historyRevision(history);
+  stats.deviceHistoryRevision = deviceHistoryRevision(historyDevices);
   return stats;
 }
 
@@ -2633,6 +2688,12 @@ function getHubInfo() {
     error: embeddedHubError,
     lanAddresses: lanIpv4Addresses()
   };
+}
+
+async function getHubBuildStatus() {
+  if (settings?.hubMode !== 'client') return { status: 'notConfigured', runtime: '', hubUrl: '' };
+  const hubUrl = String(settings.hubUrl || '').trim();
+  return probeHubBuild(hubUrl);
 }
 
 async function startEmbeddedHub() {
@@ -3387,7 +3448,7 @@ function injectLocalDeviceStatus(stats) {
 }
 
 function macWidgetConfiguration() {
-  if (process.platform !== 'darwin') return null;
+  if (!macWidgetRuntimeSupported()) return null;
   if (cachedMacWidgetConfiguration !== undefined) return cachedMacWidgetConfiguration;
 
   let appGroup = String(process.env.TOKEN_MONITOR_APP_GROUP || '').trim();
@@ -3430,6 +3491,13 @@ function macWidgetConfiguration() {
   return cachedMacWidgetConfiguration;
 }
 
+function macWidgetRuntimeSupported(
+  platform = process.platform,
+  osRelease = platform === 'darwin' ? os.release() : ''
+) {
+  return macWidgetRuntimeSupport({ platform, osRelease }).supported;
+}
+
 function historyResolverOptions() {
   const { url: hubUrl, secret } = effectiveHubConfig();
   return {
@@ -3438,7 +3506,10 @@ function historyResolverOptions() {
     historyEnabled: settings?.historyEnabled !== false,
     hubMode: settings?.hubMode,
     hubUrl,
-    localDevice,
+    // In sync/host mode the headless agent owns this machine's producer while its
+    // PID is live. Do not let the widget's last pre-handoff snapshot compete with
+    // the newer Hub record; local mode always owns its collector by contract.
+    localDevice: ownsUsageRuntime() ? (lastCollectedDevice || localDevice) : null,
     mode,
     secret
   };
@@ -3513,7 +3584,7 @@ function captureMacWidgetWork({ stats, owner }) {
 }
 
 function ensureMacWidgetSnapshotController() {
-  if (process.platform !== 'darwin') return null;
+  if (!macWidgetRuntimeSupported()) return null;
   if (macWidgetSnapshotController) return macWidgetSnapshotController;
   macWidgetSnapshotController = createMacWidgetSnapshotController({
     startPaused: !macWidgetPublicationReady,
@@ -3559,6 +3630,7 @@ function ensureMacWidgetSnapshotController() {
     reloadSnapshot: (work, options) => requestMacWidgetReload({
       widgetKind: work.widgetKind,
       isCurrent: options.isCurrent,
+      runtimeSupported: macWidgetRuntimeSupported(),
       logger: (message) => console.warn(message)
     }),
     logger: (message) => console.warn(message)
@@ -3585,7 +3657,7 @@ function refreshMacWidgetHistorySource() {
 }
 
 function scheduleMacWidgetSnapshot(stats, producerOwner) {
-  if (process.platform !== 'darwin' || !stats) return false;
+  if (!macWidgetRuntimeSupported() || !stats) return false;
   return ensureMacWidgetSnapshotController()?.enqueue({ stats, producerOwner }) || false;
 }
 
@@ -4010,11 +4082,18 @@ function currentWindowToggleShortcutStatus() {
 
 // Strip OpenCode session cookies from a profiles map before it reaches the
 // renderer; the UI only needs the profile name and enabled flag, not the value.
+// Default-deny: name every field allowed through instead of spreading the stored
+// profile. A spread hands any field added later to the renderer verbatim, which
+// is exactly how a credential leaks.
 function redactOpencodeProfilesForRenderer(profiles) {
   if (!profiles || typeof profiles !== 'object') return profiles;
-  const out = {};
+  const out = Object.create(null);
   for (const [name, profile] of Object.entries(profiles)) {
-    out[name] = { ...profile, cookie: profile && profile.cookie ? 'set' : '' };
+    out[name] = {
+      enabled: profile?.enabled !== false,
+      cookie: profile?.cookie ? 'set' : '',
+      apiKey: profile?.apiKey ? 'set' : ''
+    };
   }
   return out;
 }
@@ -5568,8 +5647,20 @@ function createDashboardWindow() {
   return win;
 }
 
-async function getDashboardHistory() {
-  return getCompleteHistory();
+async function getDashboardHistory(options = {}) {
+  const includeDevices = options?.includeDevices === true;
+  const resolved = includeDevices
+    ? await resolveCompleteHistoryWithDevices(historyResolverOptions())
+    : { history: await getCompleteHistory(), deviceHistories: undefined };
+  const history = resolved.history;
+  const source = completeHistorySource(historyResolverOptions());
+  return {
+    ...history,
+    ...(includeDevices ? { deviceHistories: resolved.deviceHistories } : {}),
+    fixedPeriods: fixedPeriodHistoryMeta({
+      source
+    })
+  };
 }
 
 let cursorStatusCache = { value: null, at: 0 };
@@ -5612,17 +5703,25 @@ function rebuildWindow() {
 app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_ICON_PATH);
   ensureSettingsLoaded();
-  const widgetRecoveryAbort = new AbortController();
-  const abortWidgetRecovery = () => widgetRecoveryAbort.abort();
-  app.once('before-quit', abortWidgetRecovery);
-  const widgetRecovery = recoverMacWidgetLaunchServicesRegistration({
+  const widgetRuntime = macWidgetRuntimeSupport({
     platform: process.platform,
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    userDataPath: app.getPath('userData'),
-    signal: widgetRecoveryAbort.signal,
-    logger: (message) => console.warn(message)
+    osRelease: process.platform === 'darwin' ? os.release() : ''
   });
+  const widgetRuntimeSupported = widgetRuntime.supported;
+  const widgetRecoveryAbort = widgetRuntimeSupported ? new AbortController() : null;
+  const abortWidgetRecovery = () => widgetRecoveryAbort?.abort();
+  if (widgetRecoveryAbort) app.once('before-quit', abortWidgetRecovery);
+  const widgetRecovery = widgetRuntimeSupported
+    ? recoverMacWidgetLaunchServicesRegistration({
+      platform: process.platform,
+      runtimeSupported: true,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      userDataPath: app.getPath('userData'),
+      signal: widgetRecoveryAbort.signal,
+      logger: (message) => console.warn(message)
+    })
+    : Promise.resolve({ status: 'skipped', reason: widgetRuntime.reason });
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -5640,11 +5739,11 @@ app.whenReady().then(() => {
   if (pendingMacWidgetOpen) setImmediate(openMainWindowFromWidget);
   if (settings.trayMode) enterTrayMode();
   regenerateTokscalePricing();
-  ensureMacWidgetDemand();
+  if (widgetRuntimeSupported) ensureMacWidgetDemand();
   startMode();
   void widgetRecovery.finally(() => {
-    app.removeListener('before-quit', abortWidgetRecovery);
-    if (!widgetRecoveryAbort.signal.aborted) {
+    if (widgetRecoveryAbort) app.removeListener('before-quit', abortWidgetRecovery);
+    if (!widgetRecoveryAbort?.signal.aborted) {
       macWidgetPublicationReady = true;
       macWidgetSnapshotController?.resume();
     }
@@ -5819,6 +5918,7 @@ app.whenReady().then(() => {
       homeLimitProviderOrder: patch.homeLimitProviderOrder !== undefined ? migrateHomeLimitProviderOrder(patch.homeLimitProviderOrder) : (settings.homeLimitProviderOrder || ''),
       hiddenHomeLimitProviders: patch.hiddenHomeLimitProviders !== undefined ? normalizeHiddenLimitProviders(patch.hiddenHomeLimitProviders) : normalizeHiddenLimitProviders(settings.hiddenHomeLimitProviders),
       homeLimitAccountCount: normalizeHomeLimitAccountCount(patch.homeLimitAccountCount ?? settings.homeLimitAccountCount),
+      periodMonthMode: normalizePeriodMonthMode(patch.periodMonthMode ?? settings.periodMonthMode),
       historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, false),
       projectsEnabled: parseBoolean(patch.projectsEnabled ?? settings.projectsEnabled, true),
       historyIntervalMs: normalizeHistoryIntervalMs(patch.historyIntervalMs ?? settings.historyIntervalMs),
@@ -5830,10 +5930,12 @@ app.whenReady().then(() => {
       serviceProviderDisplayOrder: patch.serviceProviderDisplayOrder !== undefined ? String(patch.serviceProviderDisplayOrder || '') : (settings.serviceProviderDisplayOrder || ''),
       hiddenServiceProviders: patch.hiddenServiceProviders !== undefined ? String(patch.hiddenServiceProviders || '') : (settings.hiddenServiceProviders || ''),
       serviceStatusRefreshMs: normalizeServiceStatusRefreshMs(patch.serviceStatusRefreshMs ?? settings.serviceStatusRefreshMs),
+      limitsRefreshMode: normalizeLimitsRefreshMode(patch.limitsRefreshMode ?? settings.limitsRefreshMode),
       limitsRefreshMs: normalizeLimitsRefreshMs(patch.limitsRefreshMs ?? settings.limitsRefreshMs),
       showLimitSource: parseBoolean(patch.showLimitSource ?? settings.showLimitSource, false),
       maskLimitAccountEmails: parseBoolean(patch.maskLimitAccountEmails ?? settings.maskLimitAccountEmails, false),
       claudePrepaidBalanceEnabled: parseBoolean(patch.claudePrepaidBalanceEnabled ?? settings.claudePrepaidBalanceEnabled, true),
+      opencodeAmbientEnabled: parseBoolean(patch.opencodeAmbientEnabled ?? settings.opencodeAmbientEnabled, true),
       opencodeLocalLimitsEnabled: parseBoolean(patch.opencodeLocalLimitsEnabled ?? settings.opencodeLocalLimitsEnabled, false),
       showLimitUsed: parseBoolean(patch.showLimitUsed ?? settings.showLimitUsed, false),
       windowMaximized: parseBoolean(settings.windowMaximized, false),
@@ -6118,6 +6220,7 @@ app.whenReady().then(() => {
     providerIds: Array.isArray(options?.providerIds) ? options.providerIds : null
   }));
   ipcMain.handle('hub:getInfo', () => getHubInfo());
+  ipcMain.handle('hub:getBuildStatus', () => getHubBuildStatus());
   ipcMain.handle('hub:regenerateSecret', () => {
     settings.hubHostSecret = generateHubSecret();
     saveSettings({ throwOnError: true });
@@ -6412,16 +6515,77 @@ app.whenReady().then(() => {
       return opencodeStatusCache.value;
     }
     const profiles = settings.opencodeProfiles || {};
-    const entries = Object.entries(profiles).filter(([, p]) => p.cookie && p.enabled);
+    // A profile that only names the auto-detected key stores no credential of
+    // its own, so filtering on `cookie || apiKey` alone would skip it and leave
+    // its row stuck on the placeholder while the collector reads live quota
+    // from that very key. Resolve the key the same way the collector does.
+    const ambientKey = opencodeGoApi.readGoApiKey(process.env);
+    const ambientIdentity = ambientKey ? opencodeGoApi.goApiIdentity(ambientKey) : '';
+    const profileKey = (p) => p.apiKey || opencodeProfiles.ambientKeyFor(p, ambientKey, ambientIdentity);
+    // A reference that no longer resolves still has to answer for its row. It
+    // has a credential the user stored, so filtering it out here would leave the
+    // row on its placeholder forever with nothing saying what to do about it.
+    const needsRebind = (p) => Boolean(p.useAmbientKey) && !profileKey(p) && !p.cookie;
+    const entries = Object.entries(profiles)
+      .filter(([, p]) => (p.cookie || profileKey(p) || needsRebind(p)) && p.enabled);
 
     // Query all profiles in parallel
     const results = await Promise.all(
       entries.map(async ([name, profile]) => {
-        const [go, zen] = await Promise.all([
+        const apiKey = profileKey(profile);
+        if (needsRebind(profile)) {
+          return [name, {
+            linked: false,
+            expired: false,
+            go: false,
+            zen: false,
+            hasBalance: false,
+            balanceUsd: null,
+            needsRebind: true
+          }];
+        }
+        // An API key reaches Go quota and nothing else, so it reports the same
+        // shape as a cookie with the Zen half permanently absent. Without this
+        // branch an API account is never probed and the panel sits at "0/1".
+        // Only a cookie account can be probed for Zen, so a profile holding both
+        // falls through to the cookie path and its key is used by the collector.
+        if (apiKey && !profile.cookie) {
+          const probe = await probeOpenCodeApiKey(apiKey);
+          // The renderer checks `linked` before `error`, so anything short of a
+          // working key must not claim linked or it renders a bare "✓" with no
+          // plan behind it.
+          if (probe.status === 'ok') {
+            return [name, { linked: true, expired: false, go: true, zen: false, hasBalance: false, balanceUsd: null }];
+          }
+          if (probe.status === 'unauthorized') {
+            return [name, { linked: true, expired: true, go: false, zen: false, hasBalance: false, balanceUsd: null }];
+          }
+          return [name, {
+            linked: false,
+            expired: false,
+            go: false,
+            zen: false,
+            hasBalance: false,
+            balanceUsd: null,
+            error: probe.status
+          }];
+        }
+        const [go, zen, apiProbe] = await Promise.all([
           opencodeWeb.fetchGoWeb(profile.cookie, {}),
-          opencodeWeb.fetchZen(profile.cookie, {})
+          opencodeWeb.fetchZen(profile.cookie, {}),
+          apiKey ? probeOpenCodeApiKey(apiKey) : null
         ]);
-        return [name, { ...opencodeWeb.summarizeLink(go, zen), balanceUsd: zen.balanceUsd }];
+        const summary = { ...opencodeWeb.summarizeLink(go, zen), balanceUsd: zen.balanceUsd };
+        // A bound key answers for Go on its own, so the row must not read as
+        // expired just because the cookie half died: the collector still has
+        // quota, and only the Zen balance is actually missing.
+        if (apiProbe?.status === 'ok') {
+          summary.go = true;
+          summary.linked = true;
+          summary.expired = false;
+          delete summary.error;
+        }
+        return [name, summary];
       })
     );
 
@@ -6442,37 +6606,156 @@ app.whenReady().then(() => {
       }
       result[envKey] = { ...opencodeWeb.summarizeLink(go, zen), balanceUsd: zen.balanceUsd, env: true };
     }
-    const value = { profiles: result, linked: Object.values(result).some(s => s.linked) };
+    // Zero configuration still has an account behind it. Without probing the key
+    // OpenCode stored for itself, the panel reports "not set up" while the limits
+    // card is showing live quota read from that very key.
+    //
+    // It rides in its own field rather than under a reserved name inside
+    // `profiles`: account names are user-chosen, so any sentinel key is one a
+    // user can also type, and the synthetic entry would then overwrite their
+    // account's real status (and collide with its DOM id in the renderer).
+    let ambient = null;
+    if (opencodeAmbientKeyActive(profiles) && settings.opencodeAmbientEnabled === false) {
+      ambient = { linked: false, expired: false, go: false, zen: false, hasBalance: false, balanceUsd: null, ambient: true, disabled: true };
+    } else if (opencodeAmbientKeyActive(profiles)) {
+      const probe = await probeOpenCodeApiKey(opencodeGoApi.readGoApiKey(process.env));
+      ambient = {
+        linked: probe.status === 'ok',
+        expired: probe.status === 'unauthorized',
+        go: probe.status === 'ok',
+        zen: false,
+        hasBalance: false,
+        balanceUsd: null,
+        ambient: true,
+        ...(probe.status === 'ok' || probe.status === 'unauthorized' ? {} : { error: probe.status })
+      };
+    }
+    const value = {
+      profiles: result,
+      ambient,
+      linked: Object.values(result).some(s => s.linked) || Boolean(ambient?.linked)
+    };
     opencodeStatusCache = { value, at: now };
     return value;
   });
   ipcMain.handle('opencode:getProfiles', async () => {
     const profiles = settings.opencodeProfiles || {};
+    // The Go quota also arrives with no configuration at all, from the key
+    // OpenCode itself stores. Without counting that, the panel reports "not set
+    // up" while the limits card is showing live API data from the same account.
     const hasEnvVar = Boolean(process.env.TOKEN_MONITOR_OPENCODE_COOKIE);
-    // Strip cookie values — renderer only needs name/enabled for display
-    const safe = {};
+    // Kept as its own field rather than folded into hasEnvVar: an environment
+    // cookie and a key OpenCode stored for itself are different sources, and a
+    // later reader seeing hasEnvVar would reasonably assume the former.
+    const hasAmbientKey = opencodeAmbientKeyActive(profiles);
+    // Credential values never cross to the renderer; which kinds exist does, so
+    // the list can show what a profile actually holds.
+    const ambientKey = opencodeGoApi.readGoApiKey(process.env);
+    const ambientIdentity = ambientKey ? opencodeGoApi.goApiIdentity(ambientKey) : '';
+    // Keyed on user-typed names, so it must not inherit one. Structured clone
+    // hands the renderer a plain object either way.
+    const safe = Object.create(null);
     for (const [name, p] of Object.entries(profiles)) {
-      safe[name] = { enabled: p.enabled };
+      safe[name] = {
+        enabled: p.enabled,
+        hasApiKey: Boolean(p.apiKey),
+        hasCookie: Boolean(p.cookie),
+        usesAmbientKey: Boolean(p.useAmbientKey),
+        // Held but not resolving, because the key it was bound to is no longer
+        // the one on this machine. Without saying so the list shows the
+        // credential as present while the collector ignores it, and on an
+        // account that also has a cookie nothing else would reveal it.
+        ambientStale: Boolean(p.useAmbientKey)
+          && !opencodeProfiles.ambientKeyFor(p, ambientKey, ambientIdentity)
+      };
     }
-    return { profiles: safe, hasEnvVar };
+    return {
+      profiles: safe,
+      hasEnvVar,
+      hasAmbientKey,
+      ambientEnabled: settings.opencodeAmbientEnabled !== false
+    };
   });
-  ipcMain.handle('opencode:saveProfile', async (_event, name, raw) => {
-    const cookie = opencodeWeb.sanitizeCookieHeader(raw);
-    if (!cookie || !name) return { ok: false, error: 'Empty name or cookie' };
+  // `kind` defaults to 'cookie' so an older renderer calling with two arguments
+  // keeps its existing behavior.
+  ipcMain.handle('opencode:saveProfile', async (_event, name, raw, kind = 'cookie', options = {}) => {
+    // Trimmed, so whitespace cannot create an account name that renders blank
+    // and that nobody could ever type again to attach a second credential.
+    name = String(name || '').trim();
+    if (!name) return { ok: false, error: 'Empty name' };
+    // Reject anything else rather than treating it as a cookie: an unrecognized
+    // kind would store the value in the wrong field and read as a credential it
+    // is not.
+    if (!['api', 'cookie', 'ambient'].includes(kind)) {
+      return { ok: false, error: `Unknown credential kind: ${kind}` };
+    }
     try {
-      const [go, zen] = await Promise.all([
-        opencodeWeb.fetchGoWeb(cookie, {}),
-        opencodeWeb.fetchZen(cookie, {})
-      ]);
-      if (opencodeWeb.summarizeLink(go, zen).expired) {
-        return { ok: false, error: 'OpenCode rejected the cookie (it may be expired)' };
+      let credential;
+      if (kind === 'ambient') {
+        // Naming the auto-detected credential. A reference is stored, never the
+        // key itself, so the key is re-read every tick rather than going stale
+        // at 401 behind a snapshot.
+        const ambientKey = opencodeGoApi.readGoApiKey(process.env);
+        if (!ambientKey) {
+          return { ok: false, error: 'No OpenCode credential found on this machine' };
+        }
+        // Records which account the reference was bound to, so a key that later
+        // changes stops resolving here instead of quietly pairing whoever is
+        // signed in next with this account's cookie. It is a digest, not the
+        // key: the value itself is never stored for this credential kind.
+        credential = {
+          useAmbientKey: true,
+          ambientKeyIdentity: opencodeGoApi.goApiIdentity(ambientKey)
+        };
+      } else if (kind === 'api') {
+        const apiKey = String(raw || '').trim();
+        if (!apiKey) return { ok: false, error: 'Empty API key' };
+        const probe = await probeOpenCodeApiKey(apiKey);
+        if (probe.status === 'unauthorized') {
+          return { ok: false, error: 'OpenCode rejected the API key' };
+        }
+        // The key authenticates but the workspace has no Go plan, so this
+        // profile would render permanently empty. Say so instead of saving it.
+        if (probe.status === 'notConfigured') {
+          return { ok: false, error: 'That account has no OpenCode Go subscription' };
+        }
+        if (probe.status !== 'ok') {
+          return { ok: false, error: 'Could not reach the OpenCode usage API' };
+        }
+        credential = { apiKey };
+      } else {
+        const cookie = opencodeWeb.sanitizeCookieHeader(raw);
+        if (!cookie) return { ok: false, error: 'Empty cookie' };
+        const [go, zen] = await Promise.all([
+          opencodeWeb.fetchGoWeb(cookie, {}),
+          opencodeWeb.fetchZen(cookie, {})
+        ]);
+        if (opencodeWeb.summarizeLink(go, zen).expired) {
+          return { ok: false, error: 'OpenCode rejected the cookie (it may be expired)' };
+        }
+        credential = { cookie };
       }
-      const profiles = settings.opencodeProfiles || {};
-      profiles[name] = { cookie, enabled: true };
-      settings.opencodeProfiles = profiles;
+      // Saving one credential replaces only that kind and keeps the others. Two
+      // kinds under one profile name is how a user says "these are the same
+      // account", which is the only thing that licenses reading Go quota from
+      // the key while Zen balance comes from the cookie. Nothing associates them
+      // automatically — same machine is not evidence of same account — so the
+      // binding is refused here until the caller confirms it, whichever UI path
+      // asked. A blur that happens to land on an existing name must not be able
+      // to make that claim on the user's behalf.
+      const ambientWasActive = opencodeAmbientKeyActive(settings.opencodeProfiles || {});
+      const result = opencodeProfiles.saveCredential(
+        settings.opencodeProfiles || {},
+        name,
+        credential,
+        { merge: options.merge === true }
+      );
+      if (!result.ok) return result;
+      settings.opencodeProfiles = result.profiles;
       saveSettings({ throwOnError: true });
       opencodeStatusCache = { value: null, at: 0 };
       void queueLimitInvalidation({ provider: 'opencode', accountName: name }, 'profile-save');
+      refreshOpencodeAmbientOwnership(ambientWasActive);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -6480,7 +6763,8 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('opencode:deleteProfile', async (_event, name) => {
     const profiles = settings.opencodeProfiles || {};
-    const deletedProfile = profiles[name];
+    const ambientWasActive = opencodeAmbientKeyActive(profiles);
+    const deletedProfile = opencodeProfiles.readProfile(profiles, name);
     delete profiles[name];
     if (deletedProfile?.cookie && settings.opencodeCookie === deletedProfile.cookie) {
       settings.opencodeCookie = '';
@@ -6496,16 +6780,78 @@ app.whenReady().then(() => {
       clear: true,
       refresh: false
     });
+    refreshOpencodeAmbientOwnership(ambientWasActive);
     return { ok: true };
   });
-  ipcMain.handle('opencode:renameProfile', async (_event, oldName, newName) => {
-    if (!newName || oldName === newName) return { ok: false, error: 'Invalid name' };
-    const profiles = settings.opencodeProfiles || {};
-    if (!profiles[oldName]) return { ok: false, error: 'Profile not found' };
-    if (profiles[newName]) return { ok: false, error: 'Profile name already exists' };
-    profiles[newName] = profiles[oldName];
-    delete profiles[oldName];
-    settings.opencodeProfiles = profiles;
+  // Removes one credential from an account, leaving the others. Deleting the
+  // account removes all of them; this is how a binding is undone without
+  // losing the credential the user wanted to keep.
+  ipcMain.handle('opencode:removeCredential', async (_event, name, kind) => {
+    const ambientWasActive = opencodeAmbientKeyActive(settings.opencodeProfiles || {});
+    const result = opencodeProfiles.removeCredential(settings.opencodeProfiles || {}, name, kind);
+    if (!result.ok) return result;
+    if (result.removedCookie && settings.opencodeCookie === result.removedCookie) {
+      settings.opencodeCookie = '';
+    }
+    settings.opencodeProfiles = result.profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenCode credential removal' };
+    }
+    opencodeStatusCache = { value: null, at: 0 };
+    void queueLimitInvalidation({ provider: 'opencode', accountName: name }, 'credential-remove', {
+      clear: true
+    });
+    refreshOpencodeAmbientOwnership(ambientWasActive);
+    return { ok: true };
+  });
+  // Moves one credential to another account name, creating it when needed. This
+  // is what "rename a credential" means in a model where the name is the
+  // account: moving it to a fresh name splits it off, moving it onto an
+  // existing name binds it there. The value never crosses to the renderer.
+  ipcMain.handle('opencode:moveCredential', async (_event, name, kind, targetName, options = {}) => {
+    const ambientWasActive = opencodeAmbientKeyActive(settings.opencodeProfiles || {});
+    const result = opencodeProfiles.moveCredential(
+      settings.opencodeProfiles || {},
+      name,
+      kind,
+      targetName,
+      { merge: options.merge === true }
+    );
+    if (!result.ok) return result;
+    if (result.unchanged) return { ok: true };
+    const target = String(targetName || '').trim();
+    settings.opencodeProfiles = result.profiles;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist OpenCode credential move' };
+    }
+    opencodeStatusCache = { value: null, at: 0 };
+    for (const account of [name, target]) {
+      void queueLimitInvalidation({ provider: 'opencode', accountName: account }, 'credential-move', {
+        clear: true
+      });
+    }
+    refreshOpencodeAmbientOwnership(ambientWasActive);
+    return { ok: true };
+  });
+  // `merge` is the caller confirming that renaming onto an existing account
+  // asserts the two are the same OpenCode account — the same claim as saving a
+  // second credential under one name, and the only thing that licenses reading
+  // quota from one credential while identity comes from another. Without it an
+  // existing name is refused, so the assertion is never made by accident.
+  ipcMain.handle('opencode:renameProfile', async (_event, oldName, newName, options = {}) => {
+    const ambientWasActive = opencodeAmbientKeyActive(settings.opencodeProfiles || {});
+    const result = opencodeProfiles.renameProfile(
+      settings.opencodeProfiles || {},
+      oldName,
+      newName,
+      { merge: options.merge === true }
+    );
+    if (!result.ok) return result;
+    settings.opencodeProfiles = result.profiles;
     try {
       saveSettings({ throwOnError: true });
     } catch (error) {
@@ -6517,12 +6863,17 @@ app.whenReady().then(() => {
       refresh: false
     });
     void queueLimitInvalidation({ provider: 'opencode', accountName: newName }, 'profile-rename');
+    refreshOpencodeAmbientOwnership(ambientWasActive);
     return { ok: true };
   });
   ipcMain.handle('opencode:setProfileEnabled', async (_event, name, enabled) => {
     const profiles = settings.opencodeProfiles || {};
-    if (!profiles[name]) return { ok: false, error: 'Profile not found' };
-    profiles[name].enabled = Boolean(enabled);
+    // Own properties only. An inherited key resolves to an object that is not an
+    // account, and writing `enabled` onto it would reach whatever else shares
+    // that prototype.
+    const profile = opencodeProfiles.readProfile(profiles, name);
+    if (!profile) return { ok: false, error: 'Profile not found' };
+    profile.enabled = Boolean(enabled);
     settings.opencodeProfiles = profiles;
     try {
       saveSettings({ throwOnError: true });
@@ -6534,6 +6885,28 @@ app.whenReady().then(() => {
       clear: !enabled,
       refresh: Boolean(enabled)
     });
+    return { ok: true };
+  });
+  // The auto-detected account has no stored record to carry an enabled flag, so
+  // its switch is a device preference rather than a credential. Writing one
+  // instead would mean a toggle that creates an account under a name the user
+  // can also type, cannot be undone symmetrically once that account is edited,
+  // and quietly comes back enabled when the key it pinned is rotated.
+  ipcMain.handle('opencode:setAmbientEnabled', async (_event, enabled) => {
+    settings.opencodeAmbientEnabled = enabled !== false;
+    try {
+      saveSettings({ throwOnError: true });
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Could not persist the OpenCode detection setting' };
+    }
+    opencodeStatusCache = { value: null, at: 0 };
+    // Provider-wide, for the same reason every ownership change is: this row has
+    // no account name for a scoped refresh to address. It must still refresh
+    // afterwards. Clearing without one wipes every OpenCode account and rebuilds
+    // none of them, so switching off the detected key read as switching off the
+    // whole provider — the rest of the accounts are unaffected by this setting
+    // and have to come straight back.
+    void queueLimitInvalidation({ provider: 'opencode' }, 'ambient-toggle', { clear: true });
     return { ok: true };
   });
   ipcMain.handle('openrouter:getProfiles', async () => {
@@ -6912,7 +7285,7 @@ app.whenReady().then(() => {
     else mainWindow?.close();
   });
   ipcMain.handle('dashboard:open', () => { createDashboardWindow(); return true; });
-  ipcMain.handle('dashboard:getHistory', () => getDashboardHistory());
+  ipcMain.handle('dashboard:getHistory', (_event, options) => getDashboardHistory(options));
   ipcMain.on('dashboard:ready', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win !== dashboardWindow || win.isDestroyed()) return;

@@ -1,6 +1,6 @@
 'use strict';
 
-const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes Agent', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', reasonix: 'Reasonix' };
+const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes Agent', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', commandcode: 'Command Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', reasonix: 'Reasonix' };
 const reasonixSessionGuard = window.TokenMonitorReasonixSessionGuard;
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
@@ -12,7 +12,7 @@ const tokenRateApi = window.TokenMonitorTokenRate;
 const { tokenRatePerSecond, tokenBurnPerMinute } = tokenRateApi;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const clientsWithIcon = new Set([
-  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'reasonix',
+  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'reasonix',
   'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama', 'thirdparty', 'hunyuan'
 ]);
 
@@ -63,6 +63,7 @@ const KNOWN_CLIENTS = [
   { id: 'pi', label: 'Pi' },
   { id: 'zed', label: 'Zed' },
   { id: 'kilocode', label: 'Kilo Code' },
+  { id: 'commandcode', label: 'Command Code' },
   { id: 'micode', label: 'MiMo Code' },
   { id: 'zcode', label: 'ZCode' },
   { id: 'kiro', label: 'Kiro' },
@@ -170,6 +171,8 @@ const verticalDragSortApi = window.TokenMonitorVerticalDragSort;
 const rowDragControllerApi = window.TokenMonitorRowDragController;
 const homeOverviewApi = window.TokenMonitorHomeOverview;
 const homeModulePreferencesApi = window.TokenMonitorHomeModulePreferences;
+const fixedPeriodRangesApi = window.TokenMonitorFixedPeriodRanges;
+const hubBuildPresentationApi = window.TokenMonitorHubBuildPresentation;
 const { limitFillPercent, limitModeSuffix } = window.TokenMonitorLimitDisplayMode;
 const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
@@ -186,6 +189,7 @@ const {
   toolIconsEnabled
 } = breakdownRenderPolicyApi;
 const deviceBreakdownApi = window.TokenMonitorDeviceBreakdown;
+const usageAttributionRowsApi = window.TokenMonitorUsageAttributionRows;
 const projectRowsApi = window.TokenMonitorProjectRows;
 const sessionDetailApi = window.TokenMonitorSessionDetail;
 const windowShortcutApi = window.TokenMonitorWindowShortcut;
@@ -202,6 +206,7 @@ const LIMIT_CAPABILITY_TAG_KEYS = {
   'Manual login': 'settings.limits.capability.manualLogin',
   Web: 'settings.limits.capability.web',
   'Web/API': 'settings.limits.capability.webApi',
+  'API/Web': 'settings.limits.capability.apiWeb',
   'App/CLI must be open': 'settings.limits.capability.appMustBeOpen',
   RPC: 'settings.limits.capability.rpc',
   'Local/Zen': 'settings.limits.capability.localZen',
@@ -249,7 +254,7 @@ const VIEW_DISPLAY_OPTIONS = [
   { id: 'limits', labelKey: 'views.limits' },
   { id: 'trends', labelKey: 'views.trends' }
 ];
-const viewPeriodValues = new Set(['today', 'month', 'allTime']);
+const viewPeriodValues = new Set(['today', 'month', 'week', 'last7', 'last30', 'allTime']);
 const viewBreakdownValues = new Set(['home', ...baseBreakdownOrder, 'status', 'limits', 'trends']);
 const HOME_MODULE_OPTIONS = [
   { id: 'limits', labelKey: 'home.limits', viewId: 'limits' },
@@ -295,7 +300,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, limitProviderSettingsExpanded: '', clientHealthExpanded: '', clientSources: clientSourceCacheApi.createClientSourceCache(), clientSourcesKey: '', clientSourcesRequest: 0, subscriptionEditingId: '', subscriptionTopUps: [], subscriptionFormBase: null, subscriptionEditorTransitionId: 0, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, claudeAccountExpanded: false, claudePendingCheckSince: 0, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, thirdPartyProfileCount: 0, thirdPartyAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, limitProviderSettingsExpanded: '', clientHealthExpanded: '', clientSources: clientSourceCacheApi.createClientSourceCache(), clientSourcesKey: '', clientSourcesRequest: 0, subscriptionEditingId: '', subscriptionTopUps: [], subscriptionFormBase: null, subscriptionEditorTransitionId: 0, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, hubBuildStatus: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, claudeAccountExpanded: false, claudePendingCheckSince: 0, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, thirdPartyProfileCount: 0, thirdPartyAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.clientRescans = clientRescanStateApi.createClientRescanState({
   onChange: (clientId) => {
     if (state.clientHealthExpanded === clientId) refillOpenClientHealthPanel();
@@ -314,6 +319,18 @@ state.appUpdateNotesPresentedVersion = '';
 state.periodMotionActive = false;
 state.animateBarsFromZero = false;
 state.animateChartsOnRender = true;
+state.fixedPeriodHistory = null;
+state.fixedPeriodHistoryBusy = false;
+state.fixedPeriodHistoryRequested = false;
+state.fixedPeriodHistoryFailed = false;
+state.fixedPeriodHistorySignature = '';
+state.fixedPeriodHistoryRetries = 0;
+state.fixedPeriodHistoryRetrySignature = '';
+state.fixedPeriodHistoryRetryTimer = null;
+state.fixedPeriodHistoryPromise = null;
+state.fixedPeriodHistoryCoordinator = null;
+state.fixedPeriodSnapshot = null;
+state.periodMenuOpen = false;
 let directBreakdownOverride = null;
 state.projectSettingsExpanded = false;
 state.homeActivitySettingsExpanded = false;
@@ -324,9 +341,15 @@ let viewSwitcherLongPressTimer = null;
 let viewSwitcherLongPressTriggered = false;
 let viewSwitcherHoverCloseTimer = null;
 const els = {
-  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), tokenRateReveal: document.getElementById('tokenRateReveal'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), utilityActions: document.getElementById('utilityActions'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInputs: Array.from(document.querySelectorAll('input[name="showLimitUsed"]')), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInputs: Array.from(document.querySelectorAll('input[name="floatingBubbleTrigger"]')), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleComposer: document.getElementById('floatingBubbleComposer'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), showTrayProviderBadgeInput: document.getElementById('showTrayProviderBadgeInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), trayComposer: document.getElementById('trayComposer'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab'),
+  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), tokenRateReveal: document.getElementById('tokenRateReveal'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), utilityActions: document.getElementById('utilityActions'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), limitsRefreshAdaptiveNote: document.getElementById('limitsRefreshAdaptiveNote'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInputs: Array.from(document.querySelectorAll('input[name="showLimitUsed"]')), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInputs: Array.from(document.querySelectorAll('input[name="floatingBubbleTrigger"]')), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleComposer: document.getElementById('floatingBubbleComposer'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), showTrayProviderBadgeInput: document.getElementById('showTrayProviderBadgeInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), trayComposer: document.getElementById('trayComposer'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab'),
   subscriptionList: document.getElementById('subscriptionList'), subscriptionAddForm: document.getElementById('subscriptionAddForm'), subscriptionAddToggle: document.getElementById('subscriptionAddToggle'), subscriptionAddDetails: document.getElementById('subscriptionAddDetails'), subscriptionProviderInput: document.getElementById('subscriptionProviderInput'), subscriptionAccountInput: document.getElementById('subscriptionAccountInput'), subscriptionPlanNameInput: document.getElementById('subscriptionPlanNameInput'), subscriptionAmountInput: document.getElementById('subscriptionAmountInput'), subscriptionCurrencyInput: document.getElementById('subscriptionCurrencyInput'), subscriptionIntervalCountInput: document.getElementById('subscriptionIntervalCountInput'), subscriptionIntervalInput: document.getElementById('subscriptionIntervalInput'), subscriptionStartDateInput: document.getElementById('subscriptionStartDateInput'), subscriptionAutoRenewInput: document.getElementById('subscriptionAutoRenewInput'), subscriptionNextRenewalInput: document.getElementById('subscriptionNextRenewalInput'), subscriptionNote: document.getElementById('subscriptionNote'), subscriptionOrphanNotice: document.getElementById('subscriptionOrphanNotice'), subscriptionOrphanText: document.getElementById('subscriptionOrphanText'), subscriptionOrphanAdopt: document.getElementById('subscriptionOrphanAdopt'), subscriptionOrphanDiscard: document.getElementById('subscriptionOrphanDiscard'), subscriptionSyncError: document.getElementById('subscriptionSyncError'), subscriptionNextRenewalLabel: document.getElementById('subscriptionNextRenewalLabel'), subscriptionNextRenewalNote: document.getElementById('subscriptionNextRenewalNote'), subscriptionSubmit: document.getElementById('subscriptionSubmit'), subscriptionCancelEdit: document.getElementById('subscriptionCancelEdit'), subscriptionTotalRow: document.getElementById('subscriptionTotalRow'), subscriptionErrorMessage: document.getElementById('subscriptionErrorMessage'), subscriptionPlanFields: document.getElementById('subscriptionPlanFields'), subscriptionTopUpFields: document.getElementById('subscriptionTopUpFields'), subscriptionTopUpList: document.getElementById('subscriptionTopUpList'), subscriptionTopUpDateInput: document.getElementById('subscriptionTopUpDateInput'), subscriptionTopUpAmountInput: document.getElementById('subscriptionTopUpAmountInput'), subscriptionTopUpAddButton: document.getElementById('subscriptionTopUpAddButton'), subscriptionAmountRow: document.getElementById('subscriptionAmountRow'), subscriptionTopUpHeadingRow: document.getElementById('subscriptionTopUpHeadingRow'), subscriptionKindInputs: [...document.querySelectorAll('input[name="subscriptionKind"]')]
 };
+Object.assign(els, {
+  fixedPeriodMessage: document.getElementById('fixedPeriodMessage'),
+  monthPeriodMenu: document.getElementById('monthPeriodMenu'),
+  monthPeriodTab: document.getElementById('monthPeriodTab'),
+  periodMonthModeInput: document.getElementById('periodMonthModeInput')
+});
 Object.assign(els, {
   appTitleMark: document.querySelector('.app-title-mark'),
   viewBackRow: document.getElementById('viewBackRow'),
@@ -336,6 +359,7 @@ Object.assign(els, {
   trayIconOptions: document.getElementById('trayIconOptions'),
   trayOptions: document.getElementById('trayOptions'),
   hubModeOptions: document.getElementById('hubModeOptions'),
+  hubBuildStatus: document.getElementById('hubBuildStatus'),
   hubClientFields: document.getElementById('hubClientFields'),
   hubHostFields: document.getElementById('hubHostFields'),
   hubPortInput: document.getElementById('hubPortInput'),
@@ -500,6 +524,10 @@ function currentLocale() {
   return i18n.resolveLocale(state.settings?.locale || currentLanguage(), preferredLanguages());
 }
 
+function currentCalendarLocale() {
+  return i18n.resolveRegionalLocale([...preferredLanguages(), state.settings?.locale]);
+}
+
 function supportsLocalizedCompactTokenUnits(locale) {
   return compactTokenApi.supportsLocalizedCompactTokenUnits(locale);
 }
@@ -637,6 +665,14 @@ function refreshIntervalLabel(value) {
   return t('settings.summary.minutes', { minutes });
 }
 
+// Adaptive is a scheduling policy rather than a duration, so the summary names
+// it instead of printing the fixed interval the user would return to.
+function limitsRefreshSummaryLabel(settings) {
+  return settings.limitsRefreshMode === 'adaptive'
+    ? t('settings.limits.refreshAdaptive')
+    : refreshIntervalLabel(settings.limitsRefreshMs);
+}
+
 function viewsSummary() {
   const visible = viewDisplayPreferencesApi.visibleViewCount({
     views: VIEW_DISPLAY_OPTIONS,
@@ -668,7 +704,7 @@ function settingsSectionSummary(section) {
   if (section === 'limits') {
     return t('settings.summary.limits', {
       enabled: enabledLimitProviderSet().size,
-      refresh: refreshIntervalLabel(state.settings.limitsRefreshMs)
+      refresh: limitsRefreshSummaryLabel(state.settings)
     });
   }
   if (section === 'subscriptions') {
@@ -1725,15 +1761,16 @@ function renderDeviceAccordion(accordionInner, deviceDetail) {
   accordionInner.dataset.signature = signature;
 }
 
-function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, tokenDataUnavailable, sessionDetailAvailable }) {
+function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, unclassifiedTokens, tokenDataUnavailable, sessionDetailAvailable }) {
   const width = rowWidth(value, max);
   const isExpanded = row.classList.contains('expanded');
   row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}`;
   row.title = local ? 'This device' : '';
   
-  if (cacheReadTokens !== undefined || outputTokens !== undefined) {
+  if (cacheReadTokens !== undefined || outputTokens !== undefined || unclassifiedTokens !== undefined) {
     row.dataset.cacheRead = cacheReadTokens || 0;
     row.dataset.outputTokens = outputTokens || 0;
+    row.dataset.unclassifiedTokens = unclassifiedTokens || 0;
     row.dataset.totalTokens = value || 0;
     row.dataset.name = name || '';
   }
@@ -1812,14 +1849,20 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
     }
     row.classList.add('has-accordion');
     if (isExpanded) row.classList.add('expanded');
-  } else if ((cacheReadTokens !== undefined || outputTokens !== undefined) && value > 0 && kind !== 'session') {
-    const cacheRead = cacheReadTokens || 0;
-    const output = outputTokens || 0;
-    const totalTokens = value || 0;
-    const cacheMiss = Math.max(0, totalTokens - cacheRead - output);
-    const inputTokens = cacheRead + cacheMiss;
-    const hitPct = inputTokens > 0 ? Math.round((cacheRead / inputTokens) * 100) : 0;
-    const missPct = inputTokens > 0 ? 100 - hitPct : 0;
+  } else if ((cacheReadTokens !== undefined || outputTokens !== undefined || unclassifiedTokens !== undefined) && value > 0 && kind !== 'session') {
+    const {
+      cacheRead,
+      cacheMiss,
+      output,
+      unclassified,
+      hitPct,
+      missPct
+    } = fixedPeriodRangesApi.tokenComponentBreakdown({
+      totalTokens: value,
+      cacheReadTokens,
+      outputTokens,
+      unclassifiedTokens
+    });
     
     delete accordionInner.dataset.signature;
     accordionInner.innerHTML = `
@@ -1836,6 +1879,11 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
           <div class="accordion-label">${t('dashboard.tooltip.output')}</div>
           <div class="accordion-value">${formatNumber(output)}</div>
         </div>
+        ${unclassified > 0 ? `
+        <div class="accordion-row">
+          <div class="accordion-label">${t('dashboard.tooltip.unclassified')}</div>
+          <div class="accordion-value">${formatNumber(unclassified)}</div>
+        </div>` : ''}
       </div>
     `;
     row.classList.add('has-accordion');
@@ -1964,13 +2012,36 @@ function stableColor(value, colors) {
   return colors[Math.abs(hash) % colors.length];
 }
 
+function fixedPeriodDevices() {
+  if (!fixedPeriodRangesApi.isDerived(state.period)) return state.stats?.devices || [];
+  return fixedPeriodRangesApi.devicesForReadySnapshot(state.fixedPeriodSnapshot, state.period);
+}
+
+function fixedPeriodSources() {
+  return fixedPeriodRangesApi.joinDeviceHistorySources(
+    state.fixedPeriodHistory?.deviceHistories || [],
+    state.stats?.devices || []
+  );
+}
+
+function buildFixedPeriodSourcesSnapshot() {
+  const meta = state.fixedPeriodHistory?.fixedPeriods || {};
+  return fixedPeriodRangesApi.fixedPeriodSnapshotFromDevices(state.period, fixedPeriodSources(), {
+    historyEnabled: state.settings?.historyEnabled !== false,
+    historyAvailable: meta.historyTransportAvailable === true,
+    todayKey: fixedPeriodTodayKey(),
+    locale: currentCalendarLocale()
+  });
+}
+
 function deviceRowsForPeriod() {
   const localId = state.settings?.deviceId || '';
-  return (state.stats?.devices || []).map((device) => {
+  return fixedPeriodDevices().map((device) => {
     const breakdown = deviceBreakdownApi.deviceBreakdownForPeriod(device, state.period, {
       clientLabels,
       clientColors,
-      fallbackColor: clientColors.default
+      fallbackColor: clientColors.default,
+      unattributedLabel: t('dashboard.tooltip.unclassified')
     });
     const period = device.periods?.[state.period] || {};
     const runtime = deviceRuntimeLabel(device.agentRuntime);
@@ -1994,8 +2065,29 @@ function deviceRowsForPeriod() {
   }).sort((a, b) => b.value - a.value);
 }
 
+function attributionComponent(period, field, key) {
+  const aggregateField = {
+    clientCacheReads: 'cacheReadTokens',
+    modelCacheReads: 'cacheReadTokens',
+    clientCacheWrites: 'cacheWriteTokens',
+    modelCacheWrites: 'cacheWriteTokens',
+    clientOutputs: 'outputTokens',
+    modelOutputs: 'outputTokens',
+    clientUnclassifiedTokens: 'unclassifiedTokens',
+    modelUnclassifiedTokens: 'unclassifiedTokens'
+  }[field];
+  return usageAttributionRowsApi.attributionValue(
+    period?.[field],
+    period?.[aggregateField],
+    key
+  );
+}
+
 function toolRowsForPeriod(period) {
-  const clientRows = Object.entries(period?.clients || {}).filter(([, value]) => Number(value) > 0).map(([client, value]) => ({ key: client, name: clientLabels[client] || client, value: Number(value), cost: Number(period?.clientCosts?.[client] || 0), color: clientColors[client] || clientColors.default, stale: false, cacheReadTokens: Number(period?.clientCacheReads?.[client] || 0), cacheWriteTokens: Number(period?.clientCacheWrites?.[client] || 0), outputTokens: Number(period?.clientOutputs?.[client] || 0) }));
+  const clientRows = usageAttributionRowsApi.attributionRows(period?.clients, period?.clientCosts, {
+    totalValue: period?.totalTokens,
+    totalCost: period?.costUsd
+  }).map(({ key: client, value, cost }) => ({ key: client, name: client === usageAttributionRowsApi.UNATTRIBUTED_KEY ? t('dashboard.tooltip.unclassified') : clientLabels[client] || client, value, cost, color: clientColors[client] || clientColors.default, stale: false, cacheReadTokens: attributionComponent(period, 'clientCacheReads', client), cacheWriteTokens: attributionComponent(period, 'clientCacheWrites', client), outputTokens: attributionComponent(period, 'clientOutputs', client), unclassifiedTokens: attributionComponent(period, 'clientUnclassifiedTokens', client) }));
   if (clientRows.length > 0) {
     const usageSortedRows = clientRows.sort((a, b) => b.value - a.value);
     return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS, state.settings?.pinnedClients);
@@ -2005,16 +2097,20 @@ function toolRowsForPeriod(period) {
 }
 
 function modelRowsForPeriod(period) {
-  const modelRows = Object.entries(period?.models || {}).filter(([, value]) => Number(value) > 0).map(([model, value]) => ({
+  const modelRows = usageAttributionRowsApi.attributionRows(period?.models, period?.modelCosts, {
+    totalValue: period?.totalTokens,
+    totalCost: period?.costUsd
+  }).map(({ key: model, value, cost }) => ({
     key: model,
-    name: model,
-    value: Number(value),
-    cost: Number(period?.modelCosts?.[model] || 0),
+    name: model === usageAttributionRowsApi.UNATTRIBUTED_KEY ? t('dashboard.tooltip.unclassified') : model,
+    value,
+    cost,
     color: modelColor(model),
     stale: false,
-    cacheReadTokens: Number(period?.modelCacheReads?.[model] || 0),
-    cacheWriteTokens: Number(period?.modelCacheWrites?.[model] || 0),
-    outputTokens: Number(period?.modelOutputs?.[model] || 0)
+    cacheReadTokens: attributionComponent(period, 'modelCacheReads', model),
+    cacheWriteTokens: attributionComponent(period, 'modelCacheWrites', model),
+    outputTokens: attributionComponent(period, 'modelOutputs', model),
+    unclassifiedTokens: attributionComponent(period, 'modelUnclassifiedTokens', model)
   }));
   if (modelRows.length > 0) return modelRows.sort((a, b) => b.value - a.value);
   if (Number(period?.totalTokens || 0) === 0) return [];
@@ -4927,6 +5023,10 @@ function renderMimoAccountGroup(label, providers, color) {
 
 function opencodeAccountTitle(provider, index) {
   const name = String(provider?.accountName || '').trim();
+  // The collector's canonical name is shown as-is. This column holds account
+  // names, which are user strings and almost never translated, so a localized
+  // phrase reads as a stray UI label among them — and the plan and source
+  // columns beside it are English for the same reason.
   if (name) return name;
   // Older synced clients put the user-defined profile name in accountLabel.
   // Keep those rows identifiable while new clients carry profile and plan in
@@ -5447,7 +5547,12 @@ function renderTrends() {
   const previousBars = captureTrendBarMotion();
   const preview = state.stats?.historyPreview || { daily: [], monthly: [], summary: {} };
   const todayTotal = Number(state.stats?.periods?.today?.totalTokens || 0);
-  const { points, metric, labelKey } = charts.selectPreviewSeries(preview, state.period);
+  const fixed = fixedPeriodRangesApi.isDerived(state.period) ? state.fixedPeriodSnapshot : null;
+  // Fixed headline ranges do not collapse the Trends context down to a handful
+  // of bars. Keep the established long-range monthly view; the range-specific
+  // active-time and peak cards below still describe the selected fixed period.
+  const selected = charts.selectPreviewSeries(preview, fixed?.status === 'ready' ? 'allTime' : state.period);
+  const { points, metric, labelKey } = selected;
   const finalPoints = state.period === 'today' ? charts.patchTodayBar(points, todayTotal) : points;
 
   if (finalPoints.length === 0) {
@@ -5459,8 +5564,15 @@ function renderTrends() {
   const titles = finalPoints.map((p) => `${trendShortLabel(p[labelKey], labelKey)} · ${formatCompact(p[metric])}`);
   const svg = charts.sparklineSvg(model, { titles, showZeroMarkers: state.period === 'today' });
 
-  const summary = preview.summary || {};
-  const rangeLabel = state.period === 'allTime' ? t('trends.range.year')
+  const summary = homeOverviewApi.activityStatsForPeriod({
+    period: state.period,
+    fixedSnapshot: fixed,
+    daily: preview.daily,
+    historySummary: preview.summary,
+    todayKey: charts.localDayKey()
+  });
+  const rangeLabel = fixed?.status === 'ready' || state.period === 'allTime'
+    ? t('trends.range.year')
     : state.period === 'month' ? t('trends.range.month') : t('trends.range.week');
   const first = trendShortLabel(finalPoints[0][labelKey], labelKey);
   const last = trendShortLabel(finalPoints[finalPoints.length - 1][labelKey], labelKey);
@@ -5540,6 +5652,8 @@ function openViewFromTray(viewId) {
 
 const HOME_HISTORY_MAX_RETRIES = 3;
 const HOME_HISTORY_RETRY_MS = 4000;
+const FIXED_PERIOD_HISTORY_MAX_RETRIES = 3;
+const FIXED_PERIOD_HISTORY_RETRY_MS = 4000;
 
 async function loadHomeHistory() {
   if (state.homeHistoryBusy || !window.tokenMonitor.getDashboardHistory) return;
@@ -5608,6 +5722,228 @@ async function loadHomeHistory() {
       }, HOME_HISTORY_RETRY_MS);
     }
     if (state.breakdown === 'home') render();
+  }
+}
+
+function fixedPeriodTodayKey() {
+  return fixedPeriodRangesApi.localDayKey();
+}
+
+function fixedPeriodHistorySignature() {
+  const inventory = fixedPeriodRangesApi.deviceInventorySignature(state.stats?.devices || []);
+  const revision = state.stats?.deviceHistoryRevision || state.stats?.historyRevision || '';
+  return `${String(revision)}:${fixedPeriodTodayKey()}:${inventory}`;
+}
+
+function fixedPeriodHistoryInventoriesMatch(history) {
+  return fixedPeriodRangesApi.deviceInventorySignature(history?.deviceHistories || [])
+    === fixedPeriodRangesApi.deviceInventorySignature(state.stats?.devices || []);
+}
+
+function buildFixedPeriodSnapshot() {
+  if (!fixedPeriodRangesApi.isDerived(state.period)) return { status: 'native', period: null };
+  if (state.settings?.historyEnabled === false) {
+    return { status: 'unavailable', reason: 'historyDisabled', period: null };
+  }
+  if (!state.fixedPeriodHistoryRequested) {
+    return { status: 'loading', reason: 'loading', period: null };
+  }
+  if (state.fixedPeriodHistoryBusy) {
+    const ready = fixedPeriodRangesApi.readySnapshotForSelection(
+      state.fixedPeriodSnapshot,
+      state.period
+    );
+    return ready
+      ? ready
+      : { status: 'loading', reason: 'loading', period: null };
+  }
+  if (state.fixedPeriodHistoryFailed) {
+    return { status: 'unavailable', reason: 'historyUnavailable', period: null };
+  }
+  return buildFixedPeriodSourcesSnapshot();
+}
+
+async function performFixedPeriodHistoryLoad({ force = false, signature = fixedPeriodHistorySignature() } = {}) {
+  if (!window.tokenMonitor.getDashboardHistory) return false;
+  if (!force && state.fixedPeriodHistoryRequested && state.fixedPeriodHistorySignature === signature) return false;
+  if (state.fixedPeriodHistoryRetrySignature !== signature) {
+    clearTimeout(state.fixedPeriodHistoryRetryTimer);
+    state.fixedPeriodHistoryRetryTimer = null;
+    state.fixedPeriodHistoryRetrySignature = signature;
+    state.fixedPeriodHistoryRetries = 0;
+  }
+  state.fixedPeriodHistoryRequested = true;
+  state.fixedPeriodHistoryBusy = true;
+  state.fixedPeriodHistoryFailed = false;
+  state.fixedPeriodHistorySignature = signature;
+  if (state.fixedPeriodSnapshot?.status !== 'ready') {
+    state.fixedPeriodSnapshot = { status: 'loading', reason: 'loading', period: null };
+  }
+  let fetchedHistory = null;
+  let failed = false;
+  try {
+    fetchedHistory = await window.tokenMonitor.getDashboardHistory({ includeDevices: true });
+  } catch (error) {
+    console.log(`[period] history failed: ${error.message}`);
+    failed = true;
+  } finally {
+    state.fixedPeriodHistoryBusy = false;
+    const requestIsCurrent = fixedPeriodHistorySignature() === signature;
+    if (requestIsCurrent) {
+      state.fixedPeriodHistoryFailed = failed;
+      state.fixedPeriodHistory = failed ? null : fetchedHistory;
+      const inventoryMatches = !failed && fixedPeriodHistoryInventoriesMatch(fetchedHistory);
+      if (inventoryMatches) {
+        state.fixedPeriodHistoryRetries = 0;
+        state.fixedPeriodHistoryRetrySignature = '';
+        clearTimeout(state.fixedPeriodHistoryRetryTimer);
+        state.fixedPeriodHistoryRetryTimer = null;
+      } else if (fixedPeriodRangesApi.shouldRetryFixedPeriodHistory({
+        signature,
+        currentSignature: fixedPeriodHistorySignature(),
+        retries: state.fixedPeriodHistoryRetries,
+        maxRetries: FIXED_PERIOD_HISTORY_MAX_RETRIES,
+        failed,
+        inventoryMatches
+      })) {
+        state.fixedPeriodHistoryRetries += 1;
+        clearTimeout(state.fixedPeriodHistoryRetryTimer);
+        state.fixedPeriodHistoryRetryTimer = setTimeout(() => {
+          state.fixedPeriodHistoryRetryTimer = null;
+          if (fixedPeriodHistorySignature() !== signature) return;
+          if (!state.fixedPeriodHistoryFailed
+            && fixedPeriodHistoryInventoriesMatch(state.fixedPeriodHistory)) return;
+          void loadFixedPeriodHistory({ force: true });
+        }, FIXED_PERIOD_HISTORY_RETRY_MS);
+      }
+      state.fixedPeriodSnapshot = buildFixedPeriodSnapshot();
+      if (state.fixedPeriodSnapshot.status === 'ready' && state.stats?.periods) {
+        state.stats.periods[state.period] = state.fixedPeriodSnapshot.period;
+      }
+    }
+  }
+  return true;
+}
+
+function fixedPeriodHistoryCoordinator() {
+  if (!state.fixedPeriodHistoryCoordinator) {
+    state.fixedPeriodHistoryCoordinator = fixedPeriodRangesApi.createLatestRequestCoordinator({
+      signature: fixedPeriodHistorySignature,
+      load: performFixedPeriodHistoryLoad,
+      onSettled: ({ render: shouldRender }) => {
+        if (shouldRender && fixedPeriodRangesApi.isDerived(state.period)) {
+          statsRenderScheduler.request();
+        }
+      }
+    });
+  }
+  return state.fixedPeriodHistoryCoordinator;
+}
+
+function loadFixedPeriodHistory(options = {}) {
+  const promise = fixedPeriodHistoryCoordinator().request(options);
+  state.fixedPeriodHistoryPromise = promise;
+  const clearPromise = () => {
+    if (state.fixedPeriodHistoryPromise === promise) state.fixedPeriodHistoryPromise = null;
+  };
+  void promise.then(clearPromise, clearPromise);
+  return promise;
+}
+
+function resetFixedPeriodHistoryRetryBudget() {
+  clearTimeout(state.fixedPeriodHistoryRetryTimer);
+  state.fixedPeriodHistoryRetryTimer = null;
+  state.fixedPeriodHistoryRetrySignature = '';
+  state.fixedPeriodHistoryRetries = 0;
+}
+
+function fixedPeriodHistoryNeedsWarmup(options = {}) {
+  return fixedPeriodRangesApi.shouldWarmFixedPeriodHistory({
+    hasStats: Boolean(state.stats),
+    historyEnabled: state.settings?.historyEnabled !== false,
+    apiAvailable: Boolean(window.tokenMonitor.getDashboardHistory),
+    active: fixedPeriodHistoryCoordinator().active(),
+    force: options.force === true,
+    retryFailed: options.retryFailed === true,
+    failed: state.fixedPeriodHistoryFailed,
+    requested: state.fixedPeriodHistoryRequested,
+    loadedSignature: state.fixedPeriodHistorySignature,
+    currentSignature: fixedPeriodHistorySignature()
+  });
+}
+
+async function warmFixedPeriodHistory(options = {}) {
+  if (!fixedPeriodHistoryNeedsWarmup(options)) return false;
+  const explicitRecovery = options.force === true
+    || (options.retryFailed === true && state.fixedPeriodHistoryFailed);
+  if (explicitRecovery) resetFixedPeriodHistoryRetryBudget();
+  await loadFixedPeriodHistory({
+    force: explicitRecovery,
+    renderOnComplete: options.renderOnComplete === true
+  });
+  return true;
+}
+
+function fixedPeriodMessage(snapshot, breakdown = '') {
+  if (snapshot?.status === 'loading') return t('periodRange.loading');
+  if (breakdown === 'session') return t('periodRange.sessionUnavailable');
+  if (breakdown === 'project') return t('periodRange.projectUnavailable');
+  if (snapshot?.reason === 'historyDisabled') return t('periodRange.historyDisabled');
+  if (snapshot?.reason === 'historyUnavailable') return t('periodRange.historyUnavailable');
+  return t('periodRange.historyUnavailable');
+}
+
+function hidePeriodContentForMessage(message) {
+  els.fixedPeriodMessage.textContent = message;
+  els.fixedPeriodMessage.classList.remove('hidden');
+  els.homePanel.classList.add('hidden');
+  els.breakdown.classList.add('hidden');
+  els.serviceStatusPanel?.classList.add('hidden');
+  els.limitsPanel.classList.add('hidden');
+  els.trendsPanel.classList.add('hidden');
+  els.sessionDetail.classList.add('hidden');
+  els.sessionDetailHead.classList.add('hidden');
+}
+
+function periodMenuButtons() {
+  return Array.from(els.monthPeriodMenu?.querySelectorAll('[data-fixed-period]') || []);
+}
+
+function focusPeriodMenuButton(index) {
+  const buttons = periodMenuButtons();
+  if (!buttons.length) return;
+  const target = buttons[Math.max(0, Math.min(buttons.length - 1, Number(index) || 0))];
+  for (const button of buttons) button.tabIndex = button === target ? 0 : -1;
+  target?.focus();
+}
+
+function setPeriodMenuOpen(open, { restoreFocus = false, focus = '' } = {}) {
+  state.periodMenuOpen = Boolean(open);
+  els.monthPeriodMenu?.closest('.titlebar')?.classList.toggle('period-menu-open', state.periodMenuOpen);
+  els.monthPeriodMenu?.classList.toggle('hidden', !state.periodMenuOpen);
+  els.monthPeriodTab?.setAttribute('aria-expanded', String(state.periodMenuOpen));
+  for (const button of periodMenuButtons()) {
+    button.tabIndex = state.periodMenuOpen && button.classList.contains('is-current') ? 0 : -1;
+  }
+  if (state.periodMenuOpen && focus) {
+    const buttons = periodMenuButtons();
+    const current = Math.max(0, buttons.findIndex((button) => button.classList.contains('is-current')));
+    focusPeriodMenuButton(focus === 'first' ? 0 : focus === 'last' ? buttons.length - 1 : current);
+  }
+  if (!state.periodMenuOpen && restoreFocus) els.monthPeriodTab?.focus();
+}
+
+function syncPeriodMenu() {
+  const mode = fixedPeriodRangesApi.slotForSelection(state.period) === 'month'
+    ? fixedPeriodRangesApi.normalizeMonthMode(state.period)
+    : fixedPeriodRangesApi.normalizeMonthMode(state.settings?.periodMonthMode);
+  for (const button of periodMenuButtons()) {
+    const active = button.dataset.fixedPeriod === mode;
+    button.classList.toggle('is-current', active);
+    button.setAttribute('aria-checked', String(active));
+    if (active) button.setAttribute('aria-current', 'true');
+    else button.removeAttribute('aria-current');
+    button.tabIndex = state.periodMenuOpen && active ? 0 : -1;
   }
 }
 
@@ -5986,9 +6322,12 @@ function renderHomeModelModule(period) {
 }
 
 function homeToolSourceRows(period) {
-  return Object.entries(period?.clients || {}).map(([client, value]) => ({
+  return usageAttributionRowsApi.attributionRows(period?.clients, period?.clientCosts, {
+    totalValue: period?.totalTokens,
+    totalCost: period?.costUsd
+  }).map(({ key: client, value }) => ({
     key: client,
-    name: clientLabels[client] || client,
+    name: client === usageAttributionRowsApi.UNATTRIBUTED_KEY ? t('dashboard.tooltip.unclassified') : clientLabels[client] || client,
     value: Number(value || 0),
     color: clientColors[client] || clientColors.default
   }));
@@ -6026,7 +6365,7 @@ function renderHomeToolModule(period) {
 
 function renderHomeDeviceModule() {
   const { module, body } = homeModuleShell('device', t('home.devices'), 'device');
-  const rows = homeOverviewApi.homeDeviceRows(state.stats?.devices || [], {
+  const rows = homeOverviewApi.homeDeviceRows(fixedPeriodDevices(), {
     localDeviceId: state.settings?.deviceId || '',
     period: state.period,
     limit: 4
@@ -6391,7 +6730,12 @@ function renderHomeTrendsModule() {
   // The key must be the LOCAL day: the period being patched in is local-day scoped.
   const today = charts.localDayKey();
   const todayPeriod = state.stats?.periods?.today;
-  const points = homeOverviewApi.patchDailyToday(rawDaily, today, Number(todayPeriod?.totalTokens || 0), Number(todayPeriod?.costUsd || 0));
+  const points = homeOverviewApi.patchDailyToday(
+    rawDaily,
+    today,
+    Number(todayPeriod?.totalTokens || 0),
+    Number(todayPeriod?.costUsd || 0)
+  );
   const activityLayout = homeOverviewApi.homeActivityHeatmapLayout();
   const heatMetric = state.settings?.heatmapMetric || 'cost';
   const intensityField = heatMetric === 'cost' ? 'costIntensity' : 'tokenIntensity';
@@ -6436,14 +6780,18 @@ function renderHomeTrendsModule() {
   });
   activityScroll.append(activityCanvas);
   const linePoints = charts.clampDaily(points, 45);
-  const summary = homeOverviewApi.homeTrendSummary(linePoints);
+  const trendSummary = homeOverviewApi.homeTrendSummary(linePoints);
+  const longRangePeak = homeOverviewApi.longRangePeakDayTokens({
+    historySummary: history.summary,
+    daily: points
+  });
   const trendHead = document.createElement('div');
   trendHead.className = 'home-trend-head';
   const trendTitle = document.createElement('span');
   trendTitle.textContent = t('home.trend');
   const trendMeta = document.createElement('span');
   trendMeta.className = 'home-module-meta';
-  trendMeta.textContent = t('home.peakTokens', { value: formatCompact(summary.peak) });
+  trendMeta.textContent = t('home.peakTokens', { value: formatCompact(longRangePeak) });
   trendHead.append(trendTitle, trendMeta);
   const model = charts.areaLineChart(linePoints, { width: 300, height: 70, padTop: 4, padRight: 3, padBottom: 4, padLeft: 3, metric: 'tokens', curve: true });
   const plot = document.createElement('div');
@@ -6454,7 +6802,7 @@ function renderHomeTrendsModule() {
   plot.append(chart);
   const dates = document.createElement('div');
   dates.className = 'home-trend-dates';
-  for (const date of summary.dates) {
+  for (const date of trendSummary.dates) {
     const label = document.createElement('span');
     label.className = 'home-trend-date';
     label.textContent = trendShortLabel(date, 'date');
@@ -6528,9 +6876,46 @@ function render() {
   renderSessionUsageArchiveStatus();
   ensureBreakdownVisible();
   renderViewSwitcher();
+  const derivedPeriod = fixedPeriodRangesApi.isDerived(state.period);
+  if (derivedPeriod) {
+    const signature = fixedPeriodHistorySignature();
+    if (!state.fixedPeriodHistoryRequested
+      || state.fixedPeriodHistorySignature !== signature
+      || state.fixedPeriodHistoryBusy) {
+      // Joining an existing background preload upgrades its completion into a
+      // visible repaint, so switching to a fixed range cannot remain on loading.
+      void loadFixedPeriodHistory();
+    }
+    state.fixedPeriodSnapshot = buildFixedPeriodSnapshot();
+    if (state.fixedPeriodSnapshot.status === 'ready') {
+      state.stats.periods[state.period] = state.fixedPeriodSnapshot.period;
+    }
+  } else {
+    state.fixedPeriodSnapshot = null;
+  }
   if (state.openSession && state.breakdown !== 'session') { state.openSession = null; els.sessionDetail.classList.add('hidden'); els.sessionDetail.replaceChildren(); els.sessionDetailHead.classList.add('hidden'); els.sessionDetailHead.replaceChildren(); }
   if (state.openSession) { els.sessionDetail.classList.remove('hidden'); els.sessionDetailHead.classList.remove('hidden'); } else { els.sessionDetail.classList.add('hidden'); els.sessionDetailHead.classList.add('hidden'); }
   const period = state.stats.periods?.[state.period] || { totalTokens: 0, costUsd: 0, clients: {} };
+  const fixedUnavailable = derivedPeriod && state.fixedPeriodSnapshot?.status !== 'ready';
+  const detailUnavailable = derivedPeriod
+    && !fixedPeriodRangesApi.supportsBreakdown(state.period, state.breakdown, {
+      deviceHistoriesAvailable: Array.isArray(state.fixedPeriodHistory?.deviceHistories)
+    });
+  if (fixedUnavailable || detailUnavailable) {
+    cancelNumberAnimation();
+    els.totalTokens.textContent = fixedUnavailable ? '—' : formatNumber(Number(period.totalTokens || 0));
+    updateTotalCompact(fixedUnavailable ? 0 : Number(period.totalTokens || 0));
+    els.cost.textContent = fixedUnavailable ? '' : formatCost(period.costUsd || 0);
+    state.currentTotal = fixedUnavailable ? 0 : Number(period.totalTokens || 0);
+    hidePeriodContentForMessage(fixedPeriodMessage(state.fixedPeriodSnapshot, detailUnavailable ? state.breakdown : ''));
+    renderFloatingBubbleContent();
+    if (!contentReadySignaled) {
+      contentReadySignaled = true;
+      window.tokenMonitor.signalContentReady?.();
+    }
+    return;
+  }
+  els.fixedPeriodMessage.classList.add('hidden');
   const nextTotal = Number(period.totalTokens || 0);
   const totalChanged = nextTotal !== state.currentTotal;
   if (state.suppressInitialNumberAnimation) {
@@ -6770,7 +7155,22 @@ async function refreshStats(options = {}) {
     }
     applyCodexActiveAccountFromStats();
     setStatus(statusTextFor(state.mode, state.streamConnected));
-    statsRenderScheduler.request();
+    const forceFixedPeriodHistory = options.forceHistory === true;
+    if (fixedPeriodRangesApi.isDerived(state.period)) {
+      await warmFixedPeriodHistory({
+        force: forceFixedPeriodHistory,
+        retryFailed: forceFixedPeriodHistory,
+        renderOnComplete: false
+      });
+      statsRenderScheduler.request();
+    } else {
+      statsRenderScheduler.request();
+      void warmFixedPeriodHistory({
+        force: forceFixedPeriodHistory,
+        retryFailed: forceFixedPeriodHistory,
+        renderOnComplete: false
+      });
+    }
     maybeUpdateBarsIcon();
     if (feedback) settleRefreshButtonState('refreshed');
   } catch (error) {
@@ -6808,10 +7208,16 @@ function publishViewState() {
 function setPeriod(period) {
   const next = normalizeInitialViewValue(period, viewPeriodValues, state.period);
   if (next === state.period) {
+    if (fixedPeriodRangesApi.isDerived(next) && state.fixedPeriodHistoryFailed) {
+      void warmFixedPeriodHistory({ retryFailed: true, renderOnComplete: true });
+    }
     publishViewState();
     return false;
   }
   state.period = next;
+  if (fixedPeriodRangesApi.isDerived(next) && state.fixedPeriodHistoryFailed) {
+    void warmFixedPeriodHistory({ retryFailed: true, renderOnComplete: true });
+  }
   publishViewState();
   return true;
 }
@@ -7564,6 +7970,7 @@ function syncHubModeUi() {
     renderHubStatus();
   }
   renderSyncClientStatus();
+  renderHubBuildStatus();
 }
 
 function renderHubStatus() {
@@ -7606,6 +8013,21 @@ function renderSyncClientStatus() {
   // Empty .hub-status still renders a bordered box, so hide it entirely when
   // there is nothing to show (connected, or not in client mode).
   els.syncClientStatus.hidden = !text;
+}
+
+function renderHubBuildStatus() {
+  if (!els.hubBuildStatus) return;
+  const visible = state.settings?.hubMode === 'client';
+  const model = visible ? hubBuildPresentationApi.presentation(state.hubBuildStatus) : null;
+  if (!model) {
+    els.hubBuildStatus.hidden = true;
+    els.hubBuildStatus.textContent = '';
+    return;
+  }
+  const target = t(model.targetKey);
+  els.hubBuildStatus.textContent = t(model.key, { target });
+  els.hubBuildStatus.className = `hub-status hub-build-status${model.tone ? ` ${model.tone}` : ''}`;
+  els.hubBuildStatus.hidden = false;
 }
 
 function renderHubAddresses(addresses, port) {
@@ -7664,15 +8086,58 @@ async function refreshHubInfo() {
   } catch (_) { /* ignore */ }
 }
 
+const HUB_BUILD_STATUS_REFRESH_TTL_MS = 5 * 60 * 1000;
+let hubBuildStatusRequest = 0;
+let hubBuildStatusLastProbeAt = 0;
+
+function hubBuildStatusRefreshDue(now = Date.now()) {
+  return !hubBuildStatusLastProbeAt
+    || now < hubBuildStatusLastProbeAt
+    || now - hubBuildStatusLastProbeAt >= HUB_BUILD_STATUS_REFRESH_TTL_MS;
+}
+
+async function refreshHubBuildStatus() {
+  const request = ++hubBuildStatusRequest;
+  if (!window.tokenMonitor.getHubBuildStatus || state.settings?.hubMode !== 'client') {
+    hubBuildStatusLastProbeAt = 0;
+    state.hubBuildStatus = null;
+    renderHubBuildStatus();
+    return;
+  }
+  hubBuildStatusLastProbeAt = Date.now();
+  const requestedUrl = String(state.settings.hubUrl || '').trim().replace(/\/$/, '');
+  try {
+    const result = await window.tokenMonitor.getHubBuildStatus();
+    const currentUrl = String(state.settings.hubUrl || '').trim().replace(/\/$/, '');
+    if (request !== hubBuildStatusRequest
+      || currentUrl !== requestedUrl
+      || (result?.hubUrl && result.hubUrl !== currentUrl)) return;
+    state.hubBuildStatus = result;
+  } catch (_) {
+    if (request !== hubBuildStatusRequest) return;
+    state.hubBuildStatus = null;
+  }
+  renderHubBuildStatus();
+}
+
 function syncPeriodTabs() {
   const tabs = Array.from(document.querySelectorAll('.tab'));
-  const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.dataset.period === state.period));
+  const activeSlot = fixedPeriodRangesApi.slotForSelection(state.period);
+  const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.dataset.periodSlot === activeSlot));
   document.querySelector('.tabs')?.style.setProperty('--period-index', String(activeIndex));
   for (const tab of tabs) {
-    const active = tab.dataset.period === state.period;
+    const active = tab.dataset.periodSlot === activeSlot;
     tab.classList.toggle('active', active);
     tab.setAttribute('aria-pressed', String(active));
   }
+  if (els.monthPeriodTab) {
+    const mode = activeSlot === 'month'
+      ? fixedPeriodRangesApi.normalizeMonthMode(state.period)
+      : fixedPeriodRangesApi.normalizeMonthMode(state.settings?.periodMonthMode);
+    els.monthPeriodTab.textContent = fixedPeriodRangesApi.displayLabel(mode);
+    els.monthPeriodTab.dataset.period = mode;
+  }
+  syncPeriodMenu();
 }
 
 function applyInitialBreakdownPreference() {
@@ -7707,12 +8172,20 @@ function syncSettingsForm() {
   syncPeriodTabs();
   syncHubModeUi();
   if (els.languageInput) els.languageInput.value = currentLanguage();
+  if (els.periodMonthModeInput) {
+    els.periodMonthModeInput.value = fixedPeriodRangesApi.normalizeMonthMode(state.settings?.periodMonthMode);
+  }
   if (els.currencyInput) els.currencyInput.value = currentCurrency();
   syncCurrencyRateControls();
   els.hubUrlInput.value = state.settings.hubUrl || '';
   els.secretInput.value = state.settings.secret || '';
   els.deviceIdInput.value = state.settings.deviceId || '';
-  els.limitsRefreshInput.value = String(LIMIT_REFRESH_OPTIONS.includes(Number(state.settings.limitsRefreshMs)) ? state.settings.limitsRefreshMs : 300000);
+  els.limitsRefreshInput.value = state.settings.limitsRefreshMode === 'adaptive'
+    ? 'adaptive'
+    : String(LIMIT_REFRESH_OPTIONS.includes(Number(state.settings.limitsRefreshMs)) ? state.settings.limitsRefreshMs : 300000);
+  if (els.limitsRefreshAdaptiveNote) {
+    els.limitsRefreshAdaptiveNote.classList.toggle('hidden', state.settings.limitsRefreshMode !== 'adaptive');
+  }
   els.showLimitSourceInput.checked = Boolean(state.settings.showLimitSource);
   els.maskLimitAccountEmailsInput.checked = Boolean(state.settings.maskLimitAccountEmails);
   renderSubscriptionSettings();
@@ -9555,12 +10028,58 @@ function renderLimitProviderCheckboxesNow() {
     // destination must already be connected, so the row is mounted first.
     moveLimitProviderLiveNode(actions, accountStatus, disclosureIcon);
     moveLimitProviderLiveNode(optionsInner, accountGroup);
+    // OpenCode's one setting is an off-by-default fallback estimate. Rendered by
+    // the shared path it lands above the account list, reading as the first
+    // thing to set up; it belongs below the accounts, collapsed. Reparented
+    // rather than special-cased in the shared renderer so the setting keeps its
+    // change tracking and re-render signature.
+    if (id === 'opencode') moveOpenCodeLocalFallbackSetting();
   }
   for (const row of previousRows) row.remove();
   if (focusedId && document.activeElement === document.body) {
     document.getElementById(focusedId)?.focus({ preventScroll: true });
   }
   state.limitProviderRenderSignature = renderSignature;
+}
+
+// Moves the OpenCode local-DB toggle into its own collapsed group beneath the
+// account list, and keeps that group's status pill in sync with the setting.
+function moveOpenCodeLocalFallbackSetting() {
+  const target = document.getElementById('opencodeLocalFallbackInner');
+  const list = document.querySelector('#limitProviderOptions-opencode .limit-provider-settings-list');
+  if (!target) return;
+  if (list) {
+    if (list.parentElement !== target) moveLimitProviderLiveNode(target, list);
+    // The shared renderer builds a fresh settings list on every pass, so moving
+    // without clearing stacks one copy of the toggle per re-render.
+    for (const stale of [...target.children]) if (stale !== list) stale.remove();
+    // The group header already names the setting, so the item's own title would
+    // read twice. Dropping it alone leaves the label cell empty and the switch
+    // adrift, so the description moves into that cell and becomes the label.
+    for (const item of target.querySelectorAll('.settings-item')) {
+      item.querySelector('.settings-item-title')?.remove();
+      const cell = item.querySelector('.settings-item-text');
+      const desc = item.querySelector('.settings-item-desc');
+      if (cell && desc && desc.parentElement !== cell) cell.append(desc);
+    }
+  }
+
+  const pill = document.getElementById('opencodeLocalFallbackStatus');
+  if (pill) {
+    const on = (state.settings || {}).opencodeLocalLimitsEnabled === true;
+    pill.textContent = t(on ? 'settings.appearance.motion.on' : 'settings.appearance.motion.off');
+  }
+
+  const toggle = document.getElementById('opencodeLocalFallbackSettingsToggle');
+  if (toggle && !toggle.dataset.wired) {
+    toggle.dataset.wired = '1';
+    // The shared helper, so this collapses exactly like every other group
+    // instead of a second hand-rolled implementation of the same thing.
+    toggle.addEventListener('click', () => setAccountGroupExpanded(
+      'opencodeLocalFallback',
+      toggle.getAttribute('aria-expanded') !== 'true'
+    ));
+  }
 }
 
 function limitProviderAccountGroup(providerId) {
@@ -10097,6 +10616,7 @@ async function init() {
   diagnosticsPanel?.render();
   publishViewState();
   await refreshHubInfo();
+  void refreshHubBuildStatus();
   await refreshTokscaleStatus();
   restartTimer();
   try {
@@ -10115,11 +10635,26 @@ async function init() {
 }
 
 for (const tab of document.querySelectorAll('.tab')) {
-  tab.addEventListener('click', () => {
+  tab.addEventListener('click', (event) => {
+    const slot = tab.dataset.periodSlot || tab.dataset.period;
+    const activeSlot = fixedPeriodRangesApi.slotForSelection(state.period);
+    if (slot === 'month' && activeSlot === 'month') {
+      event.stopPropagation();
+      setPeriodMenuOpen(!state.periodMenuOpen, { focus: state.periodMenuOpen ? '' : 'current' });
+      return;
+    }
+    setPeriodMenuOpen(false);
+    const targetPeriod = slot === 'month'
+      ? fixedPeriodRangesApi.normalizeMonthMode(state.settings?.periodMonthMode)
+      : tab.dataset.period;
     const snapshot = captureBreakdownMotion();
-    if (!setPeriod(tab.dataset.period)) return;
+    if (!setPeriod(targetPeriod)) return;
     syncPeriodTabs();
-    if (state.openSession) openSessionDetail(state.openSession);
+    if (state.openSession && fixedPeriodRangesApi.supportsBreakdown(state.period, 'session')) {
+      openSessionDetail(state.openSession);
+    } else if (state.openSession) {
+      state.openSession = null;
+    }
     state.rowSignature = '';
     state.periodMotionActive = true;
     render();
@@ -10127,6 +10662,67 @@ for (const tab of document.querySelectorAll('.tab')) {
     animateBreakdownFrom(snapshot, { duration: 800 });
   });
 }
+
+for (const button of els.monthPeriodMenu?.querySelectorAll('[data-fixed-period]') || []) {
+  button.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    const selection = fixedPeriodRangesApi.normalizeMonthMode(button.dataset.fixedPeriod);
+    setPeriodMenuOpen(false, { restoreFocus: true });
+    const changed = setPeriod(selection);
+    state.settings.periodMonthMode = selection;
+    syncPeriodTabs();
+    syncPeriodMenu();
+    if (changed) {
+      state.rowSignature = '';
+      state.periodMotionActive = true;
+      render();
+      state.periodMotionActive = false;
+    }
+    await saveSettings({ periodMonthMode: selection });
+  });
+}
+
+els.monthPeriodTab?.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  event.preventDefault();
+  setPeriodMenuOpen(true, { focus: event.key === 'ArrowUp' ? 'last' : 'first' });
+});
+
+els.monthPeriodMenu?.addEventListener('keydown', (event) => {
+  if (event.key === 'Tab') {
+    setPeriodMenuOpen(false);
+    return;
+  }
+  const buttons = periodMenuButtons();
+  const currentIndex = buttons.findIndex((button) => button === event.target);
+  fixedPeriodRangesApi.handlePeriodMenuNavigation(event, {
+    currentIndex,
+    itemCount: buttons.length,
+    focusIndex: focusPeriodMenuButton
+  });
+});
+
+els.periodMonthModeInput?.addEventListener('change', async () => {
+  const selection = fixedPeriodRangesApi.normalizeMonthMode(els.periodMonthModeInput.value);
+  state.settings.periodMonthMode = selection;
+  if (fixedPeriodRangesApi.slotForSelection(state.period) === 'month') setPeriod(selection);
+  syncPeriodTabs();
+  render();
+  await saveSettings({ periodMonthMode: selection });
+});
+
+document.addEventListener('click', (event) => {
+  if (!state.periodMenuOpen) return;
+  if (els.monthPeriodMenu?.contains(event.target) || els.monthPeriodTab?.contains(event.target)) return;
+  setPeriodMenuOpen(false);
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.periodMenuOpen) {
+    event.preventDefault();
+    setPeriodMenuOpen(false, { restoreFocus: true });
+  }
+});
 
 els.breakdown.addEventListener('click', (event) => {
   if (state.breakdown !== 'session') return;
@@ -10175,6 +10771,7 @@ els.saveSettingsButton.addEventListener('click', async () => {
   }
   await saveSettings(patch);
   await refreshHubInfo();
+  void refreshHubBuildStatus();
   await refreshStats();
 });
 
@@ -10183,6 +10780,7 @@ els.hubModeOptions.addEventListener('change', async (event) => {
   if (!(target instanceof HTMLInputElement) || target.name !== 'hubMode') return;
   await saveSettings({ hubMode: target.value });
   await refreshHubInfo();
+  void refreshHubBuildStatus();
   await refreshStats();
 });
 
@@ -10264,7 +10862,12 @@ els.secretPasteButton?.addEventListener('click', async () => {
   } catch (_) {}
 });
 els.limitsRefreshInput.addEventListener('change', async () => {
-  await saveSettings({ limitsRefreshMs: Number(els.limitsRefreshInput.value) });
+  // Adaptive carries its own baseline, so the stored interval is left alone and
+  // comes back unchanged when a fixed option is selected again.
+  const value = els.limitsRefreshInput.value;
+  await saveSettings(value === 'adaptive'
+    ? { limitsRefreshMode: 'adaptive' }
+    : { limitsRefreshMode: 'fixed', limitsRefreshMs: Number(value) });
   await refreshStats({ force: true });
 });
 els.showLimitSourceInput.addEventListener('change', async () => {
@@ -10741,11 +11344,15 @@ const statsRenderScheduler = statsRenderSchedulerApi.createStatsRenderScheduler(
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) cancelTokenRateBoost();
+  if (!document.hidden && state.settings?.hubMode === 'client' && hubBuildStatusRefreshDue()) {
+    void refreshHubBuildStatus();
+  }
   statsRenderScheduler.flush();
 });
 
 window.tokenMonitor.onStatsPush?.((payload) => {
   if (!payload) return;
+  const wasStreamConnected = state.streamConnected;
   if (payload.event === 'status') {
     state.streamConnected = Boolean(payload.data?.connected);
     if (payload.data?.mode) state.mode = payload.data.mode;
@@ -10771,8 +11378,23 @@ window.tokenMonitor.onStatsPush?.((payload) => {
   setLiveDot(state.streamConnected);
   setStatus(statusTextFor(state.mode, state.streamConnected));
   renderSyncClientStatus();
+  if (!wasStreamConnected && state.streamConnected && state.settings?.hubMode === 'client') {
+    void refreshHubBuildStatus();
+  }
   if (payload.data?.stats) {
-    statsRenderScheduler.request();
+    if (fixedPeriodRangesApi.isDerived(state.period)) {
+      // Keep the currently rendered range stable while a new History revision is
+      // fetched; repaint once with the coherent snapshot instead of flashing an
+      // intermediate loading layout.
+      if (fixedPeriodHistoryNeedsWarmup()) {
+        void warmFixedPeriodHistory({ renderOnComplete: true });
+      } else {
+        statsRenderScheduler.request();
+      }
+    } else {
+      statsRenderScheduler.request();
+      void warmFixedPeriodHistory({ renderOnComplete: false });
+    }
     maybeUpdateBarsIcon();
   }
   restartTimer();
@@ -11338,8 +11960,9 @@ function renderCustomTrayItemCanvas(item, height = 44, colors = {}, options = {}
     };
     if (showIcon) {
       const preferredIndex = item.icon === 'second' ? 1 : 0;
-      const iconRow = rows[preferredIndex]?.selection ? rows[preferredIndex] : rows.find((row) => row.selection);
-      const provider = item.icon === 'app' ? 'app' : iconRow?.selection?.provider || '';
+      const provider = item.icon === 'app'
+        ? 'app'
+        : trayLayoutApi.preferredRowProvider(rows, preferredIndex);
       const providerImage = trayProviderImages[provider];
       if (providerImage) {
         drawCustomTrayProviderImage(
@@ -11368,8 +11991,9 @@ function renderCustomTrayItemCanvas(item, height = 44, colors = {}, options = {}
     const rows = item.rows.slice(0, 2);
     const showIcon = item.icon !== 'none';
     const preferredIndex = item.icon === 'second' ? 1 : 0;
-    const iconRow = rows[preferredIndex]?.selection ? rows[preferredIndex] : rows.find((row) => row.selection);
-    const provider = item.icon === 'app' ? 'app' : iconRow?.selection?.provider || '';
+    const provider = item.icon === 'app'
+      ? 'app'
+      : trayLayoutApi.preferredRowProvider(rows, preferredIndex);
     const iconSize = h;
     const iconGap = Math.max(2, Math.round(h * 0.08));
     const fontSize = Math.max(8, Math.round(h * 0.43));
@@ -12752,11 +13376,11 @@ function renderOpenCodeProfiles() {
 
   const api = window.tokenMonitor.opencode;
 
-  api.getProfiles().then(({ profiles, hasEnvVar }) => {
+  api.getProfiles().then(({ profiles, hasEnvVar, hasAmbientKey, ambientEnabled = true }) => {
     listEl.innerHTML = '';
     const entries = Object.entries(profiles);
 
-    if (entries.length === 0 && !hasEnvVar) {
+    if (entries.length === 0 && !hasEnvVar && !hasAmbientKey) {
       listEl.innerHTML = '<div class="opencode-empty">' + t('settings.opencode.emptyList') + '</div>';
       state.opencodeProfileCount = 0;
       renderOpenCodeProfilesStatusSummary({});
@@ -12764,7 +13388,107 @@ function renderOpenCodeProfiles() {
       return;
     }
 
-    state.opencodeProfileCount = entries.length;
+    // The auto-detected key counts as an account: it is what the limits card is
+    // reading, so leaving it out of the total reports "not set up" next to live
+    // quota. It has no toggle or delete because Token Monitor does not own that
+    // credential — OpenCode does — but naming it does belong here: a name is
+    // what lets it join an account, and typing an existing account's name is
+    // how a user says the two are the same OpenCode account.
+    if (hasAmbientKey) {
+      const item = document.createElement('div');
+      item.className = 'opencode-profile-item';
+      // Switchable like any other account, even without a name. Turning it off
+      // is a device preference rather than a stored credential, so the row keeps
+      // rendering with its box clear instead of disappearing along with the only
+      // control that could bring it back.
+      const ambientToggle = document.createElement('input');
+      ambientToggle.className = 'profile-toggle';
+      ambientToggle.type = 'checkbox';
+      ambientToggle.checked = ambientEnabled;
+      ambientToggle.title = t('settings.opencode.ambientDetail');
+      ambientToggle.addEventListener('change', async () => {
+        await window.tokenMonitor.opencode.setAmbientEnabled(ambientToggle.checked);
+        renderOpenCodeProfiles();
+        updateOpenCodeProfilesStatus();
+        renderSettingsSummaries();
+      });
+      const nameBox = document.createElement('span');
+      nameBox.className = 'profile-name-box';
+      // An editable field rather than a label behind an edit button: this row
+      // has no name yet, and naming it is the only thing a user can do here, so
+      // hiding that behind a hover-revealed pencil hides the whole feature. The
+      // placeholder carries the label the row used to show.
+      const nameInput = document.createElement('input');
+      nameInput.className = 'profile-name-input is-placeholder';
+      nameInput.type = 'text';
+      nameInput.placeholder = t('settings.opencode.ambientName');
+      nameInput.title = t('settings.opencode.nameAmbient');
+
+      // Typing an existing account's name binds the auto-detected key into that
+      // account. That claim is confirmed, never inferred: the main process
+      // refuses it without `merge`, so a blur landing on a name that happens to
+      // exist offers the button instead of quietly merging.
+      const mergeBtn = document.createElement('button');
+      mergeBtn.className = 'credential-merge-btn hidden';
+      const offer = opencodeMergeOffer(mergeBtn, (name) => applyNaming(name, true));
+      const applyNaming = async (name, merge) => {
+        const at = offer.revision();
+        // 'ambient' stores a reference rather than the key, so a key rotated
+        // inside OpenCode keeps being read live.
+        const result = await window.tokenMonitor.opencode.saveProfile(name, '', 'ambient', { merge });
+        if (!result.ok) {
+          if (result.nameTaken) {
+            offer.offer(at, name, t('settings.opencode.mergeInto', { name }));
+            return;
+          }
+          if (offer.stale(at)) return;
+          const errorEl = document.getElementById('opencodeErrorMessage');
+          errorEl.textContent = opencodeSaveErrorText(result);
+          errorEl.classList.remove('hidden');
+          return;
+        }
+        renderOpenCodeProfiles();
+        updateOpenCodeProfilesStatus();
+        renderSettingsSummaries();
+      };
+      const endNaming = async (save) => {
+        const name = nameInput.value.trim();
+        if (!save || !name) {
+          nameInput.value = '';
+          offer.withdraw();
+          return;
+        }
+        await applyNaming(name, false);
+      };
+      // Editing the name withdraws the offer: the confirmation names one account,
+      // and it must be the one on screen when the user clicks it.
+      nameInput.addEventListener('input', () => offer.withdraw());
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') endNaming(true);
+        if (e.key === 'Escape') endNaming(false);
+      });
+      nameInput.addEventListener('blur', () => endNaming(true));
+
+      const detail = document.createElement('span');
+      detail.className = 'profile-detail';
+      detail.textContent = t('settings.opencode.ambientDetail');
+      nameBox.append(nameInput, mergeBtn, detail);
+
+      const rightBox = document.createElement('span');
+      rightBox.className = 'profile-right';
+      const infoSpan = document.createElement('span');
+      infoSpan.className = 'profile-info';
+      // Not `opencode-info-<name>`: that shape is generated from user-chosen
+      // account names, so a profile named the same as any sentinel would take
+      // this row's status.
+      infoSpan.id = 'opencodeAmbientInfo';
+      infoSpan.textContent = ambientEnabled ? '...' : t('settings.opencode.disabled');
+      rightBox.append(infoSpan);
+      item.append(ambientToggle, nameBox, rightBox);
+      listEl.appendChild(item);
+    }
+
+    state.opencodeProfileCount = entries.length + (hasAmbientKey ? 1 : 0);
     renderSettingsSummaries();
 
     for (const [name, profile] of entries) {
@@ -12809,18 +13533,43 @@ function renderOpenCodeProfiles() {
         nameInput.focus();
         nameInput.select();
       }
-      function endRename(save) {
+      // Renaming onto an existing account merges the two, which asserts they are
+      // the same OpenCode account. That claim gets a visible button rather than
+      // a repeated keypress: confirming should be something the user chooses,
+      // not something they discover by pressing Enter again.
+      const mergeBtn = document.createElement('button');
+      mergeBtn.className = 'credential-merge-btn hidden';
+      const offer = opencodeMergeOffer(mergeBtn, (next) => applyRename(next, true));
+      const applyRename = async (next, merge) => {
+        const at = offer.revision();
+        const errorEl = document.getElementById('opencodeErrorMessage');
+        const result = await api.renameProfile(name, next, { merge });
+        if (!result.ok) {
+          if (result.nameTaken) {
+            offer.offer(at, next, t('settings.opencode.mergeInto', { name: next }));
+            return;
+          }
+          if (offer.stale(at)) return;
+          errorEl.textContent = opencodeSaveErrorText(result);
+          errorEl.classList.remove('hidden');
+          return;
+        }
+        errorEl.classList.add('hidden');
+        renderOpenCodeProfiles();
+        updateOpenCodeProfilesStatus();
+        renderSettingsSummaries();
+      };
+      // Retyping withdraws the offer, so the button can only ever confirm the
+      // name the user is currently proposing.
+      nameInput.addEventListener('input', () => offer.withdraw());
+      async function endRename(save) {
         if (!editing) return;
         editing = false;
         nameInput.classList.add('hidden');
         nameSpan.classList.remove('hidden');
-        if (save && nameInput.value.trim() && nameInput.value.trim() !== name) {
-          api.renameProfile(name, nameInput.value.trim()).then(() => {
-            renderOpenCodeProfiles();
-            updateOpenCodeProfilesStatus();
-            renderSettingsSummaries();
-          });
-        }
+        const next = nameInput.value.trim();
+        if (!save || !next || next === name) return;
+        await applyRename(next, false);
       }
       renameBtn.addEventListener('click', beginRename);
       nameInput.addEventListener('keydown', (e) => {
@@ -12829,14 +13578,54 @@ function renderOpenCodeProfiles() {
       });
       nameInput.addEventListener('blur', () => endRename(true));
 
-      nameBox.append(nameSpan, nameInput, renameBtn);
+      // Which credentials this account holds. Two of them under one name is the
+      // user's assertion that they are the same OpenCode account, and that
+      // assertion decides which source answers for quota and which identity the
+      // account is published under, so it stays visible. Acting on them lives in
+      // the expanded section rather than inline: a click that unbinds an account
+      // should not sit one pixel from the account's own controls.
+      // A reference the collector has stopped using says so on its own row.
+      // Otherwise an account that also holds a cookie shows the credential as
+      // present, keeps reporting fine from the cookie, and nothing anywhere
+      // reveals that its Go quota is no longer coming from the detected key.
+      const ambientLabel = profile.ambientStale
+        ? `${t('settings.opencode.ambientName')} · ${t('settings.opencode.needsRebind')}`
+        : t('settings.opencode.ambientName');
+      const credentials = [
+        ['ambient', profile.usesAmbientKey, ambientLabel],
+        ['api', profile.hasApiKey, t('settings.opencode.kindApi')],
+        ['cookie', profile.hasCookie, t('settings.opencode.kindCookie')]
+      ].filter(([, present]) => present);
+
+      // The summary line is the control that expands it: clicking the thing you
+      // want to see beats a separate chevron stranded between the status text
+      // and the delete button.
+      const multiCredential = credentials.length > 1;
+      const detail = document.createElement(multiCredential ? 'button' : 'span');
+      detail.className = 'profile-detail';
+      let chevron = null;
+      if (multiCredential) {
+        detail.type = 'button';
+        detail.classList.add('is-expandable');
+        detail.setAttribute('aria-expanded', 'false');
+        detail.title = t('settings.opencode.showCredentials');
+        // The same disclosure chevron every other group uses, so it animates and
+        // reads the same; only the direction differs, pointing right when closed.
+        chevron = document.createElement('span');
+        chevron.className = 'cursor-disclosure-icon';
+        chevron.setAttribute('aria-hidden', 'true');
+      }
+      detail.textContent = credentials.map(([, , label]) => label).join(' + ');
+      if (chevron) detail.append(chevron);
+
+      nameBox.append(nameSpan, nameInput, renameBtn, mergeBtn, detail);
 
       const rightBox = document.createElement('span');
       rightBox.className = 'profile-right';
 
       const infoSpan = document.createElement('span');
       infoSpan.className = 'profile-info';
-      infoSpan.id = 'opencode-info-' + name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      infoSpan.id = opencodeRowId('opencode-info-', name);
       infoSpan.textContent = profile.enabled ? '...' : t('settings.opencode.disabled');
 
       const deleteBtn = document.createElement('button');
@@ -12858,8 +13647,32 @@ function renderOpenCodeProfiles() {
         renderSettingsSummaries();
       });
 
+      // Expanding is only worth offering once an account holds more than one
+      // credential — with a single one the row already says everything.
+      let credentialList = null;
+      if (multiCredential) {
+        credentialList = document.createElement('div');
+        credentialList.className = 'opencode-credential-list accordion-animated-container hidden';
+        credentialList.id = opencodeRowId('opencode-credentials-', name);
+        // The shared accordion squeezes one inner wrapper, so the rows go inside
+        // it rather than on the container, which cannot shrink.
+        const credentialInner = document.createElement('div');
+        credentialInner.className = 'accordion-animation-inner';
+        for (const [kind, , label] of credentials) {
+          credentialInner.append(opencodeCredentialRow(name, kind, label));
+        }
+        credentialList.append(credentialInner);
+        detail.setAttribute('aria-controls', credentialList.id);
+        detail.addEventListener('click', () => {
+          const open = credentialList.classList.toggle('hidden') === false;
+          detail.setAttribute('aria-expanded', String(open));
+          detail.classList.toggle('is-open', open);
+        });
+      }
+
       rightBox.append(infoSpan, deleteBtn);
       item.append(toggle, nameBox, rightBox);
+      if (credentialList) item.append(credentialList);
       listEl.appendChild(item);
     }
 
@@ -12867,17 +13680,200 @@ function renderOpenCodeProfiles() {
   });
 }
 
+// A merge that would land two credentials of the same kind on one account is
+// refused rather than resolved: confirming that two accounts are the same is a
+// different question from choosing which of two cookies to keep.
+function opencodeSaveErrorText(result) {
+  if (result?.credentialConflict) {
+    return t('settings.opencode.credentialConflict', {
+      kind: t(result.kind === 'cookie' ? 'settings.opencode.kindCookie'
+        : result.kind === 'ambient' ? 'settings.opencode.ambientName'
+          : 'settings.opencode.kindApi')
+    });
+  }
+  return result?.error || t('settings.opencode.saveFailedShort');
+}
+
+// A merge confirmation names one specific proposal: this credential, into this
+// account. Editing the field withdraws it, so the click the main process
+// receives is consent to what the user is looking at.
+//
+// Hiding the button is not enough on its own, because the answer that offers it
+// arrives after an await: an edit made while that request is in flight is
+// overtaken by the reply, and the button comes back describing the proposal the
+// user has just moved on from. So a withdrawal advances a revision the reply is
+// checked against, and a reply from a superseded revision is dropped rather
+// than shown. The same rule reached four call sites by copy, which is why it
+// lives in one place now.
+//
+// There is deliberately one way to take an offer down. A plain hide looks
+// harmless on the cancel paths (Escape, a blur onto nothing) but leaves the
+// revision where it was, so the reply to the request the user just cancelled
+// still matched and put the button back — the original bug, reached through the
+// other door. Everything that ends an offer withdraws it.
+function opencodeMergeOffer(button, confirm) {
+  let revision = 0;
+  let pending = '';
+  button.addEventListener('click', () => {
+    if (pending !== '') confirm(pending);
+  });
+  return {
+    // Captured before the await, compared after it.
+    revision: () => revision,
+    stale: (at) => at !== revision,
+    withdraw: () => {
+      revision += 1;
+      pending = '';
+      button.classList.add('hidden');
+    },
+    offer: (at, name, label) => {
+      if (at !== revision) return;
+      pending = name;
+      button.textContent = label;
+      button.classList.remove('hidden');
+    }
+  };
+}
+
+// Element ids for a row, from the account name.
+//
+// Reversible rather than sanitized. Replacing everything outside a safe set with
+// `_` is not injective, so two accounts a user is perfectly entitled to name —
+// `a b` and `a_b`, or `a/b` and `a_b` — landed on one id, and whichever rendered
+// first collected the other's status. `encodeURIComponent` is injective and
+// leaves no whitespace, which is the only thing an id may not contain.
+//
+// A counter would work too, but these two call sites are independent: one
+// renders the row, the other looks it up from a later status reply. A pure
+// function of the name cannot drift between them the way a shared table can.
+function opencodeRowId(prefix, name) {
+  return `${prefix}${encodeURIComponent(name)}`;
+}
+
+// One credential inside an expanded account. Renaming moves it to another
+// account name, which is what splits a binding apart or forms a new one;
+// deleting drops just this credential and leaves the rest of the account.
+function opencodeCredentialRow(accountName, kind, label) {
+  const api = window.tokenMonitor.opencode;
+  const errorEl = () => document.getElementById('opencodeErrorMessage');
+  const refresh = () => {
+    renderOpenCodeProfiles();
+    updateOpenCodeProfilesStatus();
+    renderSettingsSummaries();
+  };
+
+  const row = document.createElement('div');
+  row.className = 'opencode-credential-row';
+
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'credential-label';
+  labelSpan.textContent = label;
+
+  // The account name is shown on every credential rather than hidden behind an
+  // edit button, because seeing the same name twice is the explanation for why
+  // these are one account. Typing a different one moves that credential out.
+  const nameInput = document.createElement('input');
+  nameInput.className = 'credential-name-input';
+  nameInput.type = 'text';
+  nameInput.value = accountName;
+  nameInput.title = t('settings.opencode.moveCredential', { kind: label });
+  nameInput.placeholder = t('settings.opencode.profileNamePlaceholder');
+
+  const actions = document.createElement('span');
+  actions.className = 'credential-actions';
+
+  // A merge is a claim that two credentials belong to one OpenCode account, so
+  // it is confirmed with a visible button rather than by pressing the same key
+  // twice and hoping the user reads why.
+  const mergeBtn = document.createElement('button');
+  mergeBtn.className = 'credential-merge-btn hidden';
+  const offer = opencodeMergeOffer(mergeBtn, (target) => finishMove(target, true));
+
+  const finishMove = async (target, merge) => {
+    const at = offer.revision();
+    const result = await api.moveCredential(accountName, kind, target, { merge });
+    if (!result.ok) {
+      if (result.nameTaken) {
+        offer.offer(at, target, t('settings.opencode.mergeInto', { name: target }));
+        return;
+      }
+      if (offer.stale(at)) return;
+      errorEl().textContent = opencodeSaveErrorText(result);
+      errorEl().classList.remove('hidden');
+      return;
+    }
+    refresh();
+  };
+  const endMove = async (save) => {
+    const target = nameInput.value.trim();
+    if (!save || !target || target === accountName) {
+      nameInput.value = accountName;
+      offer.withdraw();
+      return;
+    }
+    await finishMove(target, false);
+  };
+
+  // Same rule as everywhere else: retyping the target withdraws the pending
+  // confirmation rather than leaving a button that would move it somewhere the
+  // user is no longer proposing.
+  nameInput.addEventListener('input', () => offer.withdraw());
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') endMove(true);
+    if (e.key === 'Escape') endMove(false);
+  });
+  nameInput.addEventListener('blur', () => endMove(true));
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'profile-delete';
+  removeBtn.textContent = '✕';
+  removeBtn.title = t('settings.opencode.removeCredential', { kind: label });
+  // Two-step, like deleting an account: unbinding is not undoable from here.
+  let confirming = false;
+  removeBtn.addEventListener('click', async () => {
+    if (!confirming) {
+      confirming = true;
+      removeBtn.classList.add('confirming');
+      removeBtn.textContent = '✓';
+      return;
+    }
+    const result = await api.removeCredential(accountName, kind);
+    if (result.ok) refresh();
+  });
+
+  actions.append(removeBtn);
+  // The merge label carries the target account name and never fits beside the
+  // input, so it trails the row and wraps onto its own line when it appears.
+  row.append(labelSpan, nameInput, actions, mergeBtn);
+  return row;
+}
+
 async function updateOpenCodeProfilesStatus() {
   const api = window.tokenMonitor.opencode;
   const status = await api.status();
   const profiles = status.profiles || {};
 
-  for (const [name, s] of Object.entries(profiles)) {
-    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const infoEl = document.getElementById('opencode-info-' + safeName);
+  // The auto-detected key has no account name, so it arrives in its own field
+  // and lands on its own element rather than one keyed by a name a user could
+  // also type.
+  const entries = Object.entries(profiles).map(([name, s]) => [
+    opencodeRowId('opencode-info-', name),
+    s
+  ]);
+  if (status.ambient) entries.push(['opencodeAmbientInfo', status.ambient]);
+
+  for (const [elementId, s] of entries) {
+    const infoEl = document.getElementById(elementId);
     if (!infoEl) continue;
 
-    if (s.expired) {
+    if (s.disabled) {
+      infoEl.textContent = t('settings.opencode.disabled');
+    } else if (s.needsRebind) {
+      // Said once, on the credential line, which has room for it and is the
+      // thing that needs re-attaching. This cell is a fixed narrow column and
+      // would only repeat it truncated.
+      infoEl.textContent = '';
+    } else if (s.expired) {
       infoEl.textContent = t('settings.opencode.statusExpired');
     } else if (s.linked) {
       const parts = [];
@@ -12895,15 +13891,19 @@ async function updateOpenCodeProfilesStatus() {
     }
   }
 
-  renderOpenCodeProfilesStatusSummary(profiles);
+  renderOpenCodeProfilesStatusSummary(profiles, status.ambient);
 }
 
-function renderOpenCodeProfilesStatusSummary(profiles) {
+// `ambient` counts toward both halves: it is a row in the list and it is what
+// the limits card reads on a machine with nothing configured, so leaving it out
+// reports "0/0" beside live quota.
+function renderOpenCodeProfilesStatusSummary(profiles, ambient = null) {
   const totalEl = document.getElementById('opencodeCookieStatus');
   if (totalEl) {
-    const linkedCount = Object.values(profiles).filter(s => s.linked).length;
+    const statuses = [...Object.values(profiles), ...(ambient ? [ambient] : [])];
+    const linkedCount = statuses.filter(s => s.linked).length;
     const configuredProfileCount = state.opencodeProfileCount || 0;
-    const totalCount = Math.max(Object.keys(profiles).length, configuredProfileCount);
+    const totalCount = Math.max(statuses.length, configuredProfileCount);
     if (totalCount > 0) {
       totalEl.textContent = t('settings.opencode.connected', { linked: linkedCount, total: totalCount });
     } else {
@@ -13733,26 +14733,112 @@ function setupCursorAccountUI() {
       window.tokenMonitor.openExternal('https://opencode.ai/auth');
     });
 
+    // API key is the default: it needs no browser round trip. The cookie stays
+    // selectable because it is the only thing that reaches the Zen balance.
+    const kindSelect = document.getElementById('opencodeCredentialKind');
+    // The merge confirmation is about one specific proposal: this name, this
+    // credential. Editing any part of the form makes the offer on screen stale,
+    // and a confirmation the user gives has to be a confirmation of what they
+    // are looking at, so any edit withdraws it.
+    const addMergeButton = document.getElementById('opencodeCredentialMerge');
+    // Confirming re-runs the submit handler's own closure, which is what holds
+    // the name and credential the offer was made for.
+    let confirmOpenCodeMerge = () => {};
+    const addMergeOffer = addMergeButton
+      ? opencodeMergeOffer(addMergeButton, () => confirmOpenCodeMerge())
+      : null;
+    const clearOpenCodeMergeOffer = () => addMergeOffer?.withdraw();
+    for (const id of ['opencodeProfileName', 'opencodeApiKeyInput', 'opencodeCookieInput']) {
+      document.getElementById(id)?.addEventListener('input', clearOpenCodeMergeOffer);
+    }
+    const applyOpenCodeCredentialKind = () => {
+      const isCookie = kindSelect?.value === 'cookie';
+      document.getElementById('opencodeApiFields')?.classList.toggle('hidden', isCookie);
+      document.getElementById('opencodeCookieFields')?.classList.toggle('hidden', !isCookie);
+      // One button for both modes; only what it is fetching differs. The keys
+      // page itself lives under a workspace id we do not have, so both land on
+      // the console sign-in.
+      const browserButton = document.getElementById('opencodeOpenBrowser');
+      if (browserButton) {
+        const key = isCookie ? 'settings.opencode.openBrowser' : 'settings.opencode.openBrowserKeys';
+        browserButton.dataset.i18n = key;
+        browserButton.textContent = t(key);
+      }
+      // Clear the field being hidden so a value typed under one credential type
+      // can never be submitted as the other.
+      const stale = document.getElementById(isCookie ? 'opencodeApiKeyInput' : 'opencodeCookieInput');
+      if (stale) stale.value = '';
+      document.getElementById('opencodeErrorMessage')?.classList.add('hidden');
+      clearOpenCodeMergeOffer();
+    };
+    kindSelect?.addEventListener('change', applyOpenCodeCredentialKind);
+    applyOpenCodeCredentialKind();
+
     document.getElementById('opencodeCookieSubmit').addEventListener('click', async () => {
-      const input = document.getElementById('opencodeCookieInput');
+      const opencodeCredentialKind = kindSelect?.value === 'cookie' ? 'cookie' : 'api';
+      const input = document.getElementById(opencodeCredentialKind === 'cookie'
+        ? 'opencodeCookieInput'
+        : 'opencodeApiKeyInput');
       const nameInput = document.getElementById('opencodeProfileName');
       const errorEl = document.getElementById('opencodeErrorMessage');
-      const name = (nameInput.value || '').trim() || 'default';
+      const name = (nameInput.value || '').trim();
       const cookie = input.value;
 
       errorEl.classList.add('hidden');
 
-      const result = await window.tokenMonitor.opencode.saveProfile(name, cookie);
-      if (result.ok) {
-        input.value = '';
-        nameInput.value = '';
-        renderOpenCodeProfiles();
-        updateOpenCodeProfilesStatus();
-        renderSettingsSummaries();
-      } else {
-        errorEl.textContent = result.error || t('settings.opencode.saveFailedShort');
+      // The name is required rather than defaulted. Saving one credential keeps
+      // the other under the same name, and the collector reads that as "these
+      // are the same account", so a blank name silently becoming `default`
+      // could attach one account's key to another account's cookie. Making the
+      // user type the name is what keeps the association explicit.
+      if (!name) {
+        errorEl.textContent = t('settings.opencode.nameRequired');
         errorEl.classList.remove('hidden');
+        nameInput.focus();
+        return;
       }
+
+      // A name that already holds a different credential kind binds the two into
+      // one account, so the main process refuses it and the form asks first.
+      // The confirmation replaces the submit button rather than appearing beside
+      // it: the next click has different consequences from the one just made.
+      const submit = async (merge) => {
+        const at = addMergeOffer?.revision();
+        confirmOpenCodeMerge = () => submit(true);
+        const result = await window.tokenMonitor.opencode.saveProfile(
+          name,
+          cookie,
+          opencodeCredentialKind,
+          { merge }
+        );
+        // Whether or not the form still shows this proposal, a save that landed
+        // has to reach the list. Only the fields are left alone, so an edit made
+        // while the request was in flight is not wiped by its reply.
+        const stale = addMergeOffer ? addMergeOffer.stale(at) : false;
+        if (result.ok) {
+          // Only this proposal's own offer is taken down. Two saves can overlap,
+          // and the newer one can answer first: clearing unconditionally let an
+          // older success wipe a merge confirmation the user was looking at and
+          // that was still correct.
+          if (!stale) {
+            input.value = '';
+            nameInput.value = '';
+            addMergeOffer?.withdraw();
+          }
+          renderOpenCodeProfiles();
+          updateOpenCodeProfilesStatus();
+          renderSettingsSummaries();
+          return;
+        }
+        if (stale) return;
+        if (result.nameTaken && addMergeOffer) {
+          addMergeOffer.offer(at, name, t('settings.opencode.mergeInto', { name }));
+          return;
+        }
+        errorEl.textContent = opencodeSaveErrorText(result);
+        errorEl.classList.remove('hidden');
+      };
+      await submit(false);
     });
   }
 
