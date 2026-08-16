@@ -45,6 +45,8 @@ const volcengineLimits = require('./volcengineLimits');
 const { volcengineCredentials, fetchVolcengineLimits } = volcengineLimits;
 const qoderLimits = require('./qoderLimits');
 const { qoderCookie, fetchQoderLimits } = qoderLimits;
+const commandcodeLimits = require('./commandcodeLimits');
+const { commandcodeCookie, fetchCommandcodeLimits } = commandcodeLimits;
 const ollamaLimits = require('./ollamaLimits');
 const { ollamaSessionCookie, fetchOllamaLimits } = ollamaLimits;
 const kimiLimits = require('./kimiLimits');
@@ -3258,8 +3260,8 @@ async function fetchOpenCodeLimits(options = {}, deps = {}) {
         signal: deps.signal,
         apiKey: primaryApiKey
       }),
-      cookie ? fetchGoWeb(cookie, { now: () => nowMs }) : null,
-      cookie ? fetchZen(cookie, { now: () => nowMs, workspaceId: '' }) : null
+      cookie ? fetchGoWeb(cookie, { now: () => nowMs, fetch: deps.fetch }) : null,
+      cookie ? fetchZen(cookie, { now: () => nowMs, workspaceId: '', fetch: deps.fetch }) : null
     ]);
     const webIdentity = openCodeWebIdentity(goWeb, zen, cookie);
     const webAccountKey = webIdentity.accountKey;
@@ -3402,8 +3404,8 @@ async function fetchOpenCodeProfile(name, cookie, fetchGoWeb, fetchZen, nowMs, u
     const result = await Promise.race([
       (async () => {
         const [goWeb, zen, goApi] = await Promise.all([
-          cookie ? fetchGoWeb(cookie, { now: () => nowMs }) : null,
-          cookie ? fetchZen(cookie, { now: () => nowMs, workspaceId: '' }) : null,
+          cookie ? fetchGoWeb(cookie, { now: () => nowMs, fetch: api.deps?.fetch }) : null,
+          cookie ? fetchZen(cookie, { now: () => nowMs, workspaceId: '', fetch: api.deps?.fetch }) : null,
           api.apiKey
             ? api.collectGoApi({
               env: api.deps?.env || process.env,
@@ -3669,6 +3671,7 @@ function providerFetchers(deps = {}) {
     zai: (providerOptions, probeDeps) => zaiLimits.fetchZaiLimits(providerOptions, probeDeps),
     zaiteam: (providerOptions, probeDeps) => zaiTeamLimits.fetchZaiTeamLimits(providerOptions, probeDeps),
     volcengine: (providerOptions, probeDeps) => volcengineLimits.fetchVolcengineLimits(providerOptions, probeDeps),
+    commandcode: (providerOptions, probeDeps) => commandcodeLimits.fetchCommandcodeLimits(providerOptions, probeDeps),
     qoder: (providerOptions, probeDeps) => qoderLimits.fetchQoderLimits(providerOptions, probeDeps),
     ollama: (providerOptions, probeDeps) => ollamaLimits.fetchOllamaLimits(providerOptions, probeDeps),
     kimi: (providerOptions, probeDeps) => kimiLimits.fetchKimiLimits(providerOptions, probeDeps),
@@ -4020,6 +4023,8 @@ module.exports = {
   fetchVolcengineLimits,
   qoderCookie,
   fetchQoderLimits,
+  commandcodeCookie,
+  fetchCommandcodeLimits,
   ollamaSessionCookie,
   fetchOllamaLimits,
   kimiToken,
