@@ -9365,10 +9365,10 @@ function localClientHealth() {
   return localDevice()?.clientHealth || null;
 }
 
-// Single entry point for the tracked-tool detail accordion, mirroring the limits
+// Single entry point for the tool detail accordion, mirroring the limits
 // list: the drag gesture collapses and restores it too, so the class and aria
 // bookkeeping cannot live inside the disclosure's own click handler.
-function setClientHealthExpanded(clientId) {
+function setClientHealthExpanded(clientId, options = {}) {
   state.clientHealthExpanded = clientId || '';
   const rows = els.clientDisplayList?.querySelectorAll('.tool-preference-row[data-client]') || [];
   for (const row of rows) {
@@ -9381,7 +9381,9 @@ function setClientHealthExpanded(clientId) {
     // rebuilt every stats tick — to render nothing. A panel already filled is
     // left alone so a collapse still has something to animate.
     if (open) {
-      loadClientSources(row.dataset.client);
+      const force = options.refreshPlaceholder === true
+        && !clientHealthPresentationApi.hasClientHealth(localClientHealth(), row.dataset.client);
+      loadClientSources(row.dataset.client, { force });
       if (container.childElementCount === 0) {
         fillClientHealthPanel(container, row.dataset.client);
       }
@@ -9409,11 +9411,19 @@ function clientPeriodUsage(clientId) {
 // per snapshot without spending IPC on progressive previews that carry the old
 // envelope.
 function clientSourcesIdentity(clientId) {
-  return {
-    deviceId: String(localDevice()?.deviceId || ''),
-    clientId: String(clientId || ''),
-    observedAt: String(localClientHealth()?.observedAt || '')
-  };
+  const id = String(clientId || '');
+  const health = localClientHealth();
+  const tracked = enabledClientSet().has(id);
+  return clientSourceCacheApi.clientSourceIdentity({
+    deviceId: localDevice()?.deviceId,
+    clientId: id,
+    observedAt: health?.observedAt,
+    tracked,
+    // The health envelope timestamp is shared by every client. Only use it
+    // when this client has its own health entry; otherwise unrelated client
+    // updates must not invalidate this client's source probe cache.
+    hasObservation: clientHealthPresentationApi.hasClientHealth(health, id)
+  });
 }
 
 function exactLocalClientSources(clientId) {
@@ -9478,10 +9488,14 @@ function refillOpenClientHealthPanel() {
 // Everything the panel draws beyond the health record itself: the numbers the
 // app already renders elsewhere, and this machine's own paths.
 function clientHealthDetailFor(clientId) {
-  return clientHealthPresentationApi.clientHealthDetail(localClientHealth(), clientId, {
+  const options = {
     usage: clientPeriodUsage(clientId),
-    sources: localClientSources(clientId)
-  });
+    sources: localClientSources(clientId),
+    collectionState: enabledClientSet().has(clientId) ? 'waiting' : 'notTracked'
+  };
+  const detail = clientHealthPresentationApi.clientHealthDetail(localClientHealth(), clientId, options);
+  if (detail) return detail;
+  return clientHealthPresentationApi.clientHealthPlaceholderDetail(options);
 }
 
 function sameRenderedNode(current, next) {
@@ -9673,7 +9687,9 @@ function clientHealthActions(clientId) {
   // The detail is already bound to the exact local device. Renderer mode is a
   // transport state (`local`/`sync`), not topology, so host and client collectors
   // expose the same targeted capability through preload.
-  if (localDevice() && typeof window.tokenMonitor?.rescanClient === 'function') {
+  if (enabledClientSet().has(clientId)
+    && localDevice()
+    && typeof window.tokenMonitor?.rescanClient === 'function') {
     const rescanState = state.clientRescans.snapshot(clientId);
     const feedback = document.createElement('span');
     feedback.className = 'tool-health-action-feedback';
@@ -9970,9 +9986,9 @@ function renderToolPreferencesNow() {
     const actions = document.createElement('div');
     actions.className = 'tool-preference-actions';
     actions.append(visibility, pin);
-    // A device whose agent predates the health field gets no chevron rather than
-    // one that opens onto an empty panel.
-    const detail = clientHealthPresentationApi.clientHealthDetail(health, id);
+    // Tracked tools use the health snapshot; untracked tools get an on-demand
+    // source view so every row keeps the same disclosure affordance.
+    const detail = clientHealthDetailFor(id);
     if (detail) {
       const expanded = state.clientHealthExpanded === id;
       row.classList.toggle('expanded', expanded);
@@ -9995,7 +10011,10 @@ function renderToolPreferencesNow() {
         loadClientSources(id);
         panel.append(clientHealthPanel(clientHealthDetailFor(id) || detail, id));
       }
-      main.addEventListener('click', () => setClientHealthExpanded(state.clientHealthExpanded === id ? '' : id));
+      main.addEventListener('click', () => {
+        const open = state.clientHealthExpanded !== id;
+        setClientHealthExpanded(open ? id : '', { refreshPlaceholder: open });
+      });
       // Last of the row's controls, where the eye and the pin already are —
       // the label stays plain text, exactly as it reads without this feature.
       actions.append(main);
