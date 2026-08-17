@@ -5131,6 +5131,7 @@ html.is-windows .limit-live-badge {
 #mimoManualPanel input,
 #mimoManualPanel textarea,
 #kimiManualPanel input,
+#kimiManualPanel textarea,
 #copilotManualDetails input {
   width: 100%;
   font-size: 12px;
@@ -5160,6 +5161,7 @@ html.is-windows .limit-live-badge {
 #mimoManualPanel input,
 #mimoManualPanel textarea,
 #kimiManualPanel input,
+#kimiManualPanel textarea,
 #copilotManualDetails input {
   font-family: monospace;
 }
@@ -6029,7 +6031,7 @@ html.is-windows .limit-live-badge {
   min-width: 0;
   height: 30px;
   box-sizing: border-box;
-  font-size: 11px;
+  font-size: 12px;
 }
 .thirdparty-mode-hint {
   min-height: 30px;
