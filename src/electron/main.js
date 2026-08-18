@@ -242,8 +242,8 @@ const {
   pickUsageTrayIconId,
   parseWindowsSystemUsesLightTheme,
   popoverBounds,
+  prepareTrayIconForPlatform,
   reconcileCodexAccountSelection,
-  resizeTrayIconForPlatform,
   runTrayMenuAction,
   watchSystemDarkUi,
   sortCodexAccountsForDisplay,
@@ -315,6 +315,22 @@ if (!app.isPackaged) loadDotEnv();
 
 const APP_NAME = 'Token Monitor';
 const APP_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+const WINDOWS_APP_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon-win.png');
+
+// Electron's own documentation says a window given no icon falls back to the
+// executable's, and recommends ICO on Windows; electron-builder already
+// converts `win.icon` into the ICO embedded in that executable, which is the
+// icon built for this platform rather than one PNG scaled at runtime. So a
+// packaged window deliberately sets
+// nothing here: whatever it set could only override that, which is exactly what
+// naming the macOS artwork was doing to the taskbar button and Alt-Tab entry
+// (it carries the Dock's inset margin — see WINDOWS_ICON_PATH in tray.js). An
+// unpackaged run has no icon of ours inside electron.exe to inherit, so it names
+// the same full-bleed artwork the installer is built from.
+function appWindowIcon() {
+  if (process.platform !== 'win32') return { icon: APP_ICON_PATH };
+  return app.isPackaged ? {} : { icon: WINDOWS_APP_ICON_PATH };
+}
 
 const DEFAULT_WINDOW = { width: 340, height: 650 };
 const WINDOW_LIMITS = { minWidth: 240, minHeight: 140, maxWidth: 1200, maxHeight: 1400 };
@@ -5585,7 +5601,7 @@ function createWindow(boundsOverride, options = {}) {
     resizable: !collapsedFloatingBubble,
     show: false,
     backgroundColor: '#00000000',
-    icon: APP_ICON_PATH,
+    ...appWindowIcon(),
     skipTaskbar: collapsedFloatingBubble || Boolean(settings?.trayMode),
     ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
     // Keeps a popover unmaximizable across rebuilds, which never re-run enterTrayMode().
@@ -5740,7 +5756,7 @@ function createDashboardWindow() {
     transparent: !(process.platform === 'win32' && glass),
     show: false,
     backgroundColor: '#00000000',
-    icon: APP_ICON_PATH,
+    ...appWindowIcon(),
     skipTaskbar: false,
     ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
     ...(process.platform === 'win32' && glass ? { backgroundMaterial: 'acrylic' } : {}),
@@ -6324,8 +6340,9 @@ app.whenReady().then(() => {
       // Windows targets its own small-icon metric (16px x the display scale
       // factor) rather than the macOS menubar height, so a single high-quality
       // downscale of the 44px-tall renderer source stays crisp in the
-      // notification area instead of the old fixed 20px-for-all blur.
-      const sized = resizeTrayIconForPlatform(img, {
+      // notification area instead of the old fixed 20px-for-all blur, and its
+      // square cell gets the bitmap trimmed to the pixels the renderer drew.
+      const sized = prepareTrayIconForPlatform(img, {
         platform: process.platform,
         scaleFactor: screen.getPrimaryDisplay().scaleFactor
       });
