@@ -524,9 +524,8 @@
     const botPad = 16;
     const modelWidth = Math.max(0, Number(model.width) || 0);
     const modelHeight = Math.max(0, Number(model.height) || 0);
-    // Keep the normal heatmap geometry flush with its container. Home hover
-    // uses an in-place outline and glow, so edge cells never need extra SVG
-    // padding or a directional transform that changes their visual position.
+    // Keep model geometry flush with the SVG. Interactive effects must not
+    // reserve layout space or change the source coordinates.
     const pitch = (model.cell || 11) + (model.gap || 2);
     const glowFilterId = String(o.glowFilterId || '');
     const spotlightId = String(o.spotlightId || '');

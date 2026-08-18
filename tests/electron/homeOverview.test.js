@@ -55,7 +55,11 @@ test('Home activity heatmap is a scaled copy of the dashboard heatmap', () => {
   }
   assert.doesNotMatch(rule(css, '.home-activity-scroll'), /padding-block/);
   assert.match(rule(css, '.home-activity-canvas .heat-bright-layer'), /pointer-events:\s*none/);
-  assert.doesNotMatch(rule(css, '.home-activity-canvas .heat'), /transform:\s*scale/);
+  const homeActivityHoverRule = css.match(
+    /\.home-activity-canvas \.heat\[data-active="true"\],\s*\.home-activity-canvas \.heat:hover\s*\{([^}]*)\}/
+  );
+  assert.ok(homeActivityHoverRule, 'Home activity hover rule exists');
+  assert.doesNotMatch(homeActivityHoverRule[1], /transform\s*:\s*scale/);
   assert.match(
     css,
     /\.home-activity-scroll\.is-restoring-hover \.heat,\s*\.home-activity-scroll\.is-restoring-hover \.heat-bright-layer\s*\{[^}]*transition:\s*none/
