@@ -67,7 +67,7 @@ const supportedToolOrder = [
   'Proma',
   'Qoder',
   'Reasonix',
-  'DeepSeek',
+  'DeepSeek / DeepSeek Harness',
   'OpenRouter',
   'Minimax',
   'Volcengine',
