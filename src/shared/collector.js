@@ -33,6 +33,7 @@ const { hermesProfileWatchDirs, resolveHermesHome } = require('./hermesProfiles'
 const { localDayKey, mergeHistories, parseGraphResult, normalizeHistory } = require('./history');
 const { retainDailyHistory, retainLiveDailyHistory } = require('./dailyHistoryArchive');
 const cursorAuth = require('./cursorAuth');
+const { claudeSessionRoots } = require('./claudePaths');
 const { findSessionFiles, codexSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
 const { buildPromaHistoryGraph, buildPromaPeriods, collectPromaRows } = require('./promaUsage');
@@ -826,8 +827,17 @@ function sessionTimestampMap(periods, home = os.homedir(), deps = {}) {
     }
   }
 
-  const claudeFiles = findSessionFiles(path.join(home, '.claude', 'projects'), byClient.get('claude') || []);
-  for (const [sessionId, filePath] of claudeFiles) applyFile('claude', sessionId, filePath);
+  const claudeRoots = claudeSessionRoots({
+    homeDir: home,
+    env: deps.env,
+    useEnvRoots: !deps.scopedHome
+  });
+  const claudeIds = byClient.get('claude') || new Set();
+  const projectFiles = findSessionFiles(claudeRoots.projects, claudeIds);
+  for (const [sessionId, filePath] of projectFiles) applyFile('claude', sessionId, filePath);
+  const missingClaudeIds = new Set([...claudeIds].filter((sessionId) => !projectFiles.has(sessionId)));
+  const transcriptFiles = findSessionFiles(claudeRoots.transcripts, missingClaudeIds);
+  for (const [sessionId, filePath] of transcriptFiles) applyFile('claude', sessionId, filePath);
 
   const codexIds = byClient.get('codex') || new Set();
   const missingCodexIds = new Set();
@@ -1731,7 +1741,8 @@ function clientSourceRoots(clientsCsv) {
       }));
     }
   };
-  add('claude', ['claude-projects', path.join(home, '.claude', 'projects')], ['claude-transcripts', path.join(home, '.claude', 'transcripts')]);
+  const claudeRoots = claudeSessionRoots({ homeDir: home });
+  add('claude', ['claude-projects', claudeRoots.projects], ['claude-transcripts', claudeRoots.transcripts]);
   const codexHome = nonBlankEnvPath('CODEX_HOME', path.join(home, '.codex'));
   add(
     'codex',
