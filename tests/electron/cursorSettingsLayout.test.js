@@ -1162,6 +1162,10 @@ test('settingsForRenderer strips provider cookies before they reach the renderer
   assert.match(body, /opencodeCookie:[^,}]*\?\s*'set'\s*:\s*''/);
   // Multi-account profile cookies are redacted the same way.
   assert.match(body, /opencodeProfiles: redactOpencodeProfilesForRenderer\(/);
+  assert.match(body, /'workbuddyAccessToken',[\s\S]*'workbuddyDepartmentInfo'/);
+  assert.doesNotMatch(body, /workbuddyLocalApp/);
+  assert.doesNotMatch(main, /workbuddySession|workbuddyBrowserSession/);
+  assert.doesNotMatch(body, /workbuddyBrowserSessionEnabled: settings\?\.workbuddyBrowserSessionEnabled/);
   // That redactor must name the fields it forwards. A spread of the stored
   // profile hands any field added later to the renderer verbatim, which is how
   // the API key would have leaked when profiles gained one.
@@ -1188,6 +1192,32 @@ test('settingsForRenderer strips provider cookies before they reach the renderer
   assert.match(main, /migrateLegacyMimoCredentialFiles\(merged\.mimoManagedAccounts\)/);
   assert.match(main, /if \(!removeMimoCredential\(accountId\)\) return \{ ok: false, error: 'Could not remove stored credential' \};/);
   assert.match(main, /delete result\.account\.cookieHeader/);
+});
+
+test('WorkBuddy settings uses the same automatic provider row as other ambient integrations', () => {
+  const html = readRendererFile('index.html');
+  assert.doesNotMatch(html, /workbuddy(?:Settings|AccountGroup|LocalApp|Open|Refresh|Privacy|OptIn|Error)/);
+
+  const app = readRendererFile('app.js');
+  assert.match(app, /workbuddy: 'settings\.limits\.connection\.workbuddy'/);
+  assert.doesNotMatch(app, /workbuddyAccountGroup|workbuddyAccountStatus|renderWorkbuddyStatus/);
+  assert.doesNotMatch(app, /window\.tokenMonitor\.workbuddy/);
+
+  const preload = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'preload.js'), 'utf8');
+  assert.doesNotMatch(preload, /workbuddy:/);
+});
+
+test('WorkBuddy auth is resolved only when its enabled local provider is active', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
+  const limitsConfig = functionBody(main, 'electronLimitsConfig', 'defaultLimitProviders');
+  assert.match(limitsConfig, /settings\?\.limitsEnabled !== false/);
+  assert.match(limitsConfig, /parseLimitProviders\(settings\?\.limitProviders\)\.includes\('workbuddy'\)/);
+  assert.match(limitsConfig, /const workbuddyDesktopSessionSupported = isSupportedWorkbuddyLocalAppPlatform\(\)/);
+  assert.match(limitsConfig, /const workbuddyDesktopSessionEnabled = workbuddyEnabled && workbuddyDesktopSessionSupported/);
+  assert.match(limitsConfig, /workbuddyDesktopSessionSupported,/);
+  assert.match(limitsConfig, /workbuddyDesktopSessionEnabled,/);
+  assert.match(limitsConfig, /workbuddyLocalSession: workbuddyDesktopSessionEnabled \? electronWorkbuddyLocalAuth\.getSessionInfo\(\) : \{\}/);
+  assert.doesNotMatch(limitsConfig, /settings\?\.workbuddyLocalAppEnabled/);
 });
 
 test('legacy credential cleanup retries independently from the migration marker', () => {
@@ -1771,6 +1801,14 @@ test('main collectors share one live GUI limit credential resolver in every widg
     'volcengineRegion', 'qoderCookie', 'qoderSite', 'commandcodeCookie', 'kimiApiKey', 'kimiWebAccessToken',
     'ollamaCookie'
   ]) assert.match(runtimeConfig, new RegExp(`${key}: settings\\.${key}`));
+});
+
+test('WorkBuddy Electron fetch adapter forwards parsed response JSON', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
+  assert.match(main, /createWorkbuddyLocalAuth\(\{\s*fetch: electronLimitsFetch\(\)/);
+  const limitsDeps = functionBody(main, 'electronLimitsDeps', 'normalizeDeepSeekApiKey');
+  assert.match(limitsDeps, /json: \(\) => result\.json\(\)/);
+  assert.doesNotMatch(limitsDeps, /result\.body/);
 });
 
 test('main settings migrateLimitProviders normalizes without expanding old defaults', () => {

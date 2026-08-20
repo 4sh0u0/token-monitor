@@ -1,6 +1,6 @@
 'use strict';
 
-const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes Agent', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', commandcode: 'Command Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', qodercn: 'Qoder CN', reasonix: 'Reasonix', dsh: 'DeepSeek Harness' };
+const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes Agent', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', commandcode: 'Command Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', qodercn: 'Qoder CN', reasonix: 'Reasonix', dsh: 'DeepSeek Harness', cherrystudio: 'Cherry Studio' };
 const reasonixSessionGuard = window.TokenMonitorReasonixSessionGuard;
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
@@ -13,7 +13,7 @@ const tokenRateApi = window.TokenMonitorTokenRate;
 const { tokenRatePerSecond, tokenBurnPerMinute } = tokenRateApi;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const clientsWithIcon = new Set([
-  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'qodercn', 'reasonix', 'dsh',
+  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'qodercn', 'reasonix', 'dsh', 'cherrystudio',
   'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'ollama', 'thirdparty', 'hunyuan'
 ]);
 
@@ -73,7 +73,8 @@ const KNOWN_CLIENTS = [
   { id: 'proma', label: 'Proma' },
   { id: 'qodercn', label: 'Qoder CN' },
   { id: 'reasonix', label: 'Reasonix' },
-  { id: 'dsh', label: 'DeepSeek Harness' }
+  { id: 'dsh', label: 'DeepSeek Harness' },
+  { id: 'cherrystudio', label: 'Cherry Studio' }
 ];
 const LIMIT_PROVIDERS = [
   { id: 'claude', label: 'Claude', settingsLabel: 'Claude Code' },
@@ -89,6 +90,7 @@ const LIMIT_PROVIDERS = [
   { id: 'zai', label: 'GLM' },
   { id: 'zaiteam', label: 'GLM Team' },
   { id: 'kiro', label: 'Kiro' },
+  { id: 'workbuddy', label: 'WorkBuddy' },
   { id: 'qoder', label: 'Qoder' },
   { id: 'deepseek', label: 'DeepSeek' },
   { id: 'openrouter', label: 'OpenRouter' },
@@ -138,7 +140,8 @@ const LIMIT_PROVIDER_ACCOUNT_STATUS_IDS = {
 const LIMIT_PROVIDER_CONNECTION_DETAIL_KEYS = {
   antigravity: 'settings.limits.connection.antigravity',
   grok: 'settings.limits.connection.grok',
-  kiro: 'settings.limits.connection.kiro'
+  kiro: 'settings.limits.connection.kiro',
+  workbuddy: 'settings.limits.connection.workbuddy'
 };
 const TRAY_ICON_VARIANTS = [
   { id: 'claude-brand', label: 'Claude', after: 'claude' },
@@ -3748,6 +3751,14 @@ function formatLimitAmount(value) {
   return `$${number.toFixed(2)}`;
 }
 
+function formatBalanceAmount(value, source) {
+  return formatMoney(value, source?.currency);
+}
+
+function formatBalanceSpendAmount(value, balance) {
+  return formatBalanceAmount(value, balance);
+}
+
 // Absolute count for windows that expose units (credits). It follows the same
 // display mode as percent bars: remaining/total in quota mode, used/total in
 // used mode.
@@ -3989,14 +4000,13 @@ function limitDetailInfoNode(entries, extraClass = '', ariaLabel = '') {
 function providerSpendNode(balance) {
   const entries = providerSpendEntries(balance);
   if (entries.length === 0) return null;
-  const currency = balance?.currency || 'USD';
   const preferredSummary = entries.filter(([label]) => label === 'Today' || label === 'Month');
   const summaryEntries = preferredSummary.length > 0 ? preferredSummary : entries.slice(0, 2);
-  const formatted = entries.map(([entryLabel, value]) => [entryLabel, formatMoney(value, currency)]);
+  const formatted = entries.map(([entryLabel, value]) => [entryLabel, formatBalanceSpendAmount(value, balance)]);
   return limitNoteRowNode({
     label: 'Spend',
     summary: summaryEntries
-      .map(([label, value]) => `${label} ${formatMoney(value, currency)}`)
+      .map(([label, value]) => `${label} ${formatBalanceSpendAmount(value, balance)}`)
       .join(' · '),
     // Only worth a tooltip when it would say more than the summary already does.
     detailEntries: entries.length > summaryEntries.length ? formatted : null,
@@ -4122,9 +4132,7 @@ function formatLimitWindowValue(window, fillPercent, hasPercent, showUsed) {
 
 function formatHomeLimitWindowValue(window, showUsed) {
   if (window?.planStatus === 'expired') return t('limits.mimo.planExpired');
-  // A credits window's headline value is money. Its percentage denominator is
-  // lifetime spend, which reads as a quota but isn't one.
-  if (window?.metric === 'credits') {
+  if (isCreditsWindow(window)) {
     if (window.remaining == null) {
       return String(window.detail || '').toLowerCase() === 'unlimited'
         ? t('settings.thirdparty.unlimited')
@@ -4134,6 +4142,16 @@ function formatHomeLimitWindowValue(window, showUsed) {
   }
   const percent = limitFillPercent(window?.remainingPercent, window?.usedPercent, showUsed);
   return `${formatPercent(percent)} ${limitModeSuffix(showUsed)}`;
+}
+
+function workbuddyCreditsValue(provider, credits) {
+  const amount = creditsAmount(provider, credits);
+  if (amount !== null) {
+    return formatCompactMoney(amount, credits?.currency || provider?.balance?.currency);
+  }
+  return String(credits?.detail || '').toLowerCase() === 'unlimited'
+    ? t('settings.thirdparty.unlimited')
+    : '';
 }
 
 function mimoTokenPlanWindowFromBalance(balance) {
@@ -4847,6 +4865,30 @@ function renderProviderWindows(provider, color) {
       );
       node.classList.add('limit-window-wide');
       windows.append(node);
+    }
+  } else if (provider.provider === 'workbuddy') {
+    const credits = windowForKind(provider, 'billing');
+    const balance = provider.balance || null;
+    const value = workbuddyCreditsValue(provider, credits);
+    if (credits && value) {
+      const displayWindow = {
+        ...credits,
+        label: credits.label || 'Credits'
+      };
+      const node = limitWindowNode(
+        displayWindow.label,
+        displayWindow,
+        color,
+        0.95,
+        value
+      );
+      node.classList.add('limit-window-wide');
+      if (!displayWindow.resetsAt && !displayWindow.resetDescription) {
+        node.classList.add('limit-window-no-reset');
+      }
+      windows.append(node);
+      const spendNode = providerSpendNode(balance);
+      if (spendNode) windows.append(spendNode);
     }
   } else if (provider.provider === 'commandcode') {
     // 5-hour and weekly are rate-limit windows (percent); the monthly grant and
@@ -6833,7 +6875,6 @@ function renderHomeTrendsModule() {
   activityCanvas.innerHTML = charts.heatmapSvg(activity, {
     monthLabel: (month) => compactMonthLabel(month.label),
     radius: activityLayout.radius,
-    edgePad: activityLayout.edgePad,
     glowFilterId: 'homeActivityHeatGlow',
     spotlightId: 'homeActivitySpotlight',
     spotlightRadius: 82
@@ -10973,7 +11014,7 @@ els.breakdown.addEventListener('click', (event) => {
   if (!rowEl) return;
   const key = rowEl.dataset.key || '';            // "session:<client>:<sessionId>"
   const client = rowEl.dataset.client || '';
-  if (client !== 'claude' && client !== 'codex' && client !== 'opencode' && client !== 'reasonix') return;
+  if (client !== 'claude' && client !== 'codex' && client !== 'opencode' && client !== 'reasonix' && client !== 'dsh') return;
   if (client === 'reasonix' && rowEl.dataset.detailUnavailable === 'true') return;
   const match = key.match(/^session:([^:]+):(.+)$/);
   if (!match) return;
