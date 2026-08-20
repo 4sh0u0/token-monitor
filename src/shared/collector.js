@@ -1637,9 +1637,27 @@ function fileExists(file) {
   try { return fs.statSync(file).isFile(); } catch (_) { return false; }
 }
 
-function nonBlankEnvPath(name, fallback) {
-  const value = process.env[name];
+function nonBlankEnvPath(name, fallback, env = process.env) {
+  const value = env[name];
   return typeof value === 'string' && value.trim() ? value : fallback;
+}
+
+function absoluteEnvPath(name, fallback, env = process.env) {
+  const value = env[name];
+  return typeof value === 'string' && path.isAbsolute(value) ? value : fallback;
+}
+
+function cherryStudioTranscriptRoots({ homeDir, platform = process.platform, env = process.env } = {}) {
+  const home = homeDir || os.homedir();
+  const appDataRoot = platform === 'win32'
+    ? nonBlankEnvPath('APPDATA', path.join(home, 'AppData', 'Roaming'), env)
+    : platform === 'darwin'
+      ? path.join(home, 'Library', 'Application Support')
+      : absoluteEnvPath('XDG_CONFIG_HOME', path.join(home, '.config'), env);
+  return [
+    ['cherrystudio-transcripts', path.join(appDataRoot, 'CherryStudio', 'Data', 'Agents', '.claude', 'projects')],
+    ['cherrystudio-transcripts', path.join(appDataRoot, 'CherryStudio', '.claude', 'projects')]
+  ];
 }
 
 function xdgDataHome(home) {
@@ -1727,8 +1745,8 @@ function hasCopilotChatSessions(workspaceRoot) {
 // paths contain the user's home directory and never leave this process, so a
 // health record carries the id instead — CLIENT_SOURCE_CHECK_IDS in
 // clientHealth.js is the allowlist every id here must appear in.
-function clientSourceRoots(clientsCsv) {
-  const home = os.homedir();
+function clientSourceRoots(clientsCsv, options = {}) {
+  const home = options.homeDir || os.homedir();
   const enabled = new Set(String(clientsCsv || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean));
   const byClient = {};
   const add = (client, ...roots) => {
@@ -1938,6 +1956,28 @@ function clientSourceRoots(clientsCsv) {
     ['cline-tasks', path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'tasks')],
     ['cline-tasks', path.join(home, '.vscode-server', 'data', 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'tasks')],
     ['cline-cli-sessions', clineCliSessionRoot(home)]
+  );
+  // Cherry Studio (Electron desktop) writes standard Claude Code transcripts
+  // under its per-user app-data directory: %APPDATA%\CherryStudio\.claude\
+  // projects on Windows, ~/Library/Application Support/CherryStudio/.claude/
+  // projects on macOS, and $XDG_CONFIG_HOME/CherryStudio/.claude/projects (or
+  // ~/.config) on Linux — mirroring the `PathRoot::AppData` resolution in
+  // tokscale's clients.rs. tokscale's dedicated cherrystudio parser reads
+  // these files (deduping the same API call appended 3-4 times per streaming
+  // response) and tags them as `cherrystudio`.
+  //
+  // Cherry Studio V2 (2026-08) moved live transcripts to
+  // `<appdata>/CherryStudio/Data/Agents/.claude/projects`; the legacy root
+  // keeps the pre-V2 snapshot. Both are watched; tokscale dedupes same-named
+  // sessions (V2 copy wins, legacy fills in sessions V2 lacks).
+  const cherryRoots = cherryStudioTranscriptRoots({
+    homeDir: home,
+    platform: options.platform || process.platform,
+    env: options.env || process.env
+  });
+  add(
+    'cherrystudio',
+    ...cherryRoots
   );
   return byClient;
 }
@@ -3650,6 +3690,7 @@ module.exports = {
   visibleDiagnosticRoots,
   clientSourceChecks,
   clientSourceRoots,
+  cherryStudioTranscriptRoots,
   clientsForWatchPath,
   clientWatchCandidates,
   computePeriodWindows,
