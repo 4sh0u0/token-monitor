@@ -1222,7 +1222,10 @@ async function collectUsageOnce(options) {
   const trackedClientSet = new Set(normalizedClients.split(',').filter(Boolean));
   const targetClients = [...new Set(normalizeClientsCsv(options.targetClients).split(',').filter((client) => trackedClientSet.has(client)))];
   const targetRequested = targetClients.length > 0;
-  const targetTokscaleClients = targetClients.filter((client) => !localClients.has(client)).join(',');
+  const targetClientSet = new Set(targetClients);
+  const targetTokscaleClientList = targetClients.filter((client) => !localClients.has(client));
+  const targetTokscaleClientSet = new Set(targetTokscaleClientList);
+  const targetTokscaleClients = targetTokscaleClientList.join(',');
   const qoderCnReadState = options.qoderCnReadState;
   if (qoderCnReadState) {
     qoderCnReadState.periodFailed = false;
@@ -1319,9 +1322,26 @@ async function collectUsageOnce(options) {
         const bundle = extractUsageBundleFromTokscale(todayJson);
         freshPartitions = bundle.byClient;
         const unattributed = freshPartitions[UNATTRIBUTED_USAGE_CLIENT];
-        if (targetRequested && periodHasUsage(unattributed)) {
-          // A row without a client cannot be replaced safely inside one client
-          // partition. Fall back to one all-client today scan for correctness.
+        const attributedClients = Object.keys(freshPartitions).filter((client) => client !== UNATTRIBUTED_USAGE_CLIENT);
+        const hasMissingTargetPartition = (
+          targetTokscaleClientList.length > 1
+          && targetTokscaleClientList.some((client) => !Object.prototype.hasOwnProperty.call(freshPartitions, client))
+        );
+        const hasUnsafeTargetedResult = (
+          periodHasUsage(unattributed)
+          || attributedClients.some((client) => !targetTokscaleClientSet.has(client))
+          || hasMissingTargetPartition
+        );
+
+        // A unioned watch scan can hide cross-attribution inside its own target
+        // set, and a missing partition cannot distinguish deletion from an
+        // incomplete or polluted union. Rebuild one authoritative full snapshot
+        // rather than trying to repair a partial result client by client.
+        if (targetRequested && hasUnsafeTargetedResult) {
+          // Every attributed row from a targeted scan must normalize back into
+          // the requested set. An unattributed row or an unexpected client would
+          // otherwise clear the target while partially overwriting an unrelated
+          // anchor partition. Rebuild the complete today snapshot instead.
           const fullTodayJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--today'], commandTimeoutMs });
           freshPartitions = extractUsageBundleFromTokscale(fullTodayJson).byClient;
           useTargetedPartitions = false;
@@ -1337,6 +1357,20 @@ async function collectUsageOnce(options) {
         // A transient local.db read failure must not turn the existing Qoder CN
         // partition into an empty one or subtract it from month/allTime.
         freshPartitions.qodercn = anchor.todayPartitions.qodercn;
+      }
+      if (!useTargetedPartitions) {
+        // The fallback rebuilds every Tokscale partition, but parse-local
+        // adapters do not participate in that scan. Preserve any adapter that
+        // this tick did not refresh instead of treating its absence as empty.
+        for (const client of localClients) {
+          if (
+            !targetClientSet.has(client)
+            && !Object.prototype.hasOwnProperty.call(freshPartitions, client)
+            && anchor.todayPartitions?.[client]
+          ) {
+            freshPartitions[client] = anchor.todayPartitions[client];
+          }
+        }
       }
       todayPartitions = useTargetedPartitions
         ? replaceTodayPartitions(anchor.todayPartitions, freshPartitions, targetClients)
