@@ -2703,6 +2703,7 @@ function createJsonRpcClient(child, timeoutMs) {
   let nextId = 1;
   let buffer = '';
   let closed = false;
+  let transportError = null;
   const pending = new Map();
 
   function rejectAll(error) {
@@ -2713,9 +2714,21 @@ function createJsonRpcClient(child, timeoutMs) {
     pending.clear();
   }
 
-  function abort(error) {
+  function failTransport(error) {
+    if (closed) return;
     closed = true;
+    transportError = error;
     rejectAll(error);
+  }
+
+  function failRetryableTransport(error) {
+    const target = error instanceof Error ? error : new Error(String(error || 'codex app-server transport failed'));
+    target.codexTransportFailure = true;
+    failTransport(target);
+  }
+
+  function abort(error) {
+    failTransport(error);
   }
 
   function handleMessage(message) {
@@ -2737,17 +2750,23 @@ function createJsonRpcClient(child, timeoutMs) {
       try { handleMessage(JSON.parse(line)); } catch (_) {}
     }
   });
-  child.on('error', (error) => {
-    closed = true;
-    rejectAll(error);
-  });
-  child.on('close', (code) => {
-    closed = true;
-    rejectAll(new Error(`codex app-server exited ${code}`));
-  });
+  child.on('error', failRetryableTransport);
+  child.on('close', (code) => failRetryableTransport(new Error(`codex app-server exited ${code}`)));
+  child.stdin.on?.('error', failRetryableTransport);
+
+  function writeLine(line) {
+    if (closed) return;
+    try {
+      child.stdin.write(line, (error) => {
+        if (error) failRetryableTransport(error);
+      });
+    } catch (error) {
+      failRetryableTransport(error);
+    }
+  }
 
   function send(method, params) {
-    if (closed) return Promise.reject(new Error('codex app-server is closed'));
+    if (closed) return Promise.reject(transportError || new Error('codex app-server is closed'));
     const id = nextId++;
     const message = params === undefined ? { method, id } : { method, id, params };
     return new Promise((resolve, reject) => {
@@ -2756,18 +2775,19 @@ function createJsonRpcClient(child, timeoutMs) {
         reject(new Error(`${method} timed out`));
       }, timeoutMs);
       pending.set(id, { resolve, reject, timer });
-      child.stdin.write(`${JSON.stringify(message)}\n`);
+      writeLine(`${JSON.stringify(message)}\n`);
     });
   }
 
   function notify(method, params) {
-    if (!closed) child.stdin.write(`${JSON.stringify(params === undefined ? { method } : { method, params })}\n`);
+    writeLine(`${JSON.stringify(params === undefined ? { method } : { method, params })}\n`);
   }
 
   return { abort, send, notify, rejectAll };
 }
 
 function shouldTryNextCodexCommand(error) {
+  if (error?.codexTransportFailure) return true;
   if (error?.code === 'ENOENT') return true;
   const message = String(error?.message || '').toLowerCase();
   return (
@@ -2810,12 +2830,21 @@ async function readCodexRpcWithCommand(command, deps = {}) {
     });
     rpc.notify('initialized', {});
     let rateLimitResult = await rpc.send('account/rateLimits/read');
-    const accountResult = await rpc.send('account/read').catch(() => {
+    let accountReadError = null;
+    const accountResult = await rpc.send('account/read').catch((error) => {
       if (signal?.aborted) throw abortError(signal);
+      accountReadError = error;
       return null;
     });
     const account = accountResult?.account || null;
     let payload = codexRpcPayload(rateLimitResult, account, command, deps);
+    if (
+      accountReadError &&
+      !hasCodexRateLimitWindows(codexRateLimitSnapshot(payload)) &&
+      accountReadError.codexTransportFailure
+    ) {
+      throw accountReadError;
+    }
     if (deps.codexEmptyQuotaRetry !== false && shouldRetryCodexEmptyQuotaPayload(payload)) {
       await waitForCodexEmptyQuotaRetry(deps);
       try {
@@ -2827,8 +2856,9 @@ async function readCodexRpcWithCommand(command, deps = {}) {
             rateLimitResetCredits: retryPayload.rateLimitResetCredits || payload.rateLimitResetCredits
           };
         }
-      } catch (_) {
+      } catch (error) {
         if (signal?.aborted) throw abortError(signal);
+        if (error?.codexTransportFailure) throw error;
       }
     }
     if (!account && !hasCodexRateLimitWindows(codexRateLimitSnapshot(payload))) {
