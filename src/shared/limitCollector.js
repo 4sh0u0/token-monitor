@@ -51,6 +51,7 @@ const ollamaLimits = require('./ollamaLimits');
 const { ollamaSessionCookie, fetchOllamaLimits } = ollamaLimits;
 const kimiLimits = require('./kimiLimits');
 const { kimiToken, kimiWebToken, fetchKimiLimits } = kimiLimits;
+const workbuddyLimits = require('./workbuddyLimits');
 const {
   grokCredential,
   readAuthJson,
@@ -3673,6 +3674,7 @@ function providerFetchers(deps = {}) {
     volcengine: (providerOptions, probeDeps) => volcengineLimits.fetchVolcengineLimits(providerOptions, probeDeps),
     commandcode: (providerOptions, probeDeps) => commandcodeLimits.fetchCommandcodeLimits(providerOptions, probeDeps),
     qoder: (providerOptions, probeDeps) => qoderLimits.fetchQoderLimits(providerOptions, probeDeps),
+    workbuddy: (providerOptions, probeDeps) => workbuddyLimits.fetchWorkbuddyLimits(providerOptions, probeDeps),
     ollama: (providerOptions, probeDeps) => ollamaLimits.fetchOllamaLimits(providerOptions, probeDeps),
     kimi: (providerOptions, probeDeps) => kimiLimits.fetchKimiLimits(providerOptions, probeDeps),
     thirdparty: (providerOptions, probeDeps) => thirdPartyLimits.fetchThirdPartyLimits(providerOptions, probeDeps),
@@ -3731,6 +3733,7 @@ function createProbeFetch(fetchFn, context = {}, deps = {}) {
 
 function resolveProviderFetch(provider, deps = {}) {
   if (typeof deps.fetch === 'function') return deps.fetch;
+  if (provider === 'workbuddy' && typeof deps.workbuddyFetch === 'function') return deps.workbuddyFetch;
   if (provider === 'grok') return grokLimits.resolveGrokFetch(deps);
   return fetch;
 }
@@ -4023,6 +4026,7 @@ module.exports = {
   fetchVolcengineLimits,
   qoderCookie,
   fetchQoderLimits,
+  fetchWorkbuddyLimits: workbuddyLimits.fetchWorkbuddyLimits,
   commandcodeCookie,
   fetchCommandcodeLimits,
   ollamaSessionCookie,

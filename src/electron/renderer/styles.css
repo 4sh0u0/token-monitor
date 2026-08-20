@@ -3501,6 +3501,10 @@ html.is-windows .settings-panel select option {
   -webkit-mask-image: url(../../../assets/icons/qoder.svg);
   mask-image: url(../../../assets/icons/qoder.svg);
 }
+.limit-icon-workbuddy {
+  -webkit-mask-image: url(../../../assets/icons/workbuddy.svg);
+  mask-image: url(../../../assets/icons/workbuddy.svg);
+}
 
 .limit-icon-ollama {
   -webkit-mask-image: url(../../../assets/icons/ollama.svg);
