@@ -92,12 +92,12 @@ const LIMIT_PROVIDERS = [
   { id: 'kiro', label: 'Kiro' },
   { id: 'workbuddy', label: 'WorkBuddy' },
   { id: 'qoder', label: 'Qoder' },
-  { id: 'trae', label: 'Trae CN' },
   { id: 'deepseek', label: 'DeepSeek' },
   { id: 'openrouter', label: 'OpenRouter' },
   { id: 'minimax', label: 'Minimax' },
   { id: 'volcengine', label: 'Volcengine' },
   { id: 'ollama', label: 'Ollama' },
+  { id: 'trae', label: 'Trae CN' },
   { id: 'thirdparty', label: 'Third-party APIs' }
 ];
 const LIMIT_PROVIDER_ACCOUNT_GROUP_IDS = {
@@ -15753,7 +15753,7 @@ function setupCursorAccountUI() {
       const errorEl = document.getElementById('traeErrorMessage');
       errorEl.classList.add('hidden');
       if (!String(tokenInput.value || '').trim()) {
-        errorEl.textContent = t('settings.trae.statusNotSet');
+        errorEl.textContent = t('settings.trae.missingAuthorization');
         errorEl.classList.remove('hidden');
         return;
       }

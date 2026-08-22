@@ -66,7 +66,6 @@ const supportedToolOrder = [
   'WorkBuddy',
   'Proma',
   'Qoder',
-  'Trae CN',
   'Reasonix',
   'DeepSeek / DeepSeek Harness',
   'Cherry Studio',
@@ -74,6 +73,7 @@ const supportedToolOrder = [
   'Minimax',
   'Volcengine',
   'Ollama',
+  'Trae CN',
   'Third-party APIs'
 ];
 
@@ -101,7 +101,6 @@ const supportedToolIdOrder = [
   'workbuddy',
   'proma',
   'qoder',
-  'trae',
   'reasonix',
   'deepseek',
   'cherrystudio',
@@ -109,6 +108,7 @@ const supportedToolIdOrder = [
   'minimax',
   'volcengine',
   'ollama',
+  'trae',
   'newapi'
 ];
 

@@ -2054,13 +2054,13 @@ test('Z.ai, Volcengine, Qoder, Trae, WorkBuddy, and Ollama source labels and set
   assert.deepEqual(presentation.limitProviderCapabilityTags('zai'), ['Coding Plan', 'API key']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('volcengine'), ['Coding Plan', 'API key']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('qoder'), ['Manual login', 'Web']);
-  assert.deepEqual(presentation.limitProviderCapabilityTags('trae'), ['Manual token', 'API']);
+  assert.deepEqual(presentation.limitProviderCapabilityTags('trae'), ['Manual login', 'Web']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('workbuddy'), ['Auto', 'Desktop app']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('ollama'), ['Manual login', 'Web']);
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'zai', source: 'api' }), 'API');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'volcengine', source: 'api' }), 'API');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'qoder', source: 'web' }), 'Web');
-  assert.equal(presentation.limitProviderSourceLabel({ provider: 'trae', source: 'api' }), 'API');
+  assert.equal(presentation.limitProviderSourceLabel({ provider: 'trae', source: 'api' }), 'Web');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'workbuddy', source: 'local' }), 'Local');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'ollama', source: 'web' }), 'Web');
   assert.deepEqual(
@@ -2081,7 +2081,7 @@ test('Z.ai, Volcengine, Qoder, Trae, WorkBuddy, and Ollama source labels and set
   );
   assert.deepEqual(
     presentation.limitProviderStatusLabel({ provider: 'trae', status: 'notConfigured' }),
-    { label: 'Add token', tone: 'setup' }
+    { label: 'Sign in', tone: 'setup' }
   );
   assert.deepEqual(
     presentation.limitProviderStatusLabel({ provider: 'trae', status: 'unauthorized' }),
