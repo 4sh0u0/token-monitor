@@ -7,7 +7,7 @@ const test = require('node:test');
 
 const charts = require('../../src/electron/renderer/usageCharts');
 const {
-  clientColors, modelVendorFor, modelColor, clampDaily,
+  clientColors, fallbackModelColors, modelVendorFor, modelColor, clampDaily,
   dailyBarsChart, candleChart, contribHeatmap, statsCards,
   barsChartSvg, candleChartSvg, heatmapSvg, statsCardsHtml, statCardColumnWidths
 } = charts;
@@ -34,6 +34,17 @@ test('clientColors carries the known palette and a default', () => {
   assert.equal(clientColors.ollama, '#888888');
   assert.equal(clientColors.hunyuan, '#0053E0');
   assert.equal(typeof clientColors.default, 'string');
+});
+
+test('fallbackModelColors never collides with a named provider color', () => {
+  const providerColors = new Set(
+    Object.entries(clientColors)
+      .filter(([key]) => key !== 'default')
+      .map(([, color]) => color.toLowerCase())
+  );
+  for (const color of fallbackModelColors) {
+    assert.ok(!providerColors.has(color.toLowerCase()), `${color} collides with a named provider color`);
+  }
 });
 
 test('modelVendorFor maps families and modelColor falls back deterministically', () => {
