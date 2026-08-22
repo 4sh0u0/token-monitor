@@ -35,7 +35,7 @@ function iconKindFor(rowData, breakdown) {
     const vendor = modelVendorFor(rowData.key);
     return vendor && clientsWithIcon.has(vendor)
       ? { kind: 'icon', iconClass: `row-icon-${vendor}` }
-      : { kind: 'dot' };
+      : { kind: 'icon', iconClass: 'row-icon-token-monitor' };
   }
   if (breakdown === 'session') {
     return rowData.client && clientsWithIcon.has(rowData.client)

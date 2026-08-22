@@ -370,7 +370,10 @@
     moonshot: '#16191e', zai: '#000000', zaiteam: '#000000', cohere: '#39594d', xiaomi: '#ff6700', minimax: '#f23f5d', doubao: '#1E37FC', hunyuan: '#0053E0', volcengine: '#006EFF', qoder: '#2ADB5C', trae: '#32F08C', ollama: '#888888', thirdparty: '#DD2E57',
     default: '#6ab4f0'
   };
-  const fallbackModelColors = ['#6ab4f0', '#cc7c5e', '#a57df0', '#49a3b0', '#f0d66a', '#f06a7b'];
+  // Kept distinct from every clientColors value above — sharing a hex with a real
+  // vendor (as '#cc7c5e'/'#49a3b0' used to, colliding with claude/codex) makes an
+  // unrelated unrecognized model look like it belongs to that vendor.
+  const fallbackModelColors = ['#6ab4f0', '#5fbf8a', '#a57df0', '#d97bc4', '#f0d66a', '#f06a7b'];
 
   function modelVendorFor(model) {
     const name = String(model || '').toLowerCase();

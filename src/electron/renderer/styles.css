@@ -3422,6 +3422,7 @@ html.is-windows .settings-panel select option {
 .row-icon-qodercn    { -webkit-mask-image: url(../../../assets/icons/qodercn.svg);      mask-image: url(../../../assets/icons/qodercn.svg); }
 .row-icon-ollama     { -webkit-mask-image: url(../../../assets/icons/ollama.svg);        mask-image: url(../../../assets/icons/ollama.svg); }
 .row-icon-thirdparty { -webkit-mask-image: url(../../../assets/icons/newapi.svg);         mask-image: url(../../../assets/icons/newapi.svg); }
+.row-icon-token-monitor { -webkit-mask-image: url(../../../assets/icons/token-monitor.svg); mask-image: url(../../../assets/icons/token-monitor.svg); }
 .row-icon-os-apple   { -webkit-mask-image: url(../../../assets/icons/os-apple.svg);      mask-image: url(../../../assets/icons/os-apple.svg); }
 .row-icon-os-linux   { -webkit-mask-image: url(../../../assets/icons/os-linux.svg);      mask-image: url(../../../assets/icons/os-linux.svg); }
 .row-icon-os-windows { -webkit-mask-image: url(../../../assets/icons/os-windows.svg);    mask-image: url(../../../assets/icons/os-windows.svg); }
