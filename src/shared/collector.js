@@ -32,6 +32,10 @@ const { hermesProfileWatchDirs, resolveHermesHome } = require('./hermesProfiles'
 const { createWatcherHost } = require('./watcherHost');
 const { localDayKey, mergeHistories, parseGraphResult, normalizeHistory } = require('./history');
 const { retainDailyHistory, retainLiveDailyHistory } = require('./dailyHistoryArchive');
+const {
+  createSubprocessTermination,
+  terminationUnconfirmedError
+} = require('./subprocessTermination');
 const cursorAuth = require('./cursorAuth');
 const { claudeSessionRoots } = require('./claudePaths');
 const { findSessionFiles, codexSessionFile } = require('./sessionFiles');
@@ -164,50 +168,139 @@ function parseJsonOutput(stdout) {
   throw new Error(`Could not parse tokscale JSON output: ${text.slice(0, 300)}`);
 }
 
-function spawnTokscaleJson(userArgs, commandTimeoutMs, command = tokscaleCommand()) {
+function abortReason(signal, fallback = 'operation aborted') {
+  if (signal?.reason instanceof Error) return signal.reason;
+  const error = new Error(String(signal?.reason || fallback));
+  error.name = 'AbortError';
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortReason(signal);
+}
+
+function spawnTokscaleJson(userArgs, commandTimeoutMs, command = tokscaleCommand(), signal, options = {}) {
   const { bin, prefixArgs, env } = command;
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
   return new Promise((resolve, reject) => {
     const child = spawn(bin, [...prefixArgs, ...userArgs], { env, windowsHide: true });
     let stdout = '';
     let stderr = '';
-    const timeout = setTimeout(() => { child.kill('SIGTERM'); reject(new Error(`tokscale timed out after ${commandTimeoutMs}ms`)); }, commandTimeoutMs);
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', (error) => { clearTimeout(timeout); reject(error); });
+    let settled = false;
+    let timeout = null;
+    let terminalError = null;
+    const termination = createSubprocessTermination(child, {
+      ...(options.terminationOptions || {}),
+      onUnconfirmed() {
+        const error = terminationUnconfirmedError(terminalError, options.operation || 'tokscale');
+        try { options.onTerminationUnconfirmed?.(error); } catch (_) {}
+        finish(error);
+      }
+    });
+
+    function finish(error, value) {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      signal?.removeEventListener('abort', onAbort);
+      if (error) reject(error);
+      else resolve(value);
+    }
+
+    function onAbort() {
+      if (terminalError) return;
+      terminalError = abortReason(signal);
+      if (timeout) clearTimeout(timeout);
+      timeout = null;
+      termination.request();
+    }
+
+    timeout = setTimeout(() => {
+      if (terminalError) return;
+      terminalError = new Error(`tokscale timed out after ${commandTimeoutMs}ms`);
+      timeout = null;
+      termination.request();
+    }, commandTimeoutMs);
+    // Keep draining both pipes after termination is requested, but stop retaining
+    // data the result can no longer use. A stubborn child must not grow our heap
+    // while the physical-close barrier waits for TERM/KILL to take effect.
+    child.stdout.on('data', (chunk) => { if (!settled && !terminalError) stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk) => {
+      if (settled || terminalError || stderr.length >= MAX_TOKSCALE_STDERR_LENGTH) return;
+      stderr += chunk.toString().slice(0, MAX_TOKSCALE_STDERR_LENGTH - stderr.length);
+    });
+    child.on('error', (error) => {
+      if (terminalError) return;
+      finish(error);
+    });
     child.on('close', (code) => {
-      clearTimeout(timeout);
+      termination.confirmClosed();
+      if (settled) return;
+      if (terminalError) return finish(terminalError);
       if (code !== 0) {
         const error = new Error(`tokscale exited with code ${code}: ${stderr.trim() || stdout.trim()}`);
         error.tokscaleExitCode = code;
         error.tokscaleStderr = stderr;
-        return reject(error);
+        return finish(error);
       }
-      try { resolve(parseJsonOutput(stdout)); } catch (error) { reject(error); }
+      try { finish(null, parseJsonOutput(stdout)); } catch (error) { finish(error); }
     });
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
   });
 }
 
 const TOKSCALE_CAPABILITY_PROBE_TIMEOUT_MS = 10_000;
+const MAX_TOKSCALE_STDERR_LENGTH = 64 * 1024;
 // tokscale rejects an unknown --client value with this exact exit code (see
 // the TOKSCALE_CLIENT_ALIASES comment above) — verified on 4.7.0 and 4.8.0.
 const TOKSCALE_UNKNOWN_CLIENT_EXIT_CODE = 2;
 
-function spawnTokscaleHelp(command) {
+function spawnTokscaleHelp(command, options = {}) {
+  const timeoutMs = options.timeoutMs ?? TOKSCALE_CAPABILITY_PROBE_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
     const child = spawn(command.bin, [...command.prefixArgs, '--help'], { env: command.env, windowsHide: true });
     let stdout = '';
     let stderr = '';
-    const timeout = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error(`tokscale capability probe timed out after ${TOKSCALE_CAPABILITY_PROBE_TIMEOUT_MS}ms`));
-    }, TOKSCALE_CAPABILITY_PROBE_TIMEOUT_MS);
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', (error) => { clearTimeout(timeout); reject(error); });
-    child.on('close', (code) => {
+    let settled = false;
+    let terminalError = null;
+    const termination = createSubprocessTermination(child, {
+      ...(options.terminationOptions || {}),
+      onUnconfirmed() {
+        const error = terminationUnconfirmedError(terminalError, 'tokscale capability probe');
+        try { options.onTerminationUnconfirmed?.(error); } catch (_) {}
+        finish(error);
+      }
+    });
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
-      if (code !== 0) return reject(new Error(`--help exited with code ${code}: ${stderr.trim() || stdout.trim()}`));
-      try { resolve(parseSupportedClients(`${stdout}\n${stderr}`)); } catch (error) { reject(error); }
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const timeout = setTimeout(() => {
+      if (terminalError) return;
+      terminalError = new Error(`tokscale capability probe timed out after ${timeoutMs}ms`);
+      termination.request();
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => {
+      if (!settled && !terminalError) stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      if (settled || terminalError || stderr.length >= MAX_TOKSCALE_STDERR_LENGTH) return;
+      stderr += chunk.toString().slice(0, MAX_TOKSCALE_STDERR_LENGTH - stderr.length);
+    });
+    child.on('error', (error) => {
+      if (terminalError) return;
+      finish(error);
+    });
+    child.on('close', (code) => {
+      termination.confirmClosed();
+      if (settled) return;
+      if (terminalError) return finish(terminalError);
+      if (code !== 0) return finish(new Error(`--help exited with code ${code}: ${stderr.trim() || stdout.trim()}`));
+      try { finish(null, parseSupportedClients(`${stdout}\n${stderr}`)); } catch (error) { finish(error); }
     });
   });
 }
@@ -256,6 +349,33 @@ function isUnknownTokscaleClientError(error) {
     && /--client/i.test(error.tokscaleStderr || '');
 }
 
+// The capability lookup is process-wide and must keep running so it can fill
+// the shared cache for a later collector. A superseded collector only gives up
+// its own wait: otherwise its in-flight tick keeps whenIdle() pending and holds
+// the replacement behind a probe it may no longer need.
+function waitForSharedCapabilityProbe(probe, signal) {
+  if (!signal) return Promise.resolve(probe);
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, abortReason(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    Promise.resolve(probe).then(
+      (supported) => finish(resolve, supported),
+      (error) => finish(reject, error)
+    );
+    // Close the race where abort happens after the first check but before the
+    // listener is installed.
+    if (signal.aborted) onAbort();
+  });
+}
+
 // Reactive, not proactive: a binary that recognizes every requested client
 // never pays for a capability probe. Only once tokscale has actually
 // rejected the CSV (exit 2) do we spend one `--help` probe to learn what the
@@ -265,9 +385,18 @@ function isUnknownTokscaleClientError(error) {
 // too (and warned once) so we don't re-probe on every subsequent failure —
 // the original tokscale error surfaces instead, same as before this filter
 // existed.
-function retryWithKnownCapabilities(error, requested, command, emptyResult, retry) {
+function retryWithKnownCapabilities(error, requested, command, emptyResult, retry, signal, options = {}) {
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
   if (!isUnknownTokscaleClientError(error)) return Promise.reject(error);
-  return tokscaleCapabilityResolver.probe(command.identity, () => spawnTokscaleHelp(command)).then((supported) => {
+  // The resolver caches failed probes as well as successful ones. Do not bind
+  // this process-wide capability lookup to one collector's lifetime: aborting a
+  // superseded collector must not poison the cache for every later runtime.
+  const sharedProbe = tokscaleCapabilityResolver.probe(
+    command.identity,
+    () => spawnTokscaleHelp(command, options)
+  );
+  return waitForSharedCapabilityProbe(sharedProbe, signal).then((supported) => {
+    throwIfAborted(signal);
     if (!supported) return Promise.reject(error);
     const filtered = filterSupportedClients(requested, supported);
     if (filtered === requested) return Promise.reject(error);
@@ -281,31 +410,49 @@ function applyKnownCapabilityFilter(clientFilter, identity) {
   return supported ? filterSupportedClients(clientFilter, supported) : clientFilter;
 }
 
-function runTokscale({ clients, flags, commandTimeoutMs }) {
+function runTokscale({ clients, flags, commandTimeoutMs, signal, terminationOptions, onTerminationUnconfirmed }) {
+  throwIfAborted(signal);
   const command = tokscaleCommand();
   const requested = tokscaleClientFilter(clients);
   if (!requested) return Promise.resolve({ entries: [] });
   const clientFilter = applyKnownCapabilityFilter(requested, command.identity);
   if (!clientFilter) return Promise.resolve({ entries: [] });
   const runArgs = (filter) => ['--json', '--client', filter, '--group-by', 'client,session,model', ...flags];
-  return spawnTokscaleJson(runArgs(clientFilter), commandTimeoutMs, command).catch((error) => (
+  const subprocessOptions = {
+    operation: 'tokscale scan',
+    terminationOptions,
+    onTerminationUnconfirmed
+  };
+  return spawnTokscaleJson(runArgs(clientFilter), commandTimeoutMs, command, signal, subprocessOptions).catch((error) => (
     retryWithKnownCapabilities(error, requested, command, { entries: [] }, (filtered) => (
-      spawnTokscaleJson(runArgs(filtered), commandTimeoutMs, command)
-    ))
+      spawnTokscaleJson(runArgs(filtered), commandTimeoutMs, command, signal, subprocessOptions)
+    ), signal, {
+      terminationOptions,
+      onTerminationUnconfirmed
+    })
   ));
 }
 
-function runTokscaleGraph({ clients, commandTimeoutMs }) {
+function runTokscaleGraph({ clients, commandTimeoutMs, signal, terminationOptions, onTerminationUnconfirmed }) {
+  throwIfAborted(signal);
   const command = tokscaleCommand();
   const requested = tokscaleClientFilter(clients);
   if (!requested) return Promise.resolve({ contributions: [] });
   const clientFilter = applyKnownCapabilityFilter(requested, command.identity);
   if (!clientFilter) return Promise.resolve({ contributions: [] });
   const runArgs = (filter) => ['graph', '--client', filter, '--no-spinner'];
-  return spawnTokscaleJson(runArgs(clientFilter), commandTimeoutMs, command).catch((error) => (
+  const subprocessOptions = {
+    operation: 'tokscale graph',
+    terminationOptions,
+    onTerminationUnconfirmed
+  };
+  return spawnTokscaleJson(runArgs(clientFilter), commandTimeoutMs, command, signal, subprocessOptions).catch((error) => (
     retryWithKnownCapabilities(error, requested, command, { contributions: [] }, (filtered) => (
-      spawnTokscaleJson(runArgs(filtered), commandTimeoutMs, command)
-    ))
+      spawnTokscaleJson(runArgs(filtered), commandTimeoutMs, command, signal, subprocessOptions)
+    ), signal, {
+      terminationOptions,
+      onTerminationUnconfirmed
+    })
   ));
 }
 
@@ -976,25 +1123,39 @@ function applySessionTimestamps(periods, home, deps = {}) {
 
 // The process-wide rationing for cursor/antigravity syncs. Deliberately a single
 // module-scoped instance with no per-call override: the tokscale cache it guards
-// is one directory on disk, so a collector rebuilt by a settings change must not
-// hand itself a fresh allowance — and a second instance would split the state
-// that decides a sync from the state that schedules the catch-up waiting on it,
-// which is the divergence this whole path keeps being bitten by. Tests read it
-// through the export to pin a floor without driving a whole tick; a test wanting
-// isolation builds its own with createSelfSyncThrottle() and drives that
-// directly, rather than threading one back in here.
+// is one directory on disk, so a collector rebuilt by a settings change must
+// inherit whether its predecessor consumed or returned the shared allowance. A
+// second instance would split the state that decides a sync from the state that
+// schedules the catch-up waiting on it, which is the divergence this whole path
+// keeps being bitten by. Tests read it through the export to pin a floor without
+// driving a whole tick; a test wanting isolation builds its own with
+// createSelfSyncThrottle() and drives that directly, rather than threading one
+// back in here.
 const selfSyncThrottle = createSelfSyncThrottle();
 
 async function maybeSyncCursor(clientsCsv, logger, options = {}) {
+  throwIfAborted(options.signal);
   const enabled = new Set(normalizeClientsCsv(clientsCsv).split(',').filter(Boolean));
   if (!enabled.has('cursor')) return;
   if (!cursorAuth.readActiveAccount()) return;
   if (!selfSyncThrottle.claim('cursor', options.minIntervalMs)) return;
   const attempt = selfSyncThrottle.beginAttempt('cursor');
+  const cancelAttempt = () => selfSyncThrottle.cancelAttempt('cursor', attempt);
+  options.signal?.addEventListener('abort', cancelAttempt, { once: true });
+  if (options.signal?.aborted) cancelAttempt();
   try {
-    await cursorAuth.runCursorSync();
+    await cursorAuth.runCursorSync({
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+      terminationOptions: options.terminationOptions,
+      onTerminationUnconfirmed: options.onTerminationUnconfirmed
+    });
     selfSyncThrottle.completeAttempt('cursor', attempt, false);
   } catch (err) {
+    if (options.signal?.aborted) {
+      cancelAttempt();
+      throw abortReason(options.signal);
+    }
     if (typeof logger === 'function') logger(`cursor sync failed: ${err.message}`);
     selfSyncThrottle.completeAttempt('cursor', attempt, true, '', {
       failureStage: err?.syncFailureStage,
@@ -1002,6 +1163,8 @@ async function maybeSyncCursor(clientsCsv, logger, options = {}) {
       exitCode: err?.syncExitCode
     });
     options.onFailure?.('cursor');
+  } finally {
+    options.signal?.removeEventListener('abort', cancelAttempt);
   }
 }
 
@@ -1018,16 +1181,24 @@ function antigravityDataPresent(home) {
 }
 
 async function maybeSyncAntigravity(clientsCsv, logger, home = os.homedir(), options = {}) {
+  throwIfAborted(options.signal);
   const enabled = new Set(normalizeClientsCsv(clientsCsv).split(',').filter(Boolean));
   if (!enabled.has('antigravity')) return;
   if (!antigravityDataPresent(home)) return;
   if (!selfSyncThrottle.claim('antigravity', options.minIntervalMs)) return;
   const attempt = selfSyncThrottle.beginAttempt('antigravity');
   if (typeof options.run === 'function') {
+    const cancelAttempt = () => selfSyncThrottle.cancelAttempt('antigravity', attempt);
+    options.signal?.addEventListener('abort', cancelAttempt, { once: true });
+    if (options.signal?.aborted) cancelAttempt();
     try {
-      await options.run();
+      await options.run({ signal: options.signal });
       selfSyncThrottle.completeAttempt('antigravity', attempt, false);
     } catch (err) {
+      if (options.signal?.aborted) {
+        cancelAttempt();
+        throw abortReason(options.signal);
+      }
       if (typeof logger === 'function') logger(`antigravity sync failed: ${err.message}`);
       selfSyncThrottle.completeAttempt('antigravity', attempt, true, '', {
         failureStage: err?.syncFailureStage,
@@ -1035,6 +1206,8 @@ async function maybeSyncAntigravity(clientsCsv, logger, home = os.homedir(), opt
         exitCode: err?.syncExitCode
       });
       options.onFailure?.('antigravity');
+    } finally {
+      options.signal?.removeEventListener('abort', cancelAttempt);
     }
     return;
   }
@@ -1046,6 +1219,19 @@ async function maybeSyncAntigravity(clientsCsv, logger, home = os.homedir(), opt
   // interval, which is the latency this whole path exists to remove.
   await new Promise((resolve) => {
     const child = spawn(bin, [...prefixArgs, 'antigravity', 'sync'], { env, windowsHide: true });
+    const termination = createSubprocessTermination(child, {
+      ...(options.terminationOptions || {}),
+      onUnconfirmed() {
+        const error = terminationUnconfirmedError(null, 'tokscale antigravity sync');
+        try { options.onTerminationUnconfirmed?.(error); } catch (_) {}
+        if (terminalOutcome?.cancelled) return settle(false, '', {}, false, true);
+        settle(
+          true,
+          terminalOutcome?.code || 'sync-failed',
+          terminalOutcome?.details || { failureStage: 'process-exit' }
+        );
+      }
+    });
     let stderr = '';
     // One outcome per spawn. A child reports more than once — a SIGTERM'd
     // timeout still emits close afterwards, and error is usually followed by
@@ -1055,31 +1241,60 @@ async function maybeSyncAntigravity(clientsCsv, logger, home = os.homedir(), opt
     // event back into a set that no longer has anything to collect.
     let settled = false;
     let timer = null;
+    let terminalOutcome = null;
     // The failure code reaches the health record; stderr only ever reaches the
     // local log, since it is neither translatable nor reliably free of the
     // user's paths.
-    const settle = (failed, code = '', details = {}) => {
+    const settle = (failed, code = '', details = {}, notifyFailure = true, cancelled = false) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      selfSyncThrottle.completeAttempt('antigravity', attempt, failed, code, details);
-      if (failed) options.onFailure?.('antigravity');
+      options.signal?.removeEventListener('abort', onAbort);
+      if (cancelled) selfSyncThrottle.cancelAttempt('antigravity', attempt);
+      else selfSyncThrottle.completeAttempt('antigravity', attempt, failed, code, details);
+      if (failed && notifyFailure) options.onFailure?.('antigravity');
       resolve();
     };
+    const onAbort = () => {
+      if (terminalOutcome) return;
+      terminalOutcome = { cancelled: true };
+      if (timer) clearTimeout(timer);
+      timer = null;
+      termination.request();
+    };
     timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      settle(true, 'sync-timeout', { failureStage: 'timeout' });
-    }, 30000);
+      if (terminalOutcome) return;
+      terminalOutcome = {
+        failed: true,
+        code: 'sync-timeout',
+        details: { failureStage: 'timeout' }
+      };
+      timer = null;
+      termination.request();
+    }, options.timeoutMs ?? 30000);
     child.stderr.on('data', (chunk) => {
-      if (stderr.length >= MAX_SYNC_DETAIL_INPUT_LENGTH) return;
+      if (terminalOutcome || stderr.length >= MAX_SYNC_DETAIL_INPUT_LENGTH) return;
       const remaining = MAX_SYNC_DETAIL_INPUT_LENGTH - stderr.length;
       stderr += chunk.toString().slice(0, remaining);
     });
-    child.on('error', (err) => settle(true, 'sync-spawn-failed', {
-      failureStage: 'spawn',
-      detailCode: classifyClientSyncDetailCode({ client: 'antigravity', text: err?.message })
-    }));
+    child.on('error', (err) => {
+      if (terminalOutcome) return;
+      settle(true, 'sync-spawn-failed', {
+        failureStage: 'spawn',
+        detailCode: classifyClientSyncDetailCode({ client: 'antigravity', text: err?.message })
+      });
+    });
     child.on('close', (code) => {
+      termination.confirmClosed();
+      if (settled) return;
+      if (terminalOutcome?.cancelled) return settle(false, '', {}, false, true);
+      if (terminalOutcome) {
+        return settle(
+          terminalOutcome.failed,
+          terminalOutcome.code,
+          terminalOutcome.details
+        );
+      }
       if (code !== 0 && !settled && typeof logger === 'function') {
         logger(`antigravity sync exited ${code}: ${stderr.trim().slice(0, 200)}`);
       }
@@ -1091,8 +1306,11 @@ async function maybeSyncAntigravity(clientsCsv, logger, home = os.homedir(), opt
         exitCode: code
       });
     });
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
     child.stdin?.end();
   });
+  throwIfAborted(options.signal);
 }
 
 const HISTORY_CAP_DAYS = 370;
@@ -1106,6 +1324,7 @@ function normalizeHistoryIntervalMs(value) {
 }
 
 async function collectHistoryOnce(options) {
+  throwIfAborted(options.signal);
   const startedAt = Date.now();
   const attemptedAt = new Date(startedAt).toISOString();
   let failureCode = null;
@@ -1130,10 +1349,16 @@ async function collectHistoryOnce(options) {
   const todayKey = options.todayKey || localTodayKey();
   if (clients) {
     try {
-      const graphJson = await runGraph({ clients, commandTimeoutMs: options.commandTimeoutMs || HISTORY_TIMEOUT_MS });
+      const graphJson = await runGraph({
+        clients,
+        commandTimeoutMs: options.commandTimeoutMs || HISTORY_TIMEOUT_MS,
+        signal: options.signal
+      });
+      throwIfAborted(options.signal);
       rawGraphs.push(graphJson);
       histories.push(normalizeHistory(parseGraphResult(graphJson), { capDays, todayKey }));
     } catch (error) {
+      if (options.signal?.aborted) throw abortReason(options.signal);
       failureCode = 'history-graph-failed';
       if (typeof options.logger === 'function') options.logger(`tokscale graph failed: ${error.message}`);
     }
@@ -1180,13 +1405,34 @@ function shouldIncludeHistory(nowMs, lastHistoryAtMs, historyIntervalMs, force, 
   return nowMs - (lastHistoryAtMs || 0) >= historyIntervalMs;
 }
 async function collectUsageOnce(options) {
+  throwIfAborted(options.signal);
   const { clients, allTimeSince, commandTimeoutMs, deviceId, agentVersion = appVersion(), agentRuntime = '' } = options;
   // One snapshot, one instant: capture the clock before any tokscale scan and
   // reuse it for the today-window key and updatedAt, so a collection that
   // straddles local midnight cannot pair a day-N today scan with a day-N+1
   // window (issue #37 follow-up). Injectable for tests.
   const collectedAt = collectionDate(options.now);
-  const runTokscaleFn = options.runTokscale || runTokscale;
+  const reportTerminationUnconfirmed = (operation) => {
+    try {
+      options.onDiagnosticEvent?.({
+        subsystem: 'collector',
+        code: 'subprocess-termination-unconfirmed',
+        operation
+      });
+    } catch (_) {
+      // Diagnostics observers must never affect collection or cancellation.
+    }
+  };
+  const runTokscaleFn = options.runTokscale || ((input) => runTokscale({
+    ...input,
+    terminationOptions: options.subprocessTerminationOptions,
+    onTerminationUnconfirmed: () => reportTerminationUnconfirmed('tokscale-scan')
+  }));
+  const runGraphFn = options.runGraph || ((input) => runTokscaleGraph({
+    ...input,
+    terminationOptions: options.subprocessTerminationOptions,
+    onTerminationUnconfirmed: () => reportTerminationUnconfirmed('tokscale-graph')
+  }));
   const collectWsl = options.collectWslUsage || collectWslUsageImpl;
   const probeWslStateFn = options.probeWslState || probeWslStateImpl;
   // Injectable only for the WSL-status gate, so tests can exercise the win32
@@ -1260,13 +1506,22 @@ async function collectUsageOnce(options) {
     const syncClients = targetRequested ? targetTokscaleClients : tokscaleClients;
     await maybeSyncCursor(syncClients, options.logger, {
       minIntervalMs: selfSyncThrottle.minIntervalForTick(options, 'cursor'),
+      signal: options.signal,
+      timeoutMs: options.selfSyncTimeoutMs,
+      terminationOptions: options.subprocessTerminationOptions,
+      onTerminationUnconfirmed: () => reportTerminationUnconfirmed('cursor-sync'),
       onFailure: options.onSelfSyncFailed
     });
     await maybeSyncAntigravity(syncClients, options.logger, options.homeDir || os.homedir(), {
       minIntervalMs: selfSyncThrottle.minIntervalForTick(options, 'antigravity'),
       run: options.runAntigravitySync,
+      signal: options.signal,
+      timeoutMs: options.selfSyncTimeoutMs,
+      terminationOptions: options.subprocessTerminationOptions,
+      onTerminationUnconfirmed: () => reportTerminationUnconfirmed('antigravity-sync'),
       onFailure: options.onSelfSyncFailed
     });
+    throwIfAborted(options.signal);
     if (includesProma && (!targetRequested || targetClients.includes('proma'))) {
       try {
         promaRows = collectPromaRows();
@@ -1310,6 +1565,7 @@ async function collectUsageOnce(options) {
         qoderCnPeriods = options.qoderCnFallbackPeriods || null;
       }
     }
+    throwIfAborted(options.signal);
     if (anchorUsed) {
       // Anchored tick (watch-triggered): every tokscale period scan costs the
       // same full load + filter, so scan only --today and update the broader
@@ -1318,7 +1574,8 @@ async function collectUsageOnce(options) {
       let freshPartitions = Object.create(null);
       let useTargetedPartitions = targetRequested;
       if (scanClients) {
-        const todayJson = await runTokscaleFn({ clients: scanClients, flags: ['--today'], commandTimeoutMs });
+        const todayJson = await runTokscaleFn({ clients: scanClients, flags: ['--today'], commandTimeoutMs, signal: options.signal });
+        throwIfAborted(options.signal);
         const bundle = extractUsageBundleFromTokscale(todayJson);
         freshPartitions = bundle.byClient;
         const unattributed = freshPartitions[UNATTRIBUTED_USAGE_CLIENT];
@@ -1342,7 +1599,8 @@ async function collectUsageOnce(options) {
           // the requested set. An unattributed row or an unexpected client would
           // otherwise clear the target while partially overwriting an unrelated
           // anchor partition. Rebuild the complete today snapshot instead.
-          const fullTodayJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--today'], commandTimeoutMs });
+          const fullTodayJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--today'], commandTimeoutMs, signal: options.signal });
+          throwIfAborted(options.signal);
           freshPartitions = extractUsageBundleFromTokscale(fullTodayJson).byClient;
           useTargetedPartitions = false;
         } else if (targetRequested) {
@@ -1381,17 +1639,20 @@ async function collectUsageOnce(options) {
     } else if (tokscaleClients) {
       // Serial on purpose: concurrent scans triple the peak CPU/IO load, which
       // is what let the issue #15 self-trigger loop spike tokscale past 500% CPU.
-      const todayJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--today'], commandTimeoutMs });
+      const todayJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--today'], commandTimeoutMs, signal: options.signal });
+      throwIfAborted(options.signal);
       const todayBundle = extractUsageBundleFromTokscale(todayJson);
       today = todayBundle.period;
       todayPartitions = todayBundle.byClient;
       if (typeof options.onProgress === 'function') decorateLocalPeriods({ today });
       emitProgress({ today });
-      const monthJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--month'], commandTimeoutMs });
+      const monthJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--month'], commandTimeoutMs, signal: options.signal });
+      throwIfAborted(options.signal);
       month = extractUsageFromTokscale(monthJson);
       if (typeof options.onProgress === 'function') decorateLocalPeriods({ today, month });
       emitProgress({ today, month });
-      const allTimeJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--since', allTimeSince], commandTimeoutMs });
+      const allTimeJson = await runTokscaleFn({ clients: tokscaleClients, flags: ['--since', allTimeSince], commandTimeoutMs, signal: options.signal });
+      throwIfAborted(options.signal);
       allTime = extractUsageFromTokscale(allTimeJson);
     }
     // Always decorate: session timestamps drive the recency sort regardless of the
@@ -1450,6 +1711,7 @@ async function collectUsageOnce(options) {
         allTimeSince,
         now: collectedAt,
         commandTimeoutMs,
+        signal: options.signal,
         runTokscale: runTokscaleFn,
         resolvePromaPricing: (rows) => resolvePromaPricing(rows, {
           lookupModelPricing: options.lookupModelPricing,
@@ -1470,6 +1732,7 @@ async function collectUsageOnce(options) {
         allTimeSince,
         now: collectedAt,
         commandTimeoutMs,
+        signal: options.signal,
         runTokscale: runTokscaleFn,
         resolvePromaPricing: (rows) => resolvePromaPricing(rows, {
           lookupModelPricing: options.lookupModelPricing,
@@ -1486,6 +1749,7 @@ async function collectUsageOnce(options) {
   today = mergePeriods(windowsPeriods.today, wslBundle.today);
   month = mergePeriods(windowsPeriods.month, wslBundle.month);
   allTime = mergePeriods(windowsPeriods.allTime, wslBundle.allTime);
+  throwIfAborted(options.signal);
 
   // The renderer intentionally uses the live today period while a day is in
   // progress. Callers that do not defer capture persist the largest complete
@@ -1625,6 +1889,7 @@ async function collectUsageOnce(options) {
     const historyQoderCnGraph = qoderCnHistoryReadFailed
       ? options.qoderCnHistoryFallbackGraph
       : qoderCnGraph;
+    throwIfAborted(options.signal);
     const history = await collectHistoryOnce({
       clients: tokscaleClients,
       promaGraph: includesProma ? buildPromaHistoryGraph({ rows: promaRows || collectPromaRows(), pricingByModel: promaPricing || {} }) : null,
@@ -1633,7 +1898,8 @@ async function collectUsageOnce(options) {
       commandTimeoutMs: options.historyTimeoutMs,
       capDays: options.historyCapDays,
       todayKey: localTodayKey(collectedAt),
-      runGraph: options.runGraph,
+      runGraph: runGraphFn,
+      signal: options.signal,
       dailyHistoryArchiveEnabled: options.dailyHistoryArchiveEnabled,
       dailyHistoryArchiveWriteEnabled: options.dailyHistoryArchiveWriteEnabled,
       dailyHistoryArchiveOptions: options.dailyHistoryArchiveOptions,
@@ -1641,6 +1907,7 @@ async function collectUsageOnce(options) {
       onHistoryStatus: options.onHistoryStatus,
       logger: options.logger
     });
+    throwIfAborted(options.signal);
     if (history) summary.history = history;
     if (!qoderCnHistoryReadFailed && qoderCnGraph && typeof options.onQoderCnHistoryGraph === 'function') {
       options.onQoderCnHistoryGraph(qoderCnGraph);
@@ -2859,6 +3126,9 @@ function startCollector(options) {
   const historyRetryMs = clampTimerDelayMs(options.historyRetryMs, 60 * 1000);
   const watchUsePolling = resolveWatchUsePolling(options.watchUsePolling);
   const watchNativeForced = watchPollingEnvOverride() === false;
+  const runtimeAbortController = new AbortController();
+  const runtimeSignal = runtimeAbortController.signal;
+  let startBarrier = options.startBarrier ? Promise.resolve(options.startBarrier) : null;
   const trackedClients = new Set(normalizeClientsCsv(clients).split(',').filter(Boolean));
   const reasonixNativeSessionsEnabled = options.reasonixNativeSessionsEnabled === true;
   const reasonixNativeSessionCache = reasonixNativeSessionsEnabled && trackedClients.has('reasonix')
@@ -2881,6 +3151,7 @@ function startCollector(options) {
     env: process.env
   });
   let tickInFlight = false;
+  let idleWaiters = [];
   let tickPending = false;
   let pendingForceHistory = false;
   let pendingRolloverHistoryRetry = false;
@@ -3107,6 +3378,7 @@ function startCollector(options) {
       const qoderCnReadState = { periodFailed: false };
       const summary = await collectUsageOnce({
         ...options,
+        signal: runtimeSignal,
         clients,
         allTimeSince,
         commandTimeoutMs,
@@ -3354,6 +3626,16 @@ function startCollector(options) {
   }
 
   async function runTick(reason, tickOptions = {}) {
+    if (stopped || runtimeSignal.aborted) return false;
+    if (startBarrier) {
+      const barrier = startBarrier;
+      try {
+        await barrier;
+      } finally {
+        if (startBarrier === barrier) startBarrier = null;
+      }
+      if (stopped || runtimeSignal.aborted) return false;
+    }
     const tickActivityRevision = Number.isFinite(tickOptions.activityRevision)
       ? tickOptions.activityRevision
       : activityRevision;
@@ -3416,6 +3698,11 @@ function startCollector(options) {
       return initialResult === true;
     } finally {
       tickInFlight = false;
+      if (idleWaiters.length > 0) {
+        const waiters = idleWaiters;
+        idleWaiters = [];
+        resolveWaiters(waiters, true);
+      }
       if (stopped && pendingWaiters.length > 0) {
         const waiters = pendingWaiters;
         pendingWaiters = [];
@@ -3647,12 +3934,23 @@ function startCollector(options) {
   function stop(options = {}) {
     if (stopped) return;
     stopped = true;
+    runtimeAbortController.abort(new Error('collector stopped'));
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     if (intervalTimer) { clearTimeout(intervalTimer); intervalTimer = null; }
     clearRolloverHistoryRetry();
     sourceSyncQueue.stop();
     closeWatchers({ skipClose: options.skipCloseWatchers === true });
     watchedDirectoryKey = null;
+  }
+
+  function whenIdle() {
+    // startCollector() calls loop() synchronously before returning this handle,
+    // so runTick's reaction to this same barrier is always registered first.
+    // It clears startBarrier before this continuation asks again; the regression
+    // test pins that startup ordering because reversing it would microtask-spin.
+    if (startBarrier) return Promise.resolve(startBarrier).then(() => whenIdle());
+    if (!tickInFlight) return Promise.resolve();
+    return new Promise((resolve) => idleWaiters.push(resolve));
   }
 
   function getDiagnostics() {
@@ -3718,7 +4016,8 @@ function startCollector(options) {
     getDiagnostics,
     refreshClient,
     stop,
-    tick: (reason = 'manual', tickOptions = {}) => runTick(reason, tickOptions)
+    tick: (reason = 'manual', tickOptions = {}) => runTick(reason, tickOptions),
+    whenIdle
   };
 }
 
@@ -3774,6 +4073,7 @@ module.exports = {
   selfSyncThrottle,
   isQoderCnSelfWatchEvent,
   shouldIncludeHistory,
+  spawnTokscaleHelp,
   startCollector,
   tokscaleCommand,
   tokscaleClientFilter,

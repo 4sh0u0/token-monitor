@@ -7,13 +7,14 @@
 // for 1820). Every tracked-client change rewrites the watch roots, so on the
 // owning thread that teardown froze the widget for about a second per toggle.
 //
-// One worker per coordinator, reused across collector restarts. That is not an
-// optimisation: it is what preserves the invariant the synchronous close used
-// to provide, namely that the old watcher is fully gone before a new one starts
-// on the same paths. Spawning a second worker per restart would instead overlap
-// two full descriptor sets, and on Linux the inotify budget is per-user and
-// shared with editors, so the overlap could trip the exhaustion fallback, which
-// is deliberately sticky for the process.
+// One worker at a time per coordinator. A collector restart terminates that
+// worker and waits for its exit before applying the latest replacement config.
+// This preserves the invariant the synchronous close used to provide — the old
+// watcher is fully gone before a new one starts — while also releasing the
+// worker's V8/libuv/native allocation high-water. Spawning the replacement
+// before exit would overlap two descriptor sets, and on Linux the inotify budget
+// is per-user and shared with editors, so the overlap could trip the exhaustion
+// fallback, which is deliberately sticky for the process.
 //
 // unwatch() is not an alternative for incremental root edits: it stops event
 // delivery but retains the descriptors (verified: 2613 fds before and after).
@@ -62,6 +63,13 @@ function createWatcherCoordinator(deps = {}) {
   const workerPath = deps.workerPath || WORKER_PATH;
   const setTimer = deps.setTimeout || setTimeout;
   const clearTimer = deps.clearTimeout || clearTimeout;
+  // A worker thread keeps its V8/libuv/native allocator inside the Electron
+  // browser process. Reusing it after closing a large chokidar tree leaves that
+  // tree's allocation high-water charged to the app even though its descriptors
+  // are gone. Production therefore recycles the isolation boundary on a real
+  // owner change. The old graceful-reuse path remains injectable for focused
+  // lifecycle tests and embedders that explicitly prefer spawn latency.
+  const recycleOnClose = deps.recycleOnClose !== false;
 
   let worker = null;
   let workerDisabled = false;
@@ -122,7 +130,7 @@ function createWatcherCoordinator(deps = {}) {
         // The thread never confirmed it exited, so its descriptors cannot be
         // assumed released. Watching on this thread is worse for latency but
         // it is the one path that does not depend on that thread.
-        if (restore) fallBackToInProcess(error);
+        if (restore) fallBackToInProcess(error, null, { forcePolling: true });
       }
     );
   }
@@ -131,7 +139,7 @@ function createWatcherCoordinator(deps = {}) {
   // failure. Without both guards the second call builds a second in-process
   // watcher and abandons the first, reintroducing the descriptor overlap this
   // design exists to prevent.
-  function fallBackToInProcess(error, failedWorker) {
+  function fallBackToInProcess(error, failedWorker, options = {}) {
     if (workerDisabled) return;
     if (failedWorker && worker && worker !== failedWorker) return;
     worker = null;
@@ -139,7 +147,14 @@ function createWatcherCoordinator(deps = {}) {
     clearGrace();
     if (!current) return;
     current.handlers.onHostFallback?.(error);
-    inProcessHost = createInProcessWatcherHost(current.config, current.handlers);
+    // A rejected terminate does not prove the old worker released its native
+    // descriptors. Polling is the only safe fallback on that path; ordinary
+    // startup/crash failures still retain the configured native mode because
+    // their exit event already confirmed release.
+    const fallbackConfig = options.forcePolling
+      ? { ...current.config, usePolling: true }
+      : current.config;
+    inProcessHost = createInProcessWatcherHost(fallbackConfig, current.handlers);
   }
 
   function onMessage(message) {
@@ -260,6 +275,13 @@ function createWatcherCoordinator(deps = {}) {
           // Quit path: descriptors go with the process, so skip the slow
           // teardown rather than waiting for a thread we are about to lose.
           forceTerminate();
+          return;
+        }
+        if (recycleOnClose) {
+          // Confirm the old thread has exited before restoreCurrentWatcher()
+          // applies whichever owner is newest by then. This both bounds native
+          // watcher memory and preserves the no-overlapping-descriptors invariant.
+          forceTerminate({ restore: true });
           return;
         }
         revision += 1;

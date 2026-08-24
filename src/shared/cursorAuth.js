@@ -5,9 +5,14 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const {
+  createSubprocessTermination,
+  terminationUnconfirmedError
+} = require('./subprocessTermination');
 const { classifyClientSyncDetailCode } = require('./clientHealth');
 
 const MAX_SYNC_EXIT_CODE = 2 ** 31 - 1;
+const MAX_TOKSCALE_STDERR_LENGTH = 64 * 1024;
 
 function annotateSyncError(error, failureStage, exitCode = null) {
   const target = error instanceof Error ? error : new Error(String(error || 'Cursor sync failed'));
@@ -92,9 +97,13 @@ function readActiveAccount({ home = os.homedir() } = {}) {
 function runTokscaleSubcommand(args, {
   stdin = null,
   timeoutMs = 30000,
+  signal,
   spawn: spawnFn = spawn,
-  tokscaleCommand: resolveTokscaleCommand
+  tokscaleCommand: resolveTokscaleCommand,
+  terminationOptions,
+  onTerminationUnconfirmed
 } = {}) {
+  if (signal?.aborted) return Promise.reject(signal.reason instanceof Error ? signal.reason : new Error('Cursor sync aborted'));
   return new Promise((resolve, reject) => {
     const tokscaleCommand = resolveTokscaleCommand || require('./collector').tokscaleCommand;
     const { bin, prefixArgs, env } = tokscaleCommand();
@@ -103,27 +112,61 @@ function runTokscaleSubcommand(args, {
     let stderr = '';
     let settled = false;
     let timer;
+    let terminalError = null;
+    const termination = createSubprocessTermination(child, {
+      ...(terminationOptions || {}),
+      onUnconfirmed() {
+        const error = terminationUnconfirmedError(terminalError, `tokscale cursor ${args[0]}`);
+        try { onTerminationUnconfirmed?.(error); } catch (_) {}
+        finish(error);
+      }
+    });
 
     function finish(error, value) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       if (error) reject(error);
       else resolve(value);
     }
 
+    function onAbort() {
+      if (terminalError) return;
+      terminalError = signal.reason instanceof Error ? signal.reason : new Error('Cursor sync aborted');
+      clearTimeout(timer);
+      termination.request();
+    }
+
     timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      finish(annotateSyncError(new Error(`tokscale cursor ${args[0]} timed out after ${timeoutMs}ms`), 'timeout'));
+      if (terminalError) return;
+      terminalError = annotateSyncError(
+        new Error(`tokscale cursor ${args[0]} timed out after ${timeoutMs}ms`),
+        'timeout'
+      );
+      termination.request();
     }, timeoutMs);
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', (error) => finish(annotateSyncError(error, 'spawn')));
+    child.stdout.on('data', (chunk) => {
+      if (!settled && !terminalError) stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      if (settled || terminalError || stderr.length >= MAX_TOKSCALE_STDERR_LENGTH) return;
+      stderr += chunk.toString().slice(0, MAX_TOKSCALE_STDERR_LENGTH - stderr.length);
+    });
+    child.on('error', (error) => {
+      if (terminalError) return;
+      finish(annotateSyncError(error, 'spawn'));
+    });
     child.stdin.on('error', (error) => {
-      try { child.kill('SIGTERM'); } catch (_) {}
-      finish(annotateSyncError(error, 'process-exit'));
+      if (terminalError) return;
+      terminalError = annotateSyncError(error, 'process-exit');
+      clearTimeout(timer);
+      termination.request();
     });
     child.on('close', (code) => {
+      termination.confirmClosed();
+      if (settled) return;
+      if (terminalError) return finish(terminalError);
       if (code !== 0) {
         return finish(annotateSyncError(
           new Error(`tokscale cursor ${args[0]} exited ${code}: ${(stderr || stdout).trim()}`),
@@ -133,11 +176,15 @@ function runTokscaleSubcommand(args, {
       }
       finish(null, stdout);
     });
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
     try {
       child.stdin.end(stdin || undefined);
     } catch (error) {
-      try { child.kill('SIGTERM'); } catch (_) {}
-      finish(annotateSyncError(error, 'process-exit'));
+      if (terminalError) return;
+      terminalError = annotateSyncError(error, 'process-exit');
+      clearTimeout(timer);
+      termination.request();
     }
   });
 }

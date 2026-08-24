@@ -73,8 +73,8 @@ function stubChokidar() {
   const chokidar = require('chokidar');
   const original = chokidar.watch;
   const built = [];
-  chokidar.watch = (dirs) => {
-    const instance = { dirs, closed: 0, on() { return instance; }, close() { instance.closed += 1; } };
+  chokidar.watch = (dirs, options) => {
+    const instance = { dirs, options, closed: 0, on() { return instance; }, close() { instance.closed += 1; } };
     built.push(instance);
     return instance;
   };
@@ -228,9 +228,9 @@ test('messages from a superseded watcher are dropped', () => {
   assert.deepEqual(first, []);
 });
 
-test('a normal stop leaves the worker alive instead of terminating it', () => {
+test('the optional reusable mode closes gracefully without terminating', () => {
   FakeWorker.reset();
-  const coordinator = createWatcherCoordinator({ Worker: FakeWorker });
+  const coordinator = createWatcherCoordinator({ Worker: FakeWorker, recycleOnClose: false });
   const host = coordinator.acquire({ dirs: ['/tmp/x'], clients: 'claude' }, {});
   host.close();
   const worker = FakeWorker.last();
@@ -254,6 +254,7 @@ test('a stop ack clears the grace timer so an idle worker survives', () => {
   const clock = fakeTimers();
   const coordinator = createWatcherCoordinator({
     Worker: FakeWorker,
+    recycleOnClose: false,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout
   });
@@ -278,6 +279,7 @@ test('a stop issued during an unfinished teardown is still satisfied', () => {
   const clock = fakeTimers();
   const coordinator = createWatcherCoordinator({
     Worker: FakeWorker,
+    recycleOnClose: false,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout
   });
@@ -307,6 +309,7 @@ test('the grace timer still terminates a worker that never acks', () => {
   const clock = fakeTimers();
   const coordinator = createWatcherCoordinator({
     Worker: FakeWorker,
+    recycleOnClose: false,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout
   });
@@ -323,6 +326,7 @@ test('a late ack from an earlier stop cannot disarm the current one', () => {
   const clock = fakeTimers();
   const coordinator = createWatcherCoordinator({
     Worker: FakeWorker,
+    recycleOnClose: false,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout
   });
@@ -343,6 +347,7 @@ test('a restart keeps the watchdog armed for the stop it overtook', async () => 
   const clock = fakeTimers();
   const coordinator = createWatcherCoordinator({
     Worker: FakeWorker,
+    recycleOnClose: false,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout
   });
@@ -373,6 +378,7 @@ test('a stop acked after a restart disarms without disturbing the new owner', as
   const clock = fakeTimers();
   const coordinator = createWatcherCoordinator({
     Worker: FakeWorker,
+    recycleOnClose: false,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout
   });
@@ -390,18 +396,12 @@ test('a stop acked after a restart disarms without disturbing the new owner', as
 
 test('no replacement worker starts while the old thread is still exiting', async () => {
   FakeWorker.reset();
-  const clock = fakeTimers();
-  const coordinator = createWatcherCoordinator({
-    Worker: FakeWorker,
-    setTimeout: clock.setTimeout,
-    clearTimeout: clock.clearTimeout
-  });
+  const coordinator = createWatcherCoordinator({ Worker: FakeWorker });
   const first = coordinator.acquire({ dirs: ['/a'], clients: 'claude' }, {});
   const wedged = FakeWorker.last();
   wedged.deferTerminate = true;
   first.close();
   coordinator.acquire({ dirs: ['/b'], clients: 'claude' }, {});
-  clock.timers[0].fn();
   assert.equal(wedged.terminated, 1);
   assert.equal(coordinator.inspect().terminating, true);
 
@@ -425,20 +425,14 @@ test('no replacement worker starts while the old thread is still exiting', async
 test('a terminate that never confirms falls back instead of assuming release', async () => {
   FakeWorker.reset();
   const stub = stubChokidar();
-  const clock = fakeTimers();
   const fallbacks = [];
   try {
-    const coordinator = createWatcherCoordinator({
-      Worker: FakeWorker,
-      setTimeout: clock.setTimeout,
-      clearTimeout: clock.clearTimeout
-    });
-    const first = coordinator.acquire({ dirs: ['/a'], clients: 'claude' }, { onHostFallback: (e) => fallbacks.push(e) });
+    const coordinator = createWatcherCoordinator({ Worker: FakeWorker });
+    const first = coordinator.acquire({ dirs: ['/a'], clients: 'claude', usePolling: false }, { onHostFallback: (e) => fallbacks.push(e) });
     const wedged = FakeWorker.last();
     wedged.deferTerminate = true;
     first.close();
-    coordinator.acquire({ dirs: ['/b'], clients: 'claude' }, { onHostFallback: (e) => fallbacks.push(e) });
-    clock.timers[0].fn();
+    coordinator.acquire({ dirs: ['/b'], clients: 'claude', usePolling: false }, { onHostFallback: (e) => fallbacks.push(e) });
 
     wedged.failTerminate(new Error('terminate failed'));
     await until(() => coordinator.inspect().inProcess);
@@ -446,6 +440,7 @@ test('a terminate that never confirms falls back instead of assuming release', a
     // second worker must not be started on the strength of it.
     assert.equal(FakeWorker.instances.length, 1);
     assert.equal(stub.built.length, 1, 'the owner must still end up watching');
+    assert.equal(stub.built[0].options.usePolling, true, 'unconfirmed release must not overlap native descriptors');
     assert.equal(fallbacks.length, 1);
   } finally {
     stub.restore();
@@ -462,15 +457,20 @@ test('the quit path terminates instead of waiting for the slow teardown', () => 
   assert.ok(!worker.posted.some((m) => m.type === 'stop'), 'quit must not wait on a stop round trip');
 });
 
-test('one worker serves successive collectors instead of overlapping', () => {
+test('successive collectors recycle the worker without overlapping', async () => {
   FakeWorker.reset();
   const coordinator = createWatcherCoordinator({ Worker: FakeWorker });
   const first = coordinator.acquire({ dirs: ['/a'], clients: 'claude' }, {});
+  const retiring = FakeWorker.last();
   first.close();
   coordinator.acquire({ dirs: ['/b'], clients: 'claude' }, {});
-  // A second worker would hold a second full descriptor set while the first is
-  // still tearing down, which is exactly the overlap this design prevents.
-  assert.equal(FakeWorker.instances.length, 1, 'a restart must reuse the same worker');
+  assert.equal(retiring.terminated, 1, 'the old allocation boundary must be recycled');
+  assert.equal(FakeWorker.instances.length, 1, 'replacement must wait for confirmed exit');
+  await until(() => FakeWorker.instances.length === 2);
+  const replacement = FakeWorker.last();
+  assert.notEqual(replacement, retiring);
+  await until(() => replacement.configures().length === 1);
+  assert.deepEqual(replacement.configures()[0].config.dirs, ['/b']);
 });
 
 test('a worker error reaches the owner with its code intact', async () => {
