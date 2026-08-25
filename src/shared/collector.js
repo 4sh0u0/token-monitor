@@ -987,6 +987,34 @@ function sessionTimestampMap(periods, home = os.homedir(), deps = {}) {
   const codexFiles = findSessionFiles(path.join(home, '.codex', 'sessions'), missingCodexIds);
   for (const [sessionId, filePath] of codexFiles) applyFile('codex', sessionId, filePath);
 
+  const kimiIds = byClient.get('kimi') || new Set();
+  if (kimiIds.size > 0) {
+    const kimiRoots = [
+      ...(deps.scopedHome ? [] : kimiWorkSessionsRoots(
+        home,
+        deps.platform || process.platform,
+        deps.env || process.env,
+        { readFileSync: deps.readFileSync }
+      )),
+      kimiCodeSessionsHome(home, { env: deps.env, useEnvRoots: !deps.scopedHome })
+    ];
+    for (const [sessionId, statePath] of readKimiSessionStateFiles(kimiRoots, kimiIds)) {
+      const raw = kimiStateMetadata(statePath, { resolveProjects });
+      const meta = {
+        ...(resolveProjects && raw.projectId
+          ? { projectId: raw.projectId, projectLabel: raw.projectLabel }
+          : {}),
+        ...(raw.startedAt ? { startedAt: raw.startedAt } : {}),
+        ...(raw.lastUsedAt ? { lastUsedAt: raw.lastUsedAt } : {})
+      };
+      const key = `kimi:${sessionId}`;
+      if (meta.projectId || meta.startedAt || meta.lastUsedAt) {
+        metadata.set(key, meta);
+        if (meta.projectId) resolvedSessionKeys.add(key);
+      }
+    }
+  }
+
   // DSH session ids are random UUIDs (no embedded timestamp), so the generic
   // fallback below can never date them. The transcript itself has what we
   // need: the header's `createdAt` for startedAt, and the file's mtime (an
@@ -1956,6 +1984,111 @@ function xdgDataHome(home) {
   return nonBlankEnvPath('XDG_DATA_HOME', path.join(home, '.local', 'share'));
 }
 
+const KIMI_WORK_RUNTIME_SUFFIX = path.join(
+  'daimon',
+  'runtime',
+  'kimi-code',
+  'home',
+  'sessions'
+);
+
+const KIMI_WORK_SESSIONS_SUFFIX = path.join(
+  'kimi-desktop',
+  'daimon-share',
+  KIMI_WORK_RUNTIME_SUFFIX
+);
+
+function kimiWorkShareDirRoot(appData, options = {}) {
+  const readFileSync = options.readFileSync || fs.readFileSync;
+  let config;
+  try {
+    config = JSON.parse(readFileSync(path.join(appData, 'kimi-desktop', 'daimon-storage.json'), 'utf8'));
+  } catch (_) {
+    return null;
+  }
+  const shareDir = typeof config?.shareDir === 'string' ? config.shareDir : '';
+  return shareDir.trim() ? path.join(shareDir, KIMI_WORK_RUNTIME_SUFFIX) : null;
+}
+
+function kimiWorkSessionsRoots(home = os.homedir(), platform = process.platform, env = process.env, options = {}) {
+  if (platform === 'darwin') {
+    return [path.join(home, 'Library', 'Application Support', KIMI_WORK_SESSIONS_SUFFIX)];
+  }
+  if (platform === 'win32') {
+    const homeAppData = path.join(home, 'AppData', 'Roaming');
+    const roots = [path.join(homeAppData, KIMI_WORK_SESSIONS_SUFFIX)];
+    if (options.useEnvRoots !== false) {
+      // Tokscale uses `var_os("APPDATA").filter(|value| !value.is_empty())`:
+      // missing/empty values add no env-derived root, while whitespace remains
+      // a literal path. Keep health and watcher discovery semantically aligned.
+      const appData = typeof env.APPDATA === 'string' && env.APPDATA.length > 0
+        ? env.APPDATA
+        : null;
+      if (appData) {
+        roots.push(kimiWorkShareDirRoot(appData, options) || path.join(appData, KIMI_WORK_SESSIONS_SUFFIX));
+      }
+    }
+    return [...new Set(roots)];
+  }
+  return [];
+}
+
+function kimiCodeSessionsHome(home = os.homedir(), options = {}) {
+  const env = options.env || process.env;
+  const configured = options.useEnvRoots === false ? '' : env.KIMI_CODE_HOME;
+  const kimiCodeHome = typeof configured === 'string' && configured.trim()
+    ? configured
+    : path.join(home, '.kimi-code');
+  return path.join(kimiCodeHome, 'sessions');
+}
+
+// Kimi sessions (CLI `session_*`, Work `conv-*`/`ctitle-*`) put their workspace
+// in a sibling state.json (`workDir` / `custom.workspacePath`), not in the wire
+// stream tokscale parses. The session id is the directory name directly under a
+// workspace dir. Enumerate the on-disk session dirs once instead of probing the
+// workspace x requested-session Cartesian product on the Electron main thread.
+function readKimiSessionStateFiles(roots, sessionIds) {
+  const wanted = new Set(sessionIds);
+  const found = new Map();
+  for (const root of roots) {
+    if (found.size >= wanted.size) break;
+    let workspaceDirs;
+    try { workspaceDirs = fs.readdirSync(root, { withFileTypes: true }); } catch (_) { continue; }
+    for (const workspace of workspaceDirs) {
+      if (!workspace.isDirectory()) continue;
+      let sessionDirs;
+      try { sessionDirs = fs.readdirSync(path.join(root, workspace.name), { withFileTypes: true }); } catch (_) { continue; }
+      for (const session of sessionDirs) {
+        const sessionId = session.name;
+        if (!session.isDirectory() || !wanted.has(sessionId) || found.has(sessionId)) continue;
+        const statePath = path.join(root, workspace.name, sessionId, 'state.json');
+        if (fileExists(statePath)) found.set(sessionId, statePath);
+      }
+      if (found.size >= wanted.size) break;
+    }
+  }
+  return found;
+}
+
+function kimiStateMetadata(statePath, options = {}) {
+  let state;
+  try { state = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch (_) { return {}; }
+  if (!state || typeof state !== 'object') return {};
+  const stringValue = (value) => typeof value === 'string' ? value.trim() : '';
+  const projectPath = stringValue(state.workDir) || stringValue(state.custom?.workspacePath);
+  const identity = options.resolveProjects === false
+    ? {}
+    : projectIdentity(projectPath);
+  // Kimi writes valid ISO strings in state.json; pass them through as-is.
+  const startedAt = stringValue(state.createdAt);
+  const lastUsedAt = stringValue(state.updatedAt);
+  return {
+    ...(identity.projectId ? identity : {}),
+    ...(startedAt ? { startedAt } : {}),
+    ...(lastUsedAt ? { lastUsedAt } : {})
+  };
+}
+
 // Where tokscale looks for captured `codex exec --json` output. Both defaults
 // are scanned on every platform — upstream pushes them with no cfg gate, so the
 // Application Support one is not a macOS variant of the .config one — and
@@ -2084,8 +2217,14 @@ function clientSourceRoots(clientsCsv, options = {}) {
   // A whitespace-only KIMI_CODE_HOME counts as unset, matching tokscale: it
   // joins `sessions` onto the raw value, so a blank export would resolve to the
   // root-level /sessions and hide the real one.
-  const kimiCodeHome = nonBlankEnvPath('KIMI_CODE_HOME', path.join(home, '.kimi-code'));
-  add('kimi', ['kimi-sessions', path.join(home, '.kimi', 'sessions')], ['kimi-code-sessions', path.join(kimiCodeHome, 'sessions')]);
+  const kimiCodeRoot = kimiCodeSessionsHome(home, { env });
+  const kimiWorkRoots = kimiWorkSessionsRoots(home, platform, env);
+  add(
+    'kimi',
+    ['kimi-sessions', path.join(home, '.kimi', 'sessions')],
+    ['kimi-code-sessions', kimiCodeRoot],
+    ...kimiWorkRoots.map((root) => ['kimi-code-sessions', root, null, true])
+  );
   add('qwen', ['qwen-projects', path.join(home, '.qwen', 'projects')]);
   const grokHome = nonBlankEnvPath('GROK_HOME', path.join(home, '.grok'));
   add(
@@ -4059,6 +4198,7 @@ module.exports = {
   resetTokscaleCatalogCache,
   resetTokscaleCapabilityCache,
   tokscalePricingCatalog,
+  kimiWorkSessionsRoots,
   resolveWatchUsePolling,
   selfSyncSourceRootsForClients,
   // The process-wide sync throttle this module drives. Exported so a test can
