@@ -14,6 +14,7 @@ const { classifyClientSyncDetailCode } = require('./clientHealth');
 
 const MAX_SYNC_EXIT_CODE = 2 ** 31 - 1;
 const MAX_TOKSCALE_STDERR_LENGTH = 64 * 1024;
+const CURSOR_EXPLICIT_SYNC_TIMEOUT_MS = 150_000;
 
 function annotateSyncError(error, failureStage, exitCode = null) {
   const target = error instanceof Error ? error : new Error(String(error || 'Cursor sync failed'));
@@ -271,7 +272,10 @@ async function runCursorLogout({ label = '', home = os.homedir() } = {}) {
 }
 
 async function runCursorSync(options = {}) {
-  return runTokscaleSubcommand(['sync', '--json'], { ...options, timeoutMs: options.timeoutMs ?? 60000 });
+  return runTokscaleSubcommand(
+    ['sync', '--json'],
+    { ...options, timeoutMs: options.timeoutMs ?? CURSOR_EXPLICIT_SYNC_TIMEOUT_MS }
+  );
 }
 
 function runCursorStatus(options = {}) {
@@ -279,6 +283,7 @@ function runCursorStatus(options = {}) {
 }
 
 module.exports = {
+  CURSOR_EXPLICIT_SYNC_TIMEOUT_MS,
   credentialsPath,
   readActiveAccount,
   runCursorLogin,
