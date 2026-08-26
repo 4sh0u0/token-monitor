@@ -723,7 +723,9 @@ function electronLimitsDeps() {
       };
     },
     resolveConfigSnapshot: () => electronLimitsConfig(),
-    onClaudeWebCookieRenewed: persistClaudeWebCookieRenewal
+    onClaudeWebCookieRenewed: persistClaudeWebCookieRenewal,
+    onThirdPartyCredentialsRenewed: persistThirdPartyCredentialsRenewal,
+    onThirdPartyAccountKeyResolved: persistThirdPartyAccountKey
   };
 }
 
@@ -4265,10 +4267,95 @@ function redactThirdPartyProfilesForRenderer(profiles) {
           }
         : {}),
       accessToken: profile?.accessToken ? 'set' : '',
-      apiKey: profile?.apiKey ? 'set' : ''
+      apiKey: profile?.apiKey ? 'set' : '',
+      refreshToken: profile?.refreshToken ? 'set' : ''
     };
   }
   return out;
+}
+
+// Sub2API rotates its single-use refresh token on every renewal. Persist the
+// new pair with a compare-and-swap before the collector retries with it.
+// New profiles require a current access token and are never persisted from a
+// renewal callback while their save probe is still in flight.
+function persistThirdPartyCredentialsRenewal(renewal = {}) {
+  const accountName = String(renewal.accountName || '').trim();
+  const adapter = thirdPartyLimits.normalizeAdapterId(renewal.adapter);
+  const profiles = settings?.thirdPartyProfiles || {};
+  const profile = profiles[accountName];
+  if (!accountName || !profile || profile.adapter !== adapter) return false;
+  const previousAccessToken = String(renewal.previous?.accessToken || '');
+  const previousRefreshToken = String(renewal.previous?.refreshToken || '');
+  if (
+    String(profile.accessToken || '') !== previousAccessToken
+    || String(profile.refreshToken || '') !== previousRefreshToken
+  ) return false;
+  const normalized = thirdPartyLimits.normalizeThirdPartyProfile({
+    ...profile,
+    accessToken: renewal.next?.accessToken,
+    refreshToken: renewal.next?.refreshToken
+  });
+  if (!normalized) return false;
+  settings.thirdPartyProfiles = {
+    ...profiles,
+    [accountName]: { ...normalized, enabled: profile.enabled !== false }
+  };
+  try {
+    saveSettings({ throwOnError: true });
+  } catch (error) {
+    // Keep the rotated pair in memory so this process can recover on a later
+    // settings write, but tell the caller not to present this renewal as durable.
+    console.log(`[thirdparty] credential renewal persist failed: ${error?.message || error}`);
+    return false;
+  }
+  return true;
+}
+
+function persistThirdPartyAccountKey(update = {}) {
+  const accountName = String(update.accountName || '').trim();
+  const adapter = thirdPartyLimits.normalizeAdapterId(update.adapter);
+  const accountKey = thirdPartyLimits.normalizeCanonicalAccountKey(update.accountKey);
+  const profiles = settings?.thirdPartyProfiles || {};
+  const profile = profiles[accountName];
+  if (
+    !accountName
+    || adapter !== thirdPartyLimits.SUB2API_ADAPTER
+    || !accountKey
+    || !profile
+    || profile.adapter !== adapter
+  ) return false;
+  const baseUrl = thirdPartyLimits.normalizeThirdPartyBaseUrl(update.baseUrl);
+  if (thirdPartyLimits.normalizeThirdPartyBaseUrl(profile.baseUrl) !== baseUrl) return false;
+  if (
+    String(profile.accessToken || '') !== String(update.previous?.accessToken || '')
+    || String(profile.refreshToken || '') !== String(update.previous?.refreshToken || '')
+  ) return false;
+  if (thirdPartyLimits.normalizeCanonicalAccountKey(profile.canonicalAccountKey) === accountKey) {
+    return true;
+  }
+  const normalized = thirdPartyLimits.normalizeThirdPartyProfile({
+    ...profile,
+    canonicalAccountKey: accountKey
+  });
+  if (!normalized) return false;
+  settings.thirdPartyProfiles = {
+    ...profiles,
+    [accountName]: { ...normalized, enabled: profile.enabled !== false }
+  };
+  try {
+    saveSettings({ throwOnError: true });
+  } catch (error) {
+    console.log(`[thirdparty] account identity persist failed: ${error?.message || error}`);
+    return false;
+  }
+  return true;
+}
+
+function thirdPartyProfileWithCanonicalIdentity(profile, provider) {
+  return thirdPartyLimits.normalizeThirdPartyProfile({
+    ...profile,
+    canonicalAccountKey: provider?.accountKey
+  });
 }
 
 function settingsForRenderer() {
@@ -7278,6 +7365,10 @@ app.whenReady().then(() => {
       && !thirdPartyLimits.newapiAccessToken({}, rawProfile.accessToken)
     ) return { ok: false, errorCode: 'missingAccessToken' };
     if (
+      adapter === thirdPartyLimits.SUB2API_ADAPTER
+      && !thirdPartyLimits.newapiAccessToken({}, rawProfile.accessToken)
+    ) return { ok: false, errorCode: 'missingAccessToken' };
+    if (
       [thirdPartyLimits.NEWAPI_TOKEN_ADAPTER, thirdPartyLimits.CUSTOM_BALANCE_ADAPTER].includes(adapter)
       && !thirdPartyLimits.newapiApiKey({}, rawProfile.apiKey)
     ) return { ok: false, errorCode: 'missingApiKey' };
@@ -7329,9 +7420,10 @@ app.whenReady().then(() => {
           errorCode: provider?.status === 'unauthorized' ? 'invalidCredential' : 'unavailable'
         };
       }
+      const storedProfile = thirdPartyProfileWithCanonicalIdentity(profile, provider) || profile;
       settings.thirdPartyProfiles = {
         ...(settings.thirdPartyProfiles || {}),
-        [name]: profile
+        [name]: storedProfile
       };
       saveSettings({ throwOnError: true });
       void queueLimitInvalidation({ provider: 'thirdparty', accountName: name }, 'profile-save');
