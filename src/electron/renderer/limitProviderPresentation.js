@@ -64,7 +64,7 @@
     kiro: ['Auto', 'CLI'],
     zai: ['Coding Plan', 'API key'],
     zaiteam: ['Team Plan', 'API key'],
-    volcengine: ['Coding Plan', 'API key'],
+    volcengine: ['Coding/Agent Plan', 'API key'],
     qoder: ['Manual login', 'Web'],
     trae: ['Manual login', 'Web'],
     workbuddy: ['Auto', 'Desktop app'],
