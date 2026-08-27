@@ -2287,6 +2287,77 @@ test('cursor sync runs at most once per throttle window across ticks', async () 
   }
 });
 
+test('forced Cursor sync bypasses signed-out throttling without saved credentials', async () => {
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  childProcess.spawn = recordingSpawn([]);
+  const cursorAuth = require('../../src/shared/cursorAuth');
+  const originalReadActiveAccount = cursorAuth.readActiveAccount;
+  const originalRunCursorSync = cursorAuth.runCursorSync;
+  let syncCalls = 0;
+  cursorAuth.readActiveAccount = () => null;
+  cursorAuth.runCursorSync = async () => {
+    syncCalls += 1;
+    return { synced: false, notAuthenticated: true };
+  };
+  try {
+    const { collectUsageOnce } = freshCollector();
+    const options = {
+      clients: 'cursor',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      forceSelfSync: true,
+      limitsEnabled: false
+    };
+    await collectUsageOnce(options);
+    await collectUsageOnce(options);
+    assert.equal(syncCalls, 2);
+  } finally {
+    childProcess.spawn = originalSpawn;
+    cursorAuth.readActiveAccount = originalReadActiveAccount;
+    cursorAuth.runCursorSync = originalRunCursorSync;
+    delete require.cache[collectorPath];
+  }
+});
+
+test('cursor discovery retries after a transient sync failure', async () => {
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  childProcess.spawn = recordingSpawn([]);
+  const cursorAuth = require('../../src/shared/cursorAuth');
+  const originalReadActiveAccount = cursorAuth.readActiveAccount;
+  const originalRunCursorSync = cursorAuth.runCursorSync;
+  let syncCalls = 0;
+  cursorAuth.readActiveAccount = () => null;
+  cursorAuth.runCursorSync = async () => {
+    syncCalls += 1;
+    if (syncCalls === 1) throw new Error('temporary network failure');
+    return { synced: false, notAuthenticated: true };
+  };
+  try {
+    const { collectUsageOnce } = freshCollector();
+    const options = {
+      clients: 'cursor',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 1000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      forceSelfSync: true,
+      limitsEnabled: false
+    };
+    await collectUsageOnce(options);
+    await collectUsageOnce(options);
+    assert.equal(syncCalls, 2);
+  } finally {
+    childProcess.spawn = originalSpawn;
+    cursorAuth.readActiveAccount = originalReadActiveAccount;
+    cursorAuth.runCursorSync = originalRunCursorSync;
+    delete require.cache[collectorPath];
+  }
+});
+
 test('cursor sync failure metadata reaches client health without stderr or paths', async () => {
   const childProcess = require('node:child_process');
   const originalSpawn = childProcess.spawn;
@@ -2319,6 +2390,73 @@ test('cursor sync failure metadata reaches client health without stderr or paths
     assert.equal(entry.collection.syncDetailCode, 'authentication-failed');
     assert.equal(entry.collection.syncExitCode, 17);
     assert.equal(JSON.stringify(summary).includes('/Users/alice'), false);
+  } finally {
+    childProcess.spawn = originalSpawn;
+    cursorAuth.readActiveAccount = originalReadActiveAccount;
+    cursorAuth.runCursorSync = originalRunCursorSync;
+    delete require.cache[collectorPath];
+  }
+});
+
+test('a Cursor report with implicit sync blocks logout until the report closes', async () => {
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const cursorAuth = require('../../src/shared/cursorAuth');
+  const originalReadActiveAccount = cursorAuth.readActiveAccount;
+  const originalRunCursorSync = cursorAuth.runCursorSync;
+  let reportChild;
+  let reportStarted;
+  const reportStart = new Promise((resolve) => { reportStarted = resolve; });
+  let reportCalls = 0;
+  let logoutStarted = false;
+
+  childProcess.spawn = () => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { end: () => {} };
+    child.kill = () => {};
+    reportCalls += 1;
+    if (reportCalls === 1) {
+      reportChild = child;
+      reportStarted();
+    } else {
+      setImmediate(() => {
+        child.stdout.emit('data', Buffer.from(JSON.stringify({ entries: [] })));
+        child.emit('close', 0);
+      });
+    }
+    return child;
+  };
+  cursorAuth.readActiveAccount = () => ({ accessToken: 'token' });
+  cursorAuth.runCursorSync = async () => { throw new Error('explicit sync failed'); };
+
+  try {
+    const { collectUsageOnce } = freshCollector();
+    const collection = collectUsageOnce({
+      clients: 'cursor',
+      allTimeSince: '2024-01-01',
+      commandTimeoutMs: 60_000,
+      deviceId: 'test-device',
+      agentVersion: 'test',
+      forceSelfSync: true,
+      historyEnabled: false,
+      limitsEnabled: false
+    });
+    await reportStart;
+
+    const logout = cursorAuth.runCursorLogout({
+      accountId: 'user_b',
+      runSubcommand: async () => { logoutStarted = true; }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(logoutStarted, false);
+
+    reportChild.stdout.emit('data', Buffer.from(JSON.stringify({ entries: [] })));
+    reportChild.emit('close', 0);
+    await logout;
+    assert.equal(logoutStarted, true);
+    await collection;
   } finally {
     childProcess.spawn = originalSpawn;
     cursorAuth.readActiveAccount = originalReadActiveAccount;
@@ -3031,6 +3169,9 @@ test('smart collection coalesces watch events into one targeted interval tick', 
   const originalSpawn = childProcess.spawn;
   const calls = [];
   childProcess.spawn = recordingSpawn(calls);
+  const cursorAuth = require('../../src/shared/cursorAuth');
+  const originalRunCursorSync = cursorAuth.runCursorSync;
+  cursorAuth.runCursorSync = async () => {};
 
   let handle = null;
   try {
@@ -3067,6 +3208,7 @@ test('smart collection coalesces watch events into one targeted interval tick', 
     assert.equal(calls.length, 5, 'the acknowledged batch does not repeat');
   } finally {
     if (handle) handle.stop();
+    cursorAuth.runCursorSync = originalRunCursorSync;
     childProcess.spawn = originalSpawn;
     chokidar.watch = originalWatch;
     os.homedir = originalHomedir;
@@ -3186,6 +3328,9 @@ test('smart collection retries a failed activity scan on the next interval', asy
     });
     return child;
   };
+  const cursorAuth = require('../../src/shared/cursorAuth');
+  const originalRunCursorSync = cursorAuth.runCursorSync;
+  cursorAuth.runCursorSync = async () => {};
 
   let handle = null;
   try {
@@ -3223,6 +3368,7 @@ test('smart collection retries a failed activity scan on the next interval', asy
     );
   } finally {
     if (handle) handle.stop();
+    cursorAuth.runCursorSync = originalRunCursorSync;
     childProcess.spawn = originalSpawn;
     chokidar.watch = originalWatch;
     os.homedir = originalHomedir;
