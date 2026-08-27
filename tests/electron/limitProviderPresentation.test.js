@@ -273,7 +273,7 @@ test('Home omits reset rows that have no visible reset content', () => {
 test('capability tags explain how each provider is collected in settings', () => {
   assert.deepEqual(limitProviderCapabilityTags('claude'), ['Auto', 'OAuth/CLI', 'Web']);
   assert.deepEqual(limitProviderCapabilityTags('codex'), ['Auto', 'OAuth/App/CLI']);
-  assert.deepEqual(limitProviderCapabilityTags('cursor'), ['Manual login', 'Web']);
+  assert.deepEqual(limitProviderCapabilityTags('cursor'), ['Auto', 'Web']);
   assert.deepEqual(limitProviderCapabilityTags('antigravity'), ['App/CLI must be open', 'RPC']);
   assert.deepEqual(limitProviderCapabilityTags('opencode'), ['Auto', 'API/Web']);
   assert.deepEqual(limitProviderCapabilityTags('minimax'), ['Token Plan', 'API key']);
@@ -387,7 +387,7 @@ test('undetected settings tags include status and supported collection hints', (
   assert.deepEqual(
     limitProviderSettingsTags({ provider: 'cursor', status: 'notConfigured', source: 'web' })
       .map((tag) => tag.label),
-    ['Sign in', 'Manual login', 'Web']
+    ['Sign in', 'Auto', 'Web']
   );
   assert.deepEqual(
     limitProviderSettingsTags({ provider: 'grok', status: 'notConfigured', source: 'web' })
@@ -778,10 +778,10 @@ test('Grok renders its single Monthly billing window full-width instead of an em
 
 test('WorkBuddy renders unlimited enterprise credits without requiring a numeric balance', () => {
   const app = readRendererFile('app.js');
-  const valueFunction = functionBody(app, 'workbuddyCreditsValue', 'mimoTokenPlanWindowFromBalance');
+  const valueFunction = functionBody(app, 'creditsBalanceValue', 'mimoTokenPlanWindowFromBalance');
   const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
   const value = vm.runInNewContext(
-    `${valueFunction}\nworkbuddyCreditsValue({ balance: { amount: null, currency: 'CREDITS' } }, { detail: 'unlimited', remaining: null });`,
+    `${valueFunction}\ncreditsBalanceValue({ balance: { amount: null, currency: 'CREDITS' } }, { detail: 'unlimited', remaining: null });`,
     {
       creditsAmount: () => null,
       formatCompactMoney: () => '',
@@ -790,7 +790,7 @@ test('WorkBuddy renders unlimited enterprise credits without requiring a numeric
   );
 
   assert.equal(value, 'Unlimited');
-  assert.match(renderProviderWindows, /const value = workbuddyCreditsValue\(provider, credits\);/);
+  assert.match(renderProviderWindows, /const value = creditsBalanceValue\(provider, credits\);/);
   assert.match(renderProviderWindows, /if \(credits && value\)/);
   assert.doesNotMatch(renderProviderWindows, /if \(credits && amount !== null\)/);
   assert.match(
@@ -1207,7 +1207,10 @@ test('Balance and token quota values omit the redundant left suffix', () => {
   const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
 
   assert.match(renderProviderWindows, /'Balance',\s*\{ \.\.\.balanceWindow, label: 'Balance' \},\s*color,\s*0\.95,\s*formatMoney\(balanceAmount, currency\)/);
-  assert.match(renderProviderWindows, /\{ \.\.\.\(quotaWindow \|\| \{ showMeter: false \}\), label: balanceLabel \},\s*color,\s*0\.95,\s*balanceValue/);
+  assert.match(renderProviderWindows, /const meterPercent = creditsMeterPercent\(provider, quotaWindow\);/);
+  assert.match(renderProviderWindows, /\{\s*\.\.\.\(quotaWindow \|\| \{ showMeter: false \}\),\s*label: balanceLabel,/);
+  assert.match(renderProviderWindows, /\.\.\.\(meterPercent !== null \? \{ remainingPercent: meterPercent, showMeter: true \} : \{\}\)/);
+  assert.match(renderProviderWindows, /\},\s*color,\s*0\.95,\s*balanceValue/);
   assert.doesNotMatch(renderProviderWindows, /`\$\{formatMoney\(balanceAmount, currency\)\} left`/);
   assert.doesNotMatch(renderProviderWindows, /`\$\{balanceValue\} left`/);
 });
@@ -1299,7 +1302,7 @@ test('settings provider status waits for stats and refreshes when stats arrive',
     assert.match(statsRender, new RegExp(`${fn}\\(\\);`), `${fn} missing from renderStatsUpdate`);
     assert.match(syncSettings, new RegExp(`${fn}\\(\\);`), `${fn} missing from syncSettingsForm`);
   }
-  for (const provider of ['claude', 'zai', 'volcengine', 'qoder', 'commandcode', 'kimi', 'ollama']) {
+  for (const provider of ['claude', 'zai', 'volcengine', 'qoder', 'trae', 'commandcode', 'kimi', 'ollama']) {
     assert.match(statsRender, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from renderStatsUpdate`);
     assert.match(syncSettings, new RegExp(`renderExternalProviderStatus\\('${provider}'\\);`), `${provider} missing from syncSettingsForm`);
   }
@@ -1447,6 +1450,7 @@ test('AI Tool Limits owns every live account group and its status pill', () => {
     ['minimax', 'minimaxAccountGroup', 'minimaxApiKeyStatus'],
     ['volcengine', 'volcengineAccountGroup', 'volcengineAccountStatus'],
     ['qoder', 'qoderAccountGroup', 'qoderAccountStatus'],
+    ['trae', 'traeAccountGroup', 'traeAccountStatus'],
     ['ollama', 'ollamaAccountGroup', 'ollamaAccountStatus'],
     ['thirdparty', 'thirdpartyAccountGroup', 'thirdpartyStatus']
   ];
@@ -1615,6 +1619,7 @@ test('dynamic account summaries are never reset by the static translation pass',
     'zaiteamAccountStatus',
     'volcengineAccountStatus',
     'qoderAccountStatus',
+    'traeAccountStatus',
     'ollamaAccountStatus',
     'kimiAccountStatus',
     'mimoAccountStatus',
@@ -2048,15 +2053,17 @@ test('copilot setup status asks for sign-in instead of an API key', () => {
   );
 });
 
-test('Z.ai, Volcengine, Qoder, WorkBuddy, and Ollama source labels and setup statuses', () => {
+test('Z.ai, Volcengine, Qoder, Trae, WorkBuddy, and Ollama source labels and setup statuses', () => {
   assert.deepEqual(presentation.limitProviderCapabilityTags('zai'), ['Coding Plan', 'API key']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('volcengine'), ['Coding Plan', 'API key']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('qoder'), ['Manual login', 'Web']);
+  assert.deepEqual(presentation.limitProviderCapabilityTags('trae'), ['Manual login', 'Web']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('workbuddy'), ['Auto', 'Desktop app']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('ollama'), ['Manual login', 'Web']);
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'zai', source: 'api' }), 'API');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'volcengine', source: 'api' }), 'API');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'qoder', source: 'web' }), 'Web');
+  assert.equal(presentation.limitProviderSourceLabel({ provider: 'trae', source: 'api' }), 'Web');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'workbuddy', source: 'local' }), 'Local');
   assert.equal(presentation.limitProviderSourceLabel({ provider: 'ollama', source: 'web' }), 'Web');
   assert.deepEqual(
@@ -2073,6 +2080,14 @@ test('Z.ai, Volcengine, Qoder, WorkBuddy, and Ollama source labels and setup sta
   );
   assert.deepEqual(
     presentation.limitProviderStatusLabel({ provider: 'qoder', status: 'unauthorized' }),
+    { label: 'Sign in again', tone: 'setup' }
+  );
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'trae', status: 'notConfigured' }),
+    { label: 'Sign in', tone: 'setup' }
+  );
+  assert.deepEqual(
+    presentation.limitProviderStatusLabel({ provider: 'trae', status: 'unauthorized' }),
     { label: 'Sign in again', tone: 'setup' }
   );
   assert.deepEqual(

@@ -79,7 +79,7 @@ function runRendererFunctions(source, names, expression, context = {}) {
   return vm.runInNewContext(`${snippets}\n${expression}`, context);
 }
 
-test('Cursor account status stays inline with an email-only summary', () => {
+test('Cursor account status stays inline with the linked-account summary', () => {
   const html = readRendererFile('index.html');
   const toggle = html.match(/<button id="cursorSettingsToggle"[\s\S]*?<\/button>/)?.[0] || '';
   assert.match(
@@ -166,11 +166,80 @@ test('Hub secret input stays masked and exposes an accessible paste button', () 
   assert.match(pasteBody, /markHubDraftDirty\('secret'\);/);
 });
 
-test('Cursor account header omits plan and reset details', () => {
+test('Cursor account header uses the shared linked-account summary', () => {
   const body = functionBody(readRendererFile('app.js'), 'renderCursorStatus', 'refreshCursorStatus');
-  assert.match(body, /const summary = status\.email \|\| t\('settings\.cursor\.loggedIn'\);/);
+  assert.match(body, /t\('settings\.cursor\.connected', \{ linked: status\.linkedCount \|\| 0, total: accounts\.length \}\)/);
   assert.match(body, /setCursorStatusText\(statusEl, summary\);/);
-  assert.doesNotMatch(body, /membershipType|billingCycleEnd|billingResets/);
+  assert.doesNotMatch(body, /status\.email|billingCycleEnd|billingResets|selectedAccountId/);
+});
+
+test('Cursor settings use the shared multi-account rows and inline add flow', () => {
+  const html = readRendererFile('index.html');
+  const details = html.match(/<div id="cursorSettingsDetails"[\s\S]*?<div id="cursorErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
+  assert.match(details, /id="cursorAddAccountButton" class="opencode-add-summary"[^>]*aria-expanded="false"[^>]*aria-controls="cursorManualDetails"/);
+  assert.match(details, /<svg class="add-icon"/);
+  assert.doesNotMatch(details, /cursorRefreshButton|>Refresh<|>重新整理</);
+  assert.match(details, /id="cursorAccountList" class="managed-account-list"/);
+  assert.match(details, /id="cursorAgentActiveNote" class="settings-note hidden" data-i18n="settings\.cursor\.agentActive"/);
+  assert.match(details, /<div id="cursorManualPanel" class="opencode-add-form">/);
+  assert.match(details, /<div id="cursorManualDetails" class="opencode-add-details accordion-animated-container hidden">/);
+  assert.match(details, /data-i18n="settings\.cursor\.addManual">Add account<\/span>/);
+  assert.match(details, /using the button above, then sign in/);
+  assert.match(details, /cursor\.com\/dashboard/);
+  assert.doesNotMatch(details, /cursor\.com\/dashboard\/settings/);
+  assert.doesNotMatch(details, /Tokscale|Add an account manually/);
+  assert.doesNotMatch(details, /<details|<summary|cursorDetectButton|cursorManualLabel|accountLabel/);
+
+  const body = functionBody(readRendererFile('app.js'), 'renderCursorStatus', 'refreshCursorStatus');
+  assert.match(body, /input\.className = 'managed-account-checkbox'/);
+  assert.match(body, /window\.tokenMonitor\.cursor\.setAccountEnabled\(account\.id, input\.checked\)/);
+  assert.match(body, /right\.className = 'managed-account-right'/);
+  assert.match(body, /info\.className = 'managed-account-info'/);
+  assert.match(body, /const planLabel = account\.membershipType/);
+  assert.match(body, /: planLabel;/);
+  assert.doesNotMatch(body, /managed-account-detail|settings\.cursor\.linked/);
+  assert.match(body, /if \(account\.removable === true && !managementBlocked\)/);
+  assert.match(body, /remove\.className = 'managed-account-remove'/);
+  assert.match(body, /window\.tokenMonitor\.cursor\.logout\(account\.id\)/);
+  assert.doesNotMatch(body, /cursor-account-row|radio|selectedAccountId|selectAccount/);
+
+  const setup = readRendererFile('app.js');
+  assert.match(setup, /openExternal\('https:\/\/cursor\.com\/dashboard'\)/);
+  assert.doesNotMatch(setup, /openExternal\('https:\/\/cursor\.com\/dashboard\/settings'\)/);
+  assert.match(setup, /cursorAddAccountButton\?\.addEventListener\('click'/);
+  assert.match(setup, /cursorManualDetails\?\.classList\.toggle\('hidden', !next\)/);
+  assert.match(setup, /const expanding = !state\.cursorAccountExpanded;[\s\S]*?setCursorAccountExpanded\(expanding\);[\s\S]*?if \(expanding && !state\.cursorAccount\.busy\) void refreshCursorStatus\(\{ discover: true \}\);/);
+  assert.doesNotMatch(setup, /cursorRefreshButton|refreshCursorAccounts|cursor\.refresh\(/);
+
+  const css = readRendererFile('styles.css');
+  assert.equal(declaration(cssRule(css, '#cursorManualDetails'), 'margin-top'), '0');
+});
+
+test('Cursor removal is available only for accounts added manually in Token Monitor', () => {
+  const main = readRendererFile('../main.js');
+  assert.match(main, /cursorManualAccountIds: \[\]/);
+  assert.match(main, /removable: manual\.has\(account\.id\)/);
+  assert.match(main, /settings\.cursorManualAccountIds = normalizeCursorAccountIds\(\[/);
+  assert.match(main, /Only manually added Cursor accounts can be removed/);
+  assert.match(main, /ipcMain\.handle\('cursor:loginManual'[\s\S]*?if \(isExternalAgentActive\(\)\)/);
+  assert.match(main, /ipcMain\.handle\('cursor:logout'[\s\S]*?if \(isExternalAgentActive\(\)\)/);
+  const body = functionBody(readRendererFile('app.js'), 'renderCursorStatus', 'refreshCursorStatus');
+  assert.match(body, /addButton\.disabled = managementBlocked/);
+  assert.match(body, /cursorAgentActiveNote'[\s\S]*?toggle\('hidden', !managementBlocked\)/);
+});
+
+test('Cursor account discovery runs automatically without a separate refresh action', () => {
+  const main = readRendererFile('../main.js');
+  const statusBody = functionBody(main, 'cursorStatusValue', 'rebuildWindow');
+  assert.match(statusBody, /if \(discover && !managementBlocked\) \{/);
+  assert.match(statusBody, /await cursorAuth\.runCursorDiscover\(\)/);
+  assert.doesNotMatch(statusBody, /runCursorSync/);
+  assert.match(statusBody, /managementBlocked/);
+  assert.match(main, /options\?\.discover !== true/);
+  assert.doesNotMatch(main, /ipcMain\.handle\('cursor:refresh'/);
+
+  const preload = readRendererFile('../preload.js');
+  assert.doesNotMatch(preload, /cursor:refresh/);
 });
 
 test('OpenCode account panel provides multi-profile management', () => {
@@ -629,7 +698,7 @@ test('Codex system account switching is exposed from limits account rows', () =>
   assert.doesNotMatch(refreshBody, /collectLimitsOnce/);
   const renderLimits = functionBody(app, 'renderLimits', 'serviceStatusLabel');
   assert.match(renderLimits, /const rowOptions = id === 'codex'\s*\? \{ accountTitle: true, allowSystemSwitch: true \}/s);
-  assert.match(renderLimits, /renderLimitProviderRow\(id, label, provider, color, rowOptions\)/);
+  assert.match(renderLimits, /renderLimitProviderRow\(id, label, provider, thirdPartyVisual\?\.color \|\| color, rowOptions\)/);
   assert.doesNotMatch(
     renderLimits,
     /renderLimitProviderRow\(id, label, provider, color, id === 'codex' \? \{[\s\S]*?showActiveBadge: true/
@@ -668,19 +737,19 @@ test('API key account entries share styling and Copilot uses the folded token en
   const css = readRendererFile('styles.css');
 
   const animationBody = functionBodyBeforeMarker(app, 'initSettingsAnimationWrappers', '\ninitSettingsAnimationWrappers();');
-  assert.match(animationBody, /'#deepseekManualPanel',\n\s*'#minimaxManualPanel',\n\s*'#zaiManualPanel',\n\s*'#zaiteamManualPanel',\n\s*'#volcengineManualPanel',\n\s*'#qoderManualPanel',\n\s*'#commandcodeManualPanel',\n\s*'#kimiManualPanel'/);
+  assert.match(animationBody, /'#deepseekManualPanel',\n\s*'#minimaxManualPanel',\n\s*'#zaiManualPanel',\n\s*'#zaiteamManualPanel',\n\s*'#volcengineManualPanel',\n\s*'#qoderManualPanel',\n\s*'#traeManualPanel',\n\s*'#commandcodeManualPanel',\n\s*'#kimiManualPanel'/);
   assert.doesNotMatch(animationBody, /'#mimoManualPanel'/);
   assert.doesNotMatch(animationBody, /'#copilotManualPanel'/);
 
   assert.match(css, /#deepseekManualPanel\.hidden,\n#minimaxManualPanel\.hidden,/);
-  assert.match(css, /#minimaxManualPanel\.hidden,\n#zaiManualPanel\.hidden,\n#zaiteamManualPanel\.hidden,\n#volcengineManualPanel\.hidden,\n#qoderManualPanel\.hidden,\n#commandcodeManualPanel\.hidden,\n#ollamaManualPanel\.hidden,\n#mimoManualPanel\.hidden,\n#kimiManualPanel\.hidden,\n#copilotManualPanel\.hidden,/);
+  assert.match(css, /#minimaxManualPanel\.hidden,\n#zaiManualPanel\.hidden,\n#zaiteamManualPanel\.hidden,\n#volcengineManualPanel\.hidden,\n#qoderManualPanel\.hidden,\n#traeManualPanel\.hidden,\n#commandcodeManualPanel\.hidden,\n#ollamaManualPanel\.hidden,\n#mimoManualPanel\.hidden,\n#kimiManualPanel\.hidden,\n#copilotManualPanel\.hidden,/);
   assert.match(css, /#copilotManualPanel\.hidden,\n#copilotManualDetails\.hidden,/);
-  assert.match(css, /#deepseekErrorMessage\.hidden,\n#minimaxErrorMessage\.hidden,\n#zaiErrorMessage\.hidden,\n#zaiteamErrorMessage\.hidden,\n#volcengineErrorMessage\.hidden,\n#qoderErrorMessage\.hidden,\n#commandcodeErrorMessage\.hidden,\n#ollamaErrorMessage\.hidden,\n#kimiErrorMessage\.hidden,\n#copilotErrorMessage\.hidden,/);
-  assert.match(css, /#deepseekManualPanel,\n#minimaxManualPanel,\n#zaiManualPanel,\n#zaiteamManualPanel,\n#volcengineManualPanel,\n#qoderManualPanel,\n#commandcodeManualPanel,\n#ollamaManualPanel,\n#mimoManualPanel,\n#kimiManualPanel,\n#copilotManualPanel\s*\{\n\s*min-width: 0;/);
-  assert.match(css, /#deepseekManualPanel > \.accordion-animation-inner,\n#minimaxManualPanel > \.accordion-animation-inner,\n#zaiManualPanel > \.accordion-animation-inner,\n#zaiteamManualPanel > \.accordion-animation-inner,\n#volcengineManualPanel > \.accordion-animation-inner,\n#qoderManualPanel > \.accordion-animation-inner,\n#commandcodeManualPanel > \.accordion-animation-inner,\n#ollamaManualPanel > \.accordion-animation-inner,\n#mimoManualPanel > \.accordion-animation-inner,\n#kimiManualPanel > \.accordion-animation-inner\s*\{\n\s*display: grid;/);
+  assert.match(css, /#deepseekErrorMessage\.hidden,\n#minimaxErrorMessage\.hidden,\n#zaiErrorMessage\.hidden,\n#zaiteamErrorMessage\.hidden,\n#volcengineErrorMessage\.hidden,\n#qoderErrorMessage\.hidden,\n#traeErrorMessage\.hidden,\n#commandcodeErrorMessage\.hidden,\n#ollamaErrorMessage\.hidden,\n#kimiErrorMessage\.hidden,\n#copilotErrorMessage\.hidden,/);
+  assert.match(css, /#deepseekManualPanel,\n#minimaxManualPanel,\n#zaiManualPanel,\n#zaiteamManualPanel,\n#volcengineManualPanel,\n#qoderManualPanel,\n#traeManualPanel,\n#commandcodeManualPanel,\n#ollamaManualPanel,\n#mimoManualPanel,\n#kimiManualPanel,\n#copilotManualPanel\s*\{\n\s*min-width: 0;/);
+  assert.match(css, /#deepseekManualPanel > \.accordion-animation-inner,\n#minimaxManualPanel > \.accordion-animation-inner,\n#zaiManualPanel > \.accordion-animation-inner,\n#zaiteamManualPanel > \.accordion-animation-inner,\n#volcengineManualPanel > \.accordion-animation-inner,\n#qoderManualPanel > \.accordion-animation-inner,\n#traeManualPanel > \.accordion-animation-inner,\n#commandcodeManualPanel > \.accordion-animation-inner,\n#ollamaManualPanel > \.accordion-animation-inner,\n#mimoManualPanel > \.accordion-animation-inner,\n#kimiManualPanel > \.accordion-animation-inner\s*\{\n\s*display: grid;/);
   assert.doesNotMatch(css, /#copilotManualPanel > \.accordion-animation-inner/);
-  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#zaiApiRegionInput,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#qoderManualPanel select,\n#commandcodeManualPanel textarea,\n#ollamaManualPanel textarea,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#kimiManualPanel textarea,\n#copilotManualDetails input\s*\{[\s\S]*?font-size: 12px;/);
-  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#commandcodeManualPanel textarea,\n#ollamaManualPanel textarea,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#kimiManualPanel textarea,\n#copilotManualDetails input\s*\{[\s\S]*?font-family: monospace;/);
+  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#zaiApiRegionInput,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#qoderManualPanel select,\n#traeManualPanel input,\n#commandcodeManualPanel textarea,\n#ollamaManualPanel textarea,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#kimiManualPanel textarea,\n#copilotManualDetails input\s*\{[\s\S]*?font-size: 12px;/);
+  assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#traeManualPanel input,\n#commandcodeManualPanel textarea,\n#ollamaManualPanel textarea,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#kimiManualPanel textarea,\n#copilotManualDetails input\s*\{[\s\S]*?font-family: monospace;/);
   assert.match(css, /\.thirdparty-field :is\(input, select\)\s*\{[\s\S]*?font-size: 12px;/);
 });
 
@@ -729,11 +798,18 @@ test('Copilot account panel provides GitHub sign-in plus manual token fallback',
   assert.match(flowBody, /return current && incoming === current;/);
 });
 
-test('Z.ai, Volcengine, Qoder, and Ollama account panels are exposed in settings', () => {
+test('Z.ai, Volcengine, Qoder, Trae, and Ollama account panels are exposed in settings', () => {
   const html = readRendererFile('index.html');
   assert.match(html, /<div id="zaiAccountGroup"[\s\S]*?<select id="zaiApiRegionInput">[\s\S]*?<input id="zaiApiKeyInput" type="password"[\s\S]*?<button id="zaiApiKeySubmit"[\s\S]*data-i18n="settings\.zai\.saveApiKey">/);
   assert.match(html, /<div id="volcengineAccountGroup"[\s\S]*?data-i18n="settings\.volcengine\.accessKeyId">API key \/ Access key ID[\s\S]*?<input id="volcengineAccessKeyInput" type="password"[\s\S]*placeholder="ark-\.\.\. or AKLT\.\.\."[\s\S]*?<input id="volcengineSecretAccessKeyInput" type="password"[\s\S]*?<input id="volcengineRegionInput" type="text"[\s\S]*?<button id="volcengineCredentialsSubmit"[\s\S]*data-i18n="settings\.volcengine\.saveCredentials">/);
   assert.match(html, /<div id="qoderAccountGroup"[\s\S]*?<select id="qoderSiteInput">[\s\S]*?<textarea id="qoderCookieInput"[\s\S]*?<button id="qoderCookieSubmit"[\s\S]*data-i18n="settings\.qoder\.saveCookie">/);
+  assert.match(html, /<div id="traeAccountGroup"[\s\S]*?<input id="traeTokenInput" type="password"[\s\S]*?data-i18n-placeholder="settings\.trae\.tokenPlaceholder"[\s\S]*?<input id="traeDeviceIdInput" type="text"[\s\S]*?data-i18n-placeholder="settings\.trae\.deviceIdPlaceholder"[\s\S]*?<button id="traeTokenSubmit"[\s\S]*data-i18n="settings\.trae\.saveCredentials">/);
+  const traeDetails = html.match(/<div id="traeSettingsDetails"[\s\S]*?<div id="traeErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
+  assert.match(traeDetails, /<strong>1\.<\/strong> <span data-i18n="settings\.trae\.step1">/);
+  assert.match(traeDetails, /<strong>2\.<\/strong> <span data-i18n="settings\.trae\.step2">/);
+  assert.match(traeDetails, /<strong>3\.<\/strong> <span data-i18n="settings\.trae\.step3">/);
+  assert.match(traeDetails, /<strong>4\.<\/strong> <span data-i18n="settings\.trae\.step4">/);
+  assert.doesNotMatch(traeDetails, /settings\.trae\.note/);
   assert.match(html, /<div id="ollamaAccountGroup"[\s\S]*?<textarea id="ollamaCookieInput"[\s\S]*?<button id="ollamaCookieSubmit"[\s\S]*data-i18n="settings\.ollama\.saveCookie">/);
   const ollamaDetails = html.match(/<div id="ollamaSettingsDetails"[\s\S]*?<div id="ollamaErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
   assert.match(ollamaDetails, /<strong>1\.<\/strong> <span data-i18n="settings\.ollama\.step1">/);
@@ -763,6 +839,10 @@ test('Z.ai, Volcengine, Qoder, and Ollama account panels are exposed in settings
   assert.match(setupBody, /window\.tokenMonitor\.openExternal\(zaiPlatformUrl\(\)\)/);
   assert.match(setupBody, /window\.tokenMonitor\.openExternal\(volcenginePlatformUrl\(\)\)/);
   assert.match(setupBody, /window\.tokenMonitor\.openExternal\(qoderPlatformUrl\(\)\)/);
+  assert.match(setupBody, /const deviceIdInput = document\.getElementById\('traeDeviceIdInput'\);/);
+  assert.match(setupBody, /if \(!String\(tokenInput\.value \|\| ''\)\.trim\(\)\) \{[\s\S]*?settings\.trae\.missingAuthorization/);
+  assert.match(setupBody, /traeAccessToken: tokenInput\.value,[\s\S]*?traeDeviceId: deviceIdInput\.value,[\s\S]*?limitProviders: limitProviderSelectionIncluding\('trae'\)/);
+  assert.match(setupBody, /window\.tokenMonitor\.openExternal\('https:\/\/www\.trae\.cn'\)/);
   assert.match(setupBody, /ollamaCookie: input\.value/);
   assert.match(setupBody, /const validation = await window\.tokenMonitor\.ollama\.validateCookie\(input\.value\);/);
   assert.match(setupBody, /if \(!validation\?\.ok\) \{[\s\S]*?clearExternalProviderCheckPending\('ollama'\);[\s\S]*?ollamaValidationError\(validation\);[\s\S]*?return;/);
@@ -1700,7 +1780,7 @@ test('remote Hub build status is wired as a separate localized sync hint', () =>
   assert.equal([...i18n.matchAll(/'settings\.sync\.hubBuild\.legacy':/g)].length, 0);
 });
 
-test('main settings normalize collection cadence and restart only the device runtime when it changes', () => {
+test('main settings normalize collection cadence and replace only usage when it changes', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
   const collector = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'shared', 'collector.js'), 'utf8');
   assert.match(main, /function normalizeCollectionMode/);
@@ -1739,8 +1819,7 @@ test('main settings normalize collection cadence and restart only the device run
   assert.match(updateHandler, /normalizedPatch\.collectionIntervalMs = normalizeCollectionIntervalMs/);
   assert.match(updateHandler, /collectionMode: normalizeCollectionMode/);
   assert.match(updateHandler, /collectionIntervalMs: normalizeCollectionIntervalMs/);
-  assert.match(updateHandler, /runtimeChange\.usageStructural \|\| runtimeChange\.sinkStructural/);
-  assert.match(updateHandler, /restartDeviceRuntimeForMode\(\)/);
+  assert.match(updateHandler, /if \(runtimeChange\.usageStructural\) \{\s*reconfigureUsageRuntimeForMode\(\);\s*\}/);
 });
 
 test('main settings normalize sync upload intervals and restart only the device runtime when it changes', () => {
@@ -1771,8 +1850,7 @@ test('main settings normalize sync upload intervals and restart only the device 
   const updateHandler = main.slice(main.indexOf("ipcMain.handle('settings:update'"), main.indexOf("ipcMain.handle('appearance:preview'"));
   assert.match(updateHandler, /normalizedPatch\.syncUploadIntervalMs = normalizeSyncUploadIntervalMs/);
   assert.match(updateHandler, /syncUploadIntervalMs: normalizeSyncUploadIntervalMs/);
-  assert.match(updateHandler, /runtimeChange\.usageStructural \|\| runtimeChange\.sinkStructural/);
-  assert.match(updateHandler, /restartDeviceRuntimeForMode\(\)/);
+  assert.match(updateHandler, /else if \(runtimeChange\.sinkStructural\) \{[\s\S]*?restartDeviceRuntimeForMode\(\);[\s\S]*?\} else \{/);
 });
 
 test('main collectors share one live GUI limit credential resolver in every widget mode', () => {
@@ -1832,6 +1910,17 @@ test('Home limits groups multiple MiMo accounts like Codex', () => {
   assert.match(groupBody, /renderLimitProviderRow\('mimo', limitAccountTitle\('mimo', provider, index, providers\), provider, color/);
   assert.match(renderLimitsBody, /if \(id === 'mimo' && Array\.isArray\(visibleProviders\) && visibleProviders\.length > 1\) \{/);
   assert.match(renderLimitsBody, /nodes\.push\(renderMimoAccountGroup\(label, visibleProviders, color\)\);/);
+});
+
+test('Limits groups multiple Cursor accounts with separate identity and plan rows', () => {
+  const app = readRendererFile('app.js');
+  const groupBody = functionBody(app, 'renderCursorAccountGroup', 'renderOpenCodeAccountGroup');
+  const renderLimitsBody = functionBody(app, 'renderLimits', 'serviceStatusLabel');
+  assert.match(groupBody, /const groupProvider = \{ provider: 'cursor', status: 'ok', windows: \[\], accountGroup: true \};/);
+  assert.match(groupBody, /planText: t\('settings\.cursor\.nAccounts', \{ count: providers\.length \}\)/);
+  assert.match(groupBody, /renderLimitProviderRow\('cursor', limitAccountTitle\('cursor', provider, index, providers\), provider, color/);
+  assert.match(renderLimitsBody, /if \(id === 'cursor' && Array\.isArray\(visibleProviders\) && visibleProviders\.length > 1\) \{/);
+  assert.match(renderLimitsBody, /nodes\.push\(renderCursorAccountGroup\(label, visibleProviders, color\)\);/);
 });
 
 test('a zero-config OpenCode machine is not reported as unconfigured', () => {
