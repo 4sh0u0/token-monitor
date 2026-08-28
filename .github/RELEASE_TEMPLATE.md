@@ -4,26 +4,23 @@
 
 <!-- app-update-notes:en:start -->
 ### Added
-- **Kimi Work usage:** Track Kimi Work usage under Kimi and show available project attribution in the usage breakdown. (#453)
-- **Trae CN Credits:** Track Trae CN and TRAE SOLO Credits in AI Tool Limits. (#483)
-- **Sub2API accounts:** Add a Sub2API-compatible preset under Third-party APIs, with USD balance plus monthly and cumulative spend. (#476)
-
-### Improved
-- **Usage source compatibility:** Recent Antigravity timestamps and large Cursor exports are handled more reliably. (#501)
+- **Cursor auto-detection and multi-account support:** Automatically detect the locally signed-in Cursor desktop account, combine token usage from multiple saved accounts, and manage limits per account. (#523)
+- **Volcengine Agent Plan:** Show 5-hour, daily, weekly, and monthly quotas alongside the Coding Plan, with optional credentials when the Agent Plan is on another account. (#490, #532)
+- **Grok limits in WSL:** Show Grok limits on Windows when the active login is inside a running WSL distribution. (#530)
 
 ### Fixed
-- **Usage collection stability:** Restarting usage collection no longer freezes the interface, while repeated tracking changes no longer accumulate obsolete work or memory growth. (#486, #495)
-- **Usage totals:** Reasoning tokens are counted correctly, and DeepSeek Harness compaction contributes to token and cost totals without increasing reply counts. (#501)
-- **Model breakdown clarity:** Unrecognized models now use the Token Monitor mark instead of a vendor-like dot, and fallback colors stay distinct from real vendors.
+- **Windows startup:** Fix an issue that could prevent recent versions from starting normally on some Windows systems. (#522)
+- **Trae CN Credits:** Show balances for untouched credit packs and ignore feature-only entitlements without a credit limit. (#515)
+- **Device ID reset:** Clearing a custom Device ID returns to the automatic hostname-based ID after restart, keeping the local device matched in sync views. (#441)
 <!-- app-update-notes:en:end -->
 
 ## Download
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows Installer** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe) (recommended)
-- **Windows Portable** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe) (no install required)
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.49.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.49.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-x64.dmg)
+- **Windows Installer** — [Token-Monitor-Setup-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-Setup-0.49.0.exe) (recommended)
+- **Windows Portable** — [Token-Monitor-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.exe) (no install required)
+- **Linux x64** — [Token-Monitor-0.49.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.AppImage)
 
 <details>
 <summary><strong>First launch and other notes</strong></summary>
@@ -61,26 +58,23 @@ open-source: https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh:start -->
 ### 新增
-- **Kimi Work 用量：** 新增 Kimi Work 用量追踪，并在用量分解中显示可用的项目归因。（#453）
-- **Trae CN Credits：** 支持在 AI 工具额度中查看 Trae CN 和 TRAE SOLO Credits。（#483）
-- **Sub2API 账号：** 在 Third-party APIs 中新增 Sub2API 兼容预设，可查看美元余额、本月支出和累计支出。（#476）
-
-### 改进
-- **用量来源兼容性：** 改进 Antigravity 最新时间戳和大型 Cursor 导出的处理。（#501）
+- **Cursor 自动检测与多账号：** 自动检测本机 Cursor 桌面版已登录的账号，合并追踪多个已保存账号的 Token 用量，并分别管理各账号的额度。（#523）
+- **Volcengine Agent Plan：** 在 Coding Plan 之外显示 5 小时、每日、每周和每月额度；若 Agent Plan 位于其他账号，也可单独设置凭证。（#490, #532）
+- **WSL 中的 Grok 额度：** Windows 上的 Grok 登录位于正在运行的 WSL 发行版中时，也能显示额度。（#530）
 
 ### 修复
-- **用量采集稳定性：** 重启用量采集时不再冻结界面，反复更改追踪工具也不会累积过时的采集任务和内存占用。（#486, #495）
-- **用量统计：** 正确计入推理 Tokens，DeepSeek Harness 压缩用量也会计入 Token 和成本统计，但不会增加回复次数。（#501）
-- **模型分解显示：** 无法识别的模型现在使用 Token Monitor 标记，而不是容易被误认为供应商图标的圆点；备用颜色也会与真实供应商保持区分。
+- **Windows 启动：** 修复近期版本在部分 Windows 系统上可能无法正常启动的问题。（#522）
+- **Trae CN Credits：** 未使用的积分包可正常显示余额，并忽略没有积分额度的功能权益。（#515）
+- **设备 ID 重置：** 清空自定义设备 ID 后，重启时会恢复为按主机名自动生成的 ID，确保同步视图继续匹配本机设备。（#441）
 <!-- app-update-notes:zh:end -->
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe)（推荐）
-- **Windows 便携版** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe)（免安装）
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.49.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.49.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-x64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-Setup-0.49.0.exe)（推荐）
+- **Windows 便携版** — [Token-Monitor-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.exe)（免安装）
+- **Linux x64** — [Token-Monitor-0.49.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.AppImage)
 
 <details>
 <summary><strong>首次启动与其他说明</strong></summary>
@@ -113,7 +107,7 @@ https://github.com/junhoyeo/tokscale
 ---
 
 <details>
-<summary><strong>Full Changelog:</strong> <a href="https://github.com/Javis603/token-monitor/compare/v0.47.0...v0.48.0">v0.47.0...v0.48.0</a></summary>
+<summary><strong>Full Changelog:</strong> <a href="https://github.com/Javis603/token-monitor/compare/v0.48.0...v0.49.0">v0.48.0...v0.49.0</a></summary>
 
 <!-- github-generated-release-notes -->
 
@@ -131,26 +125,23 @@ https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh-TW:start -->
 ### 新增
-- **Kimi Work 用量：** 新增 Kimi Work 用量追蹤，並在用量分解中顯示可用的專案歸因。（#453）
-- **Trae CN Credits：** 支援在 AI 工具額度中查看 Trae CN 與 TRAE SOLO Credits。（#483）
-- **Sub2API 帳戶：** 在 Third-party APIs 新增 Sub2API 相容預設方案，可查看美元餘額、本月支出與累計支出。（#476）
-
-### 改進
-- **用量來源相容性：** 改進 Antigravity 最新時間戳與大型 Cursor 匯出的處理。（#501）
+- **Cursor 自動偵測與多帳號：** 自動偵測本機 Cursor 桌面版已登入的帳號、合併追蹤多個已儲存帳號的 Token 用量，並分別管理各帳號的額度。（#523）
+- **Volcengine Agent Plan：** 在 Coding Plan 之外顯示 5 小時、每日、每週與每月額度；若 Agent Plan 位於其他帳號，也可另行設定憑證。（#490, #532）
+- **WSL 中的 Grok 額度：** Windows 上的 Grok 登入位於正在執行的 WSL 發行版時，也能顯示額度。（#530）
 
 ### 修復
-- **用量收集穩定性：** 重新啟動用量收集時不再凍結介面，反覆變更追蹤工具也不會累積過時的收集工作和記憶體佔用。（#486, #495）
-- **用量統計：** 正確計入推理 Tokens，DeepSeek Harness 壓縮用量也會計入 Token 與成本統計，但不會增加回覆次數。（#501）
-- **模型分解顯示：** 無法識別的模型現在使用 Token Monitor 標記，而不是容易被誤認為供應商圖示的圓點；備用顏色也會與真實供應商保持區分。
+- **Windows 啟動：** 修復近期版本在部分 Windows 系統上可能無法正常啟動的問題。（#522）
+- **Trae CN Credits：** 未使用的點數包可正常顯示餘額，並忽略沒有點數額度的功能權益。（#515）
+- **裝置 ID 重設：** 清除自訂裝置 ID 後，重新啟動時會恢復為依主機名稱自動產生的 ID，讓同步檢視繼續正確對應本機裝置。（#441）
 <!-- app-update-notes:zh-TW:end -->
 
 ## 下載
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows 安裝版** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe)（推薦）
-- **Windows 便攜版** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe)（免安裝）
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.49.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.49.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-x64.dmg)
+- **Windows 安裝版** — [Token-Monitor-Setup-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-Setup-0.49.0.exe)（推薦）
+- **Windows 便攜版** — [Token-Monitor-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.exe)（免安裝）
+- **Linux x64** — [Token-Monitor-0.49.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.AppImage)
 
 </details>
 
@@ -163,26 +154,23 @@ https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:ko:start -->
 ### 추가
-- **Kimi Work 사용량:** Kimi Work 사용량을 추적하고 사용량 내역에 확인 가능한 프로젝트 귀속을 표시합니다. (#453)
-- **Trae CN Credits:** AI Tool Limits에서 Trae CN 및 TRAE SOLO Credits를 추적합니다. (#483)
-- **Sub2API 계정:** Third-party APIs에 Sub2API 호환 프리셋을 추가해 USD 잔액과 월간·누적 지출을 표시합니다. (#476)
-
-### 개선
-- **사용량 소스 호환성:** 최신 Antigravity 타임스탬프와 대규모 Cursor 내보내기를 더 안정적으로 처리합니다. (#501)
+- **Cursor 자동 감지 및 다중 계정:** 로컬 Cursor 데스크톱 앱에 로그인된 계정을 자동으로 감지하고 여러 저장 계정의 토큰 사용량을 합산해 추적하며, 계정별 한도를 관리할 수 있습니다. (#523)
+- **Volcengine Agent Plan:** Coding Plan과 함께 5시간·일일·주간·월간 할당량을 표시하며, Agent Plan이 다른 계정에 있으면 별도 자격 증명을 설정할 수 있습니다. (#490, #532)
+- **WSL의 Grok 한도:** Windows에서 실행 중인 WSL 배포판에 Grok 로그인이 있으면 해당 한도를 표시합니다. (#530)
 
 ### 수정
-- **사용량 수집 안정성:** 사용량 수집을 다시 시작해도 인터페이스가 멈추지 않으며, 추적 도구를 반복해서 변경해도 오래된 작업이나 메모리가 누적되지 않습니다. (#486, #495)
-- **사용량 합계:** 추론 토큰을 올바르게 합산하고 DeepSeek Harness 압축을 토큰 및 비용 합계에 포함하되 답변 수는 늘리지 않습니다. (#501)
-- **모델 내역 표시:** 인식할 수 없는 모델에 공급자처럼 보이는 점 대신 Token Monitor 마크를 표시하고, 대체 색상도 실제 공급자와 겹치지 않게 합니다.
+- **Windows 시작:** 일부 Windows 시스템에서 최근 버전이 정상적으로 시작되지 않을 수 있는 문제를 수정했습니다. (#522)
+- **Trae CN Credits:** 사용하지 않은 크레딧 팩의 잔액을 표시하고 크레딧 한도가 없는 기능 전용 권한은 제외합니다. (#515)
+- **기기 ID 재설정:** 사용자 지정 기기 ID를 지우면 재시작 후 호스트명 기반 자동 ID로 돌아가 동기화 화면에서 로컬 기기를 계속 올바르게 찾습니다. (#441)
 <!-- app-update-notes:ko:end -->
 
 ## 다운로드
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows 설치 버전** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe) (권장)
-- **Windows 포터블 버전** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe) (설치 필요 없음)
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.49.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.49.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-x64.dmg)
+- **Windows 설치 버전** — [Token-Monitor-Setup-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-Setup-0.49.0.exe) (권장)
+- **Windows 포터블 버전** — [Token-Monitor-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.exe) (설치 필요 없음)
+- **Linux x64** — [Token-Monitor-0.49.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.AppImage)
 
 </details>
 
@@ -195,26 +183,23 @@ https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:ja:start -->
 ### 追加
-- **Kimi Workの使用量：** Kimi Workの使用量を追跡し、使用量の内訳に取得できるプロジェクト情報を表示します。（#453）
-- **Trae CN Credits：** AI Tool LimitsでTrae CNとTRAE SOLOのCreditsを追跡できます。（#483）
-- **Sub2APIアカウント：** Third-party APIsにSub2API互換プリセットを追加し、USD残高と月間・累計支出を表示します。（#476）
-
-### 改善
-- **使用量ソースの互換性：** 最新のAntigravityのタイムスタンプと大規模なCursorエクスポートをより安定して処理します。（#501）
+- **Cursorの自動検出と複数アカウント：** ローカルのCursorデスクトップアプリでサインイン中のアカウントを自動検出し、保存済みの複数アカウントのトークン使用量を合算して追跡しながら、アカウントごとの上限を管理できます。（#523）
+- **Volcengine Agent Plan：** Coding Planと並べて5時間・日次・週次・月次の割り当てを表示し、Agent Planが別アカウントにある場合は専用の認証情報も設定できます。（#490, #532）
+- **WSLのGrok上限：** Windowsで実行中のWSLディストリビューションにGrokのログイン情報がある場合も上限を表示します。（#530）
 
 ### 修正
-- **使用量収集の安定性：** 使用量収集を再起動しても画面が停止せず、追跡するツールを繰り返し変更しても古い処理やメモリが蓄積しません。（#486, #495）
-- **使用量の合計：** 推論トークンを正しく集計し、DeepSeek Harnessの圧縮をトークンとコストの合計に含めつつ、返信数は増やしません。（#501）
-- **モデル内訳の表示：** 認識できないモデルにベンダー風のドットではなくToken Monitorマークを表示し、フォールバック色も実際のベンダーと重ならないようにします。
+- **Windowsの起動：** 一部のWindows環境で最近のバージョンが正常に起動しないことがある問題を修正しました。（#522）
+- **Trae CN Credits：** 未使用のクレジットパックの残高を表示し、クレジット上限のない機能専用権限は除外します。（#515）
+- **デバイスIDのリセット：** カスタムのデバイスIDを消去すると、再起動後にホスト名ベースの自動IDへ戻り、同期画面でローカルデバイスを正しく照合できます。（#441）
 <!-- app-update-notes:ja:end -->
 
 ## ダウンロード
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows インストーラー** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe)（推奨）
-- **Windows ポータブル版** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe)（インストール不要）
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.49.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.49.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0-x64.dmg)
+- **Windows インストーラー** — [Token-Monitor-Setup-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-Setup-0.49.0.exe)（推奨）
+- **Windows ポータブル版** — [Token-Monitor-0.49.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.exe)（インストール不要）
+- **Linux x64** — [Token-Monitor-0.49.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.49.0/Token-Monitor-0.49.0.AppImage)
 
 </details>
 
