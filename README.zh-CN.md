@@ -74,6 +74,7 @@ Token Monitor 对 Token 用量、账户额度和 session 明细分别支持：
 <br>
 
 - 上表为默认路径。Token Monitor 与 Tokscale 遵循相同的环境变量覆盖：`~/.local/share/` 下的路径跟随 `$XDG_DATA_HOME`，各工具另有 `$CODEX_HOME`、`$GROK_HOME`、`$HERMES_HOME`、`$KIMI_CODE_HOME`、`$LM_STUDIO_HOME`、`$DSH_HOME`、`$REASONIX_STATE_HOME`、`$REASONIX_HOME` 以及 `$CLINE_*` 系列。
+- LM Studio 追踪目前仅涵盖服务器日志中记录的 OpenAI 兼容 `/v1/chat/completions` 和 `/v1/responses` 请求。通过 LM Studio 内置 Chat 界面发起的对话，以及原生 `/api/v1/chat` 请求均不包括在内。
 
 - Command Code transcript 不包含实际 Token 数或每条消息的模型信息。Token 用量根据 transcript 文本估算；模型归属与推算成本可能反映当前配置的模型，而不是每次请求当时实际使用的模型。
 - Cursor 缓存来自 Cursor 的账号层级用量导出，因此同时涵盖 Cursor IDE 和 Cursor CLI。Token Monitor 会自动检测 Cursor 桌面版已登录的账号，也可在设置中手动新增。缓存过期时会自动重新同步，但刚完成的 session 可能需要几分钟才会出现在 Cursor 控制台，因此用量会在同步后更新，而非即时显示。

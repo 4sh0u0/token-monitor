@@ -74,6 +74,7 @@ Token Monitor supports token usage, account-limit checks, and session details se
 <br>
 
 - Paths above are the defaults. Token Monitor follows the same environment overrides Tokscale does — `$XDG_DATA_HOME` for the `~/.local/share/` roots, and per-tool variables such as `$CODEX_HOME`, `$GROK_HOME`, `$HERMES_HOME`, `$KIMI_CODE_HOME`, `$LM_STUDIO_HOME`, `$DSH_HOME`, `$REASONIX_STATE_HOME`, `$REASONIX_HOME` and the `$CLINE_*` family.
+- LM Studio tracking currently covers OpenAI-compatible `/v1/chat/completions` and `/v1/responses` requests recorded in server logs. Conversations started from LM Studio's built-in Chat UI and native `/api/v1/chat` requests are not included.
 
 - Command Code transcripts do not contain actual token counts or per-message model metadata. Token usage is estimated from transcript text, while model attribution and derived cost may reflect the currently configured model rather than the model historically used for each request.
 - The Cursor cache comes from Cursor's account-level usage export, so it covers Cursor IDE and Cursor CLI alike. Token Monitor automatically detects accounts signed in through the Cursor desktop app and also supports adding accounts manually in Settings. The cache re-syncs automatically when stale, but newly finished sessions can take a few minutes to reach Cursor's dashboard, so usage updates on sync rather than instantly.

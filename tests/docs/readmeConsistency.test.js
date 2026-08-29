@@ -169,6 +169,22 @@ test('localized READMEs list the same supported tools', () => {
   }
 });
 
+test('localized READMEs disclose the LM Studio server-log tracking boundary', () => {
+  for (const file of localizedReadmes) {
+    const text = read(file);
+    const rowEnd = text.indexOf('\n', text.indexOf('tools-icon/lmstudio.png'));
+    const detailsStart = text.indexOf('<details>', rowEnd);
+    const detailsEnd = text.indexOf('</details>', detailsStart);
+    const beforeDetails = text.slice(rowEnd, detailsStart);
+    const notes = text.slice(detailsStart, detailsEnd);
+
+    assert.doesNotMatch(beforeDetails, /\/api\/v1\/chat/, file);
+    assert.match(notes, /\/v1\/chat\/completions/, file);
+    assert.match(notes, /\/v1\/responses/, file);
+    assert.match(notes, /\/api\/v1\/chat/, file);
+  }
+});
+
 // The provider list is ordered to match the README table, so a reader comparing
 // the two sees the same sequence. Nothing enforced that before: the order test
 // pins LIMIT_PROVIDERS against its own hard-coded copy and the table test pins
