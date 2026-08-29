@@ -110,6 +110,11 @@ function normalizeWindowLabel(value) {
   return clean.length <= 32 ? clean : '';
 }
 
+function normalizeWindowLimitId(value) {
+  const raw = String(value || '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  return raw && raw.length <= 128 ? raw : '';
+}
+
 function normalizeWindowDetail(value) {
   const raw = String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
   return raw.slice(0, 96);
@@ -163,10 +168,13 @@ function normalizeLimitWindow(input) {
   const limit = numberOrNull(input.limit);
   const remaining = numberOrNull(input.remaining);
   const usedPercent = percentFromWindow(input, used, limit);
+  const limitId = normalizeWindowLimitId(input.limitId ?? input.limit_id);
   return {
     kind,
     ...(metric ? { metric } : {}),
     ...(source ? { source } : {}),
+    ...(limitId ? { limitId } : {}),
+    ...(input.additional === true ? { additional: true } : {}),
     label: normalizeWindowLabel(input.label || input.displayLabel || input.title),
     used,
     limit,
@@ -407,6 +415,12 @@ function cursorWindowRank(window) {
   return 3;
 }
 
+function codexWindowRank(window) {
+  const kind = String(window?.kind || '');
+  const group = window?.additional === true ? 1 : 0;
+  return group * WINDOW_ORDER.length + WINDOW_ORDER.indexOf(kind);
+}
+
 function normalizeLimitProvider(input) {
   if (!input || typeof input !== 'object') return null;
   const provider = normalizeProviderId(input.provider);
@@ -433,6 +447,10 @@ function normalizeLimitProvider(input) {
     // followed by the optional Grok Bot allowance and on-demand spend. Generic
     // kind ordering would incorrectly put the weekly Grok row before both pools.
     windows.sort((a, b) => cursorWindowRank(a) - cursorWindowRank(b));
+  } else if (provider === 'codex') {
+    // Keep canonical lanes ahead of explicitly marked additional buckets. The
+    // display name is intentionally not an identity signal.
+    windows.sort((a, b) => codexWindowRank(a) - codexWindowRank(b));
   } else {
     windows.sort((a, b) => WINDOW_ORDER.indexOf(a.kind) - WINDOW_ORDER.indexOf(b.kind));
   }

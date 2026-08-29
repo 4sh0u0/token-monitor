@@ -3733,6 +3733,43 @@ function windowsForKind(provider, kind) {
   return (provider?.windows || []).filter((window) => window.kind === kind);
 }
 
+function codexCanonicalWindow(provider, kind) {
+  return windowsForKind(provider, kind).find((window) => window?.additional !== true) || null;
+}
+
+function codexAdditionalWindowLabel(window, siblingWindows = []) {
+  const name = String(window?.label || '').trim();
+  const period = codexAdditionalWindowPeriodLabel(window);
+  if (!name) return period || 'Additional limit';
+  const normalizedName = name.toLowerCase();
+  const matchingWindowCount = siblingWindows.filter((candidate) => (
+    String(candidate?.label || '').trim().toLowerCase() === normalizedName
+  )).length;
+  return matchingWindowCount > 1 && period ? `${name} · ${period}` : name;
+}
+
+function codexAdditionalWindowPeriodLabel(window) {
+  const minutes = Number(window?.windowMinutes);
+  if (Number.isFinite(minutes) && minutes > 0 && Number.isInteger(minutes)) {
+    if (minutes === 30 * 24 * 60) return 'Monthly';
+    if (minutes % (7 * 24 * 60) === 0) {
+      const weeks = minutes / (7 * 24 * 60);
+      return weeks === 1 ? 'Weekly' : `${weeks}-week`;
+    }
+    if (minutes % (24 * 60) === 0) {
+      const days = minutes / (24 * 60);
+      return days === 1 ? 'Daily' : `${days}-day`;
+    }
+    if (minutes % 60 === 0) return `${minutes / 60}-hour`;
+    return `${minutes}-minute`;
+  }
+  if (window?.kind === 'daily') return 'Daily';
+  if (window?.kind === 'weekly') return 'Weekly';
+  if (window?.kind === 'billing') return 'Monthly';
+  if (window?.kind === 'session') return 'Session';
+  return '';
+}
+
 function antigravityQuotaGroups(provider) {
   const entries = (provider?.windows || [])
     .filter((window) => window.kind === 'session' || window.kind === 'weekly')
@@ -4602,9 +4639,10 @@ function renderProviderWindows(provider, color) {
   const windows = document.createElement('div');
   windows.className = 'limit-windows';
   if (provider.provider === 'codex') {
-    const session = windowForKind(provider, 'session');
-    const weekly = windowForKind(provider, 'weekly');
-    const monthly = windowForKind(provider, 'billing');
+    const session = codexCanonicalWindow(provider, 'session');
+    const weekly = codexCanonicalWindow(provider, 'weekly');
+    const monthly = codexCanonicalWindow(provider, 'billing');
+    const additionalWindows = (provider.windows || []).filter((window) => window?.additional === true);
     if (session) {
       const sessionNode = limitWindowNode(session.label || 'Session', session, color, 0.95);
       if (!weekly && !monthly) sessionNode.classList.add('limit-window-wide');
@@ -4619,6 +4657,16 @@ function renderProviderWindows(provider, color) {
       const monthlyNode = limitWindowNode(monthly.label || 'Monthly', monthly, color, 0.68);
       monthlyNode.classList.add('limit-window-wide');
       windows.append(monthlyNode);
+    }
+    for (const additional of additionalWindows) {
+      const additionalNode = limitWindowNode(
+        codexAdditionalWindowLabel(additional, additionalWindows),
+        { ...additional, label: '' },
+        color,
+        0.78
+      );
+      additionalNode.classList.add('limit-window-wide');
+      windows.append(additionalNode);
     }
     const resetNode = codexResetCreditsNode(provider.resetCredits);
     if (resetNode) windows.append(resetNode);
