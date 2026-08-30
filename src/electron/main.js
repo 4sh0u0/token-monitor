@@ -324,6 +324,10 @@ const {
   normalizeWindowsBackdropMode
 } = require('./windowsBackdropMode');
 const { applyWindowsAccentBlur } = require('./windowsBackdrop');
+const {
+  attachNativeMaterialVisibility,
+  syncNativeMaterialVisibility
+} = require('./nativeMaterialVisibility');
 
 if (!app.isPackaged) loadDotEnv();
 
@@ -380,7 +384,9 @@ const DEFAULT_HOME_MODULE_LIST = ['limits', 'tool', 'device', 'model', 'trends']
 const TRAY_OPEN_VIEW_IDS = new Set(['home', 'project', 'session', 'limits', 'trends', 'status']);
 
 let mainWindow = null;
+let mainWindowNativeBlurEnabled = false;
 let dashboardWindow = null;
+let dashboardWindowNativeBlurEnabled = false;
 let settingsPath = null;
 let settings = null;
 let claudeWebCookieMutationRevision = 0;
@@ -1804,6 +1810,11 @@ function sendFloatingBubbleState() {
   try { mainWindow.webContents.send('floatingBubble:state', floatingBubblePayload()); } catch (_) {}
 }
 
+function sendMainWindowVisibility(win = mainWindow) {
+  if (!win || win !== mainWindow || win.isDestroyed() || win.webContents.isDestroyed()) return;
+  win.webContents.send('window:visibility', win.isVisible() && !win.isMinimized());
+}
+
 function stopFloatingBubbleAutoCollapseTimer() {
   if (floatingBubbleAutoCollapseTimer) clearTimeout(floatingBubbleAutoCollapseTimer);
   floatingBubbleAutoCollapseTimer = null;
@@ -2473,22 +2484,18 @@ function nativeBlurEnabled(source = settings) {
   return floatingBubbleNativeGlassEnabled(source);
 }
 
-function keepNativeBlurActive() {
-  if (!mainWindow) return;
-  if (!nativeBlurEnabled()) return;
-  if (process.platform === 'darwin' && typeof mainWindow.setVisualEffectState === 'function') {
-    mainWindow.setVisualEffectState('active');
-  }
-}
-
 function applyNativeMaterial(source = settings) {
-  if (!mainWindow) return;
   const enabled = nativeBlurEnabled(source);
-  if (process.platform === 'darwin' && typeof mainWindow.setVibrancy === 'function') {
-    mainWindow.setVibrancy(enabled ? 'hud' : null);
-    if (typeof mainWindow.setVisualEffectState === 'function') {
-      mainWindow.setVisualEffectState(enabled ? 'active' : 'inactive');
-    }
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindowNativeBlurEnabled !== enabled) {
+    mainWindowNativeBlurEnabled = enabled;
+    syncNativeMaterialVisibility(mainWindow, enabled);
+  }
+  // This also runs for every appearance slider preview and floating-bubble
+  // transition, so re-applying an unchanged material would rebuild its native
+  // effect view for nothing.
+  if (dashboardWindow && !dashboardWindow.isDestroyed() && dashboardWindowNativeBlurEnabled !== enabled) {
+    dashboardWindowNativeBlurEnabled = enabled;
+    syncNativeMaterialVisibility(dashboardWindow, enabled);
   }
   // Windows: backgroundMaterial is locked in at window creation. setBackgroundMaterial('none')
   // does not restore layered-window transparency once DWM SystemBackdrop has been engaged,
@@ -5821,7 +5828,13 @@ function createWindow(boundsOverride, options = {}) {
     // Keeps a popover unmaximizable across rebuilds, which never re-run enterTrayMode().
     ...(settings?.trayMode ? { maximizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
-    ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
+    // visualEffectState is construction-time only — Electron exposes no setter for
+    // it (verified: BrowserWindow has setVibrancy but no setVisualEffectState), and
+    // it is what keeps the material vibrant while the window is not key. Without
+    // it macOS falls back to followWindow and the glass greys out on blur. The
+    // vibrancy here is immediately re-evaluated by applyNativeMaterial() below, so
+    // a window that is not on screen still ends up with no material attached.
+    ...(process.platform === 'darwin' ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
     ...(process.platform === 'win32' && glass && !windowsAccent ? { backgroundMaterial: 'acrylic' } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -5830,6 +5843,7 @@ function createWindow(boundsOverride, options = {}) {
     }
   });
   mainWindow = win;
+  mainWindowNativeBlurEnabled = null;
   mainWindowChrome = { collapsedFloatingBubble };
   applyMacSpaceBehavior();
   applyWindowsChrome(win, { round: true });
@@ -5867,14 +5881,12 @@ function createWindow(boundsOverride, options = {}) {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
   });
   applyWindowSettings();
+  attachNativeMaterialVisibility(win, () => mainWindowNativeBlurEnabled);
   applyNativeMaterial();
-  keepNativeBlurActive();
   win.on('focus', () => {
     stopFloatingBubbleAutoCollapseTimer();
-    keepNativeBlurActive();
   });
   win.on('blur', () => {
-    keepNativeBlurActive();
     if (settings?.trayMode && !suppressNextBlurHide && !quitRequested) hidePopover();
     else if (!quitRequested) scheduleFloatingBubbleAutoCollapse();
   });
@@ -5893,7 +5905,21 @@ function createWindow(boundsOverride, options = {}) {
     }
   });
   win.webContents.on('before-input-event', handleZoomShortcut);
-  win.webContents.once('did-finish-load', sendFloatingBubbleState);
+  win.on('show', () => sendMainWindowVisibility(win));
+  win.on('hide', () => sendMainWindowVisibility(win));
+  win.on('minimize', () => sendMainWindowVisibility(win));
+  win.on('restore', () => sendMainWindowVisibility(win));
+  win.webContents.once('did-finish-load', () => {
+    sendFloatingBubbleState();
+    // Only report a window that is already on screen. A window still awaiting its
+    // reveal reports isVisible() === false, and loadWindowFile({ waitForContent })
+    // reveals it *because* the renderer painted real content — pushing "hidden"
+    // here stops that render, so the reveal could only come from the 2.5s
+    // fallback. Electron reports visibilityState 'visible' for a show:false
+    // window, which is the default the renderer keeps; trayMode instead seeds the
+    // hidden state through the windowHidden query flag.
+    if (win.isVisible()) sendMainWindowVisibility(win);
+  });
   loadWindowFile(win, {
     waitForContent: options.waitForContent === true,
     inactive: options.inactive === true,
@@ -5905,6 +5931,7 @@ function createWindow(boundsOverride, options = {}) {
         suppressInitialNumberAnimation: options.suppressInitialNumberAnimation === true,
         viewState: rendererViewState
       }),
+      ...(settings?.trayMode ? { windowHidden: '1' } : {}),
       ...(settings?.systemGlass === false ? { systemGlassDisabled: '1' } : {}),
       ...(windowsAccentFallback ? { windowsBackdropFallback: '1' } : {})
     }
@@ -5972,7 +5999,7 @@ function createDashboardWindow() {
     backgroundColor: '#00000000',
     ...appWindowIcon(),
     skipTaskbar: false,
-    ...(process.platform === 'darwin' && glass ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
+    ...(process.platform === 'darwin' ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
     ...(process.platform === 'win32' && glass ? { backgroundMaterial: 'acrylic' } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -5981,7 +6008,10 @@ function createDashboardWindow() {
     }
   });
   dashboardWindow = win;
+  dashboardWindowNativeBlurEnabled = glass;
   applyWindowsChrome(win, { round: true });
+  attachNativeMaterialVisibility(win, () => dashboardWindowNativeBlurEnabled);
+  syncNativeMaterialVisibility(win, dashboardWindowNativeBlurEnabled);
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -6003,7 +6033,10 @@ function createDashboardWindow() {
   win.on('unresponsive', () => {
     if (!win.isVisible()) discardFailedDashboardWindow(win, 'renderer became unresponsive while opening');
   });
-  win.on('closed', () => { dashboardWindow = null; });
+  win.on('closed', () => {
+    dashboardWindow = null;
+    dashboardWindowNativeBlurEnabled = false;
+  });
   win.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'))
     .catch((error) => discardFailedDashboardWindow(win, `load failed: ${error.message}`));
   return win;
