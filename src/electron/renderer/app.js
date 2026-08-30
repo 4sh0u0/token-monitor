@@ -204,6 +204,7 @@ const {
   toolIconsEnabled
 } = breakdownRenderPolicyApi;
 const deviceBreakdownApi = window.TokenMonitorDeviceBreakdown;
+const toolDetailsApi = window.TokenMonitorToolDetails;
 const usageAttributionRowsApi = window.TokenMonitorUsageAttributionRows;
 const projectRowsApi = window.TokenMonitorProjectRows;
 const sessionDetailApi = window.TokenMonitorSessionDetail;
@@ -316,6 +317,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
 }
 
 const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, windowVisible: new URLSearchParams(window.location.search).get('windowHidden') !== '1', stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, limitProviderSettingsExpanded: '', clientHealthExpanded: '', clientSources: clientSourceCacheApi.createClientSourceCache(), clientSourcesKey: '', clientSourcesRequest: 0, subscriptionEditingId: '', subscriptionTopUps: [], subscriptionFormBase: null, subscriptionEditorTransitionId: 0, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, systemDarkUi: false, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, hubBuildStatus: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, claudeAccountExpanded: false, claudePendingCheckSince: 0, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, thirdPartyProfileCount: 0, thirdPartyAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, volcengineAgentExpanded: false, qoderAccountExpanded: false, qoderPendingCheckSince: 0, commandcodeAccountExpanded: false, commandcodePendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+state.toolDetailMode = 'tokens';
 state.clientRescans = clientRescanStateApi.createClientRescanState({
   onChange: (clientId) => {
     if (state.clientHealthExpanded === clientId) refillOpenClientHealthPanel();
@@ -361,6 +363,9 @@ const els = {
 };
 Object.assign(els, {
   fixedPeriodMessage: document.getElementById('fixedPeriodMessage'),
+  toolDetailFooter: document.getElementById('toolDetailFooter'),
+  toolDetailFooterTokens: document.getElementById('toolDetailFooterTokens'),
+  toolDetailFooterModels: document.getElementById('toolDetailFooterModels'),
   monthPeriodMenu: document.getElementById('monthPeriodMenu'),
   monthPeriodTab: document.getElementById('monthPeriodTab'),
   periodMonthModeInput: document.getElementById('periodMonthModeInput')
@@ -493,12 +498,14 @@ function toggleAccordionRow(row) {
   const isExpanded = row.classList.contains('expanded');
   document.querySelectorAll('.row.expanded').forEach((other) => {
     other.classList.remove('expanded');
-    other.setAttribute('aria-expanded', 'false');
+    other.querySelector('.row-head')?.setAttribute('aria-expanded', 'false');
   });
   if (!isExpanded) {
     row.classList.add('expanded');
-    row.setAttribute('aria-expanded', 'true');
+    row.querySelector('.row-head')?.setAttribute('aria-expanded', 'true');
+    renderActiveToolDetail();
   }
+  renderToolDetailFooter();
 }
 
 function setAttributeIfChanged(element, name, value) {
@@ -506,16 +513,20 @@ function setAttributeIfChanged(element, name, value) {
 }
 
 document.addEventListener('click', (event) => {
+  if (event.target.closest('button, a, input, select, textarea')) return;
   const row = event.target.closest('.row.has-accordion');
   if (row) toggleAccordionRow(row);
 });
 
 document.addEventListener('keydown', (event) => {
-  const row = event.target.closest('.row.has-accordion');
+  const row = event.target.closest('.row-head')?.closest('.row.has-accordion');
   if (!row || (event.key !== 'Enter' && event.key !== ' ')) return;
   event.preventDefault();
   toggleAccordionRow(row);
 });
+
+els.toolDetailFooterTokens.addEventListener('click', () => setActiveToolDetailMode('tokens'));
+els.toolDetailFooterModels.addEventListener('click', () => setActiveToolDetailMode('models'));
 
 document.addEventListener('pointerdown', (event) => {
   if (state.viewSwitcherOpen && !event.target.closest('#viewSwitcher')) {
@@ -1407,6 +1418,7 @@ function animateTotalNumber(el, from, to, duration) {
 const rowNumberAnimations = new Map();
 const rowBarAnimations = new Map();
 const rowRenderFingerprints = new WeakMap();
+const toolDetailData = new WeakMap();
 const largeSessionContainmentScheduler = createAfterLayoutScheduler(
   typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null,
   typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : null
@@ -1787,7 +1799,122 @@ function renderDeviceAccordion(accordionInner, deviceDetail) {
   accordionInner.dataset.signature = signature;
 }
 
-function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, unclassifiedTokens, tokenDataUnavailable, sessionDetailAvailable }) {
+function appendAccordionMetricRow(content, labelText, valueText, percent = null, className = '') {
+  const item = document.createElement('div');
+  item.className = `accordion-row${className ? ` ${className}` : ''}`;
+  const label = document.createElement('div');
+  label.className = 'accordion-label';
+  const name = document.createElement('span');
+  name.className = 'accordion-item-name';
+  name.textContent = labelText;
+  label.append(name);
+  if (percent !== null) {
+    const share = document.createElement('span');
+    share.className = 'accordion-pct';
+    share.textContent = toolDetailsApi.detailPercentLabel(percent);
+    label.append(share);
+  }
+  const metric = document.createElement('div');
+  metric.className = 'accordion-value';
+  metric.textContent = valueText;
+  item.append(label, metric);
+  content.append(item);
+}
+
+function renderToolDetailAccordion(accordionInner, detail) {
+  toolDetailData.set(accordionInner, detail);
+  const modelRows = Array.isArray(detail.modelRows) ? detail.modelRows : [];
+  const hasTokenDetails = detail.tokenDetailsAvailable === true;
+  const hasModels = modelRows.length > 0;
+  const labels = {
+    tokens: t('dashboard.heatmap.tokens'),
+    models: t('views.model'),
+    cacheHit: t('dashboard.tooltip.inputCacheHit'),
+    cacheMiss: t('dashboard.tooltip.inputCacheMiss'),
+    output: t('dashboard.tooltip.output'),
+    unclassified: t('dashboard.tooltip.unclassified')
+  };
+  const tokenParts = hasTokenDetails
+    ? fixedPeriodRangesApi.tokenComponentBreakdown({
+      totalTokens: detail.value,
+      cacheReadTokens: detail.cacheReadTokens,
+      outputTokens: detail.outputTokens,
+      unclassifiedTokens: detail.unclassifiedTokens
+    })
+    : null;
+  const mode = state.toolDetailMode === 'models' && hasModels ? 'models' : 'tokens';
+  const signature = JSON.stringify([
+    detail.name,
+    detail.value,
+    mode,
+    labels,
+    tokenParts,
+    modelRows.map((model) => [model.key, model.value, model.cost, Math.round(model.percent)])
+  ]);
+  if (accordionInner.dataset.signature === signature) return;
+
+  const content = document.createElement('div');
+  content.className = 'accordion-content tool-detail-content';
+
+  if (mode === 'tokens' && hasTokenDetails) {
+    const inputPercentages = toolDetailsApi.tokenInputPercentages(tokenParts);
+    appendAccordionMetricRow(content, labels.cacheHit, formatNumber(tokenParts.cacheRead), inputPercentages.hit);
+    appendAccordionMetricRow(content, labels.cacheMiss, formatNumber(tokenParts.cacheMiss), inputPercentages.miss);
+    appendAccordionMetricRow(content, labels.output, formatNumber(tokenParts.output));
+    if (tokenParts.unclassified > 0) {
+      appendAccordionMetricRow(content, labels.unclassified, formatNumber(tokenParts.unclassified));
+    }
+  }
+
+  if (mode === 'models' && hasModels) {
+    for (const model of modelRows) {
+      const metric = model.value > 0 ? formatNumber(model.value) : formatCost(model.cost);
+      const label = model.unattributed === true ? labels.unclassified : model.name;
+      appendAccordionMetricRow(content, label, metric, model.value > 0 ? model.percent : null, 'tool-model-row');
+    }
+  }
+
+  accordionInner.replaceChildren(content);
+  accordionInner.dataset.signature = signature;
+}
+
+function activeToolDetail() {
+  if (visibleStatsSurface() !== 'main' || state.breakdown !== 'tool') return null;
+  const accordionInner = els.breakdown.querySelector('.row.expanded .row-accordion-inner');
+  const detail = accordionInner ? toolDetailData.get(accordionInner) : null;
+  if (!accordionInner || !detail) return null;
+  const hasTokenDetails = detail.tokenDetailsAvailable === true;
+  const hasModels = Array.isArray(detail.modelRows) && detail.modelRows.length > 0;
+  return hasTokenDetails && hasModels ? { accordionInner, detail } : null;
+}
+
+function renderActiveToolDetail() {
+  const active = activeToolDetail();
+  if (!active) return;
+  renderToolDetailAccordion(active.accordionInner, active.detail);
+}
+
+function renderToolDetailFooter() {
+  const active = activeToolDetail();
+  els.toolDetailFooter.classList.toggle('hidden', !active);
+  if (!active) return;
+  const mode = state.toolDetailMode;
+  els.toolDetailFooter.setAttribute('aria-label', active.detail.name);
+  els.toolDetailFooterTokens.textContent = t('dashboard.heatmap.tokens');
+  els.toolDetailFooterModels.textContent = t('views.model');
+  els.toolDetailFooterTokens.setAttribute('aria-pressed', String(mode === 'tokens'));
+  els.toolDetailFooterModels.setAttribute('aria-pressed', String(mode === 'models'));
+}
+
+function setActiveToolDetailMode(mode) {
+  const active = activeToolDetail();
+  if (!active || (mode !== 'tokens' && mode !== 'models') || state.toolDetailMode === mode) return;
+  state.toolDetailMode = mode;
+  renderToolDetailAccordion(active.accordionInner, active.detail);
+  renderToolDetailFooter();
+}
+
+function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, unclassifiedTokens, modelRows, tokenDataUnavailable, sessionDetailAvailable }) {
   const width = rowWidth(value, max);
   const isExpanded = row.classList.contains('expanded');
   row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}`;
@@ -1875,65 +2002,53 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, barBa
     }
     row.classList.add('has-accordion');
     if (isExpanded) row.classList.add('expanded');
-  } else if ((cacheReadTokens !== undefined || outputTokens !== undefined || unclassifiedTokens !== undefined) && value > 0 && kind !== 'session') {
-    const {
-      cacheRead,
-      cacheMiss,
-      output,
-      unclassified,
-      hitPct,
-      missPct
-    } = fixedPeriodRangesApi.tokenComponentBreakdown({
-      totalTokens: value,
+  } else if (kind !== 'session' && value > 0 && (
+    cacheReadTokens !== undefined
+    || outputTokens !== undefined
+    || unclassifiedTokens !== undefined
+    || (Array.isArray(modelRows) && modelRows.length > 0)
+  )) {
+    renderToolDetailAccordion(accordionInner, {
+      name,
+      value,
       cacheReadTokens,
       outputTokens,
-      unclassifiedTokens
+      unclassifiedTokens,
+      modelRows,
+      tokenDetailsAvailable: cacheReadTokens !== undefined || outputTokens !== undefined || unclassifiedTokens !== undefined
     });
-    
-    delete accordionInner.dataset.signature;
-    accordionInner.innerHTML = `
-      <div class="accordion-content">
-        <div class="accordion-row">
-          <div class="accordion-label">${t('dashboard.tooltip.inputCacheHit')} <span class="accordion-pct">${hitPct}%</span></div>
-          <div class="accordion-value">${formatNumber(cacheRead)}</div>
-        </div>
-        <div class="accordion-row">
-          <div class="accordion-label">${t('dashboard.tooltip.inputCacheMiss')} <span class="accordion-pct">${missPct}%</span></div>
-          <div class="accordion-value">${formatNumber(cacheMiss)}</div>
-        </div>
-        <div class="accordion-row">
-          <div class="accordion-label">${t('dashboard.tooltip.output')}</div>
-          <div class="accordion-value">${formatNumber(output)}</div>
-        </div>
-        ${unclassified > 0 ? `
-        <div class="accordion-row">
-          <div class="accordion-label">${t('dashboard.tooltip.unclassified')}</div>
-          <div class="accordion-value">${formatNumber(unclassified)}</div>
-        </div>` : ''}
-      </div>
-    `;
     row.classList.add('has-accordion');
     if (isExpanded) row.classList.add('expanded');
   } else {
     accordionInner.replaceChildren();
     delete accordionInner.dataset.signature;
+    delete accordionInner.dataset.detailMode;
     row.classList.remove('has-accordion');
     row.classList.remove('expanded');
   }
+  const rowHead = row.querySelector('.row-head');
   if (row.classList.contains('has-accordion')) {
-    if (row.tabIndex !== 0) row.tabIndex = 0;
-    setAttributeIfChanged(row, 'role', 'button');
-    setAttributeIfChanged(row, 'aria-expanded', String(row.classList.contains('expanded')));
+    if (row.hasAttribute('tabindex')) row.removeAttribute('tabindex');
+    if (row.hasAttribute('role')) row.removeAttribute('role');
+    if (row.hasAttribute('aria-expanded')) row.removeAttribute('aria-expanded');
+    if (row.hasAttribute('aria-label')) row.removeAttribute('aria-label');
+    if (rowHead.tabIndex !== 0) rowHead.tabIndex = 0;
+    setAttributeIfChanged(rowHead, 'role', 'button');
+    setAttributeIfChanged(rowHead, 'aria-expanded', String(row.classList.contains('expanded')));
     const tokenLabel = tokenDataUnavailable === true
       ? (t('detailTokenUnavailable') || 'Unavailable')
       : formatNumber(value);
     const costLabel = tokenDataUnavailable === true ? '' : `, ${t('dashboard.stat.totalCost')}: ${formatCost(cost || 0)}`;
-    setAttributeIfChanged(row, 'aria-label', `${name}, ${t('dashboard.stat.totalTokens')}: ${tokenLabel}${costLabel}`);
+    setAttributeIfChanged(rowHead, 'aria-label', `${name}, ${t('dashboard.stat.totalTokens')}: ${tokenLabel}${costLabel}`);
   } else {
     if (row.hasAttribute('tabindex')) row.removeAttribute('tabindex');
     if (row.hasAttribute('role')) row.removeAttribute('role');
     if (row.hasAttribute('aria-expanded')) row.removeAttribute('aria-expanded');
     if (row.hasAttribute('aria-label')) row.removeAttribute('aria-label');
+    if (rowHead.hasAttribute('tabindex')) rowHead.removeAttribute('tabindex');
+    if (rowHead.hasAttribute('role')) rowHead.removeAttribute('role');
+    if (rowHead.hasAttribute('aria-expanded')) rowHead.removeAttribute('aria-expanded');
+    if (rowHead.hasAttribute('aria-label')) rowHead.removeAttribute('aria-label');
   }
 }
 
@@ -2003,6 +2118,7 @@ function renderRows(rows, { incompleteHint = '' } = {}) {
     updateRow(row, { ...rowData, max });
     rowRenderFingerprints.set(row, fingerprint);
   }
+  renderToolDetailFooter();
   if (liveMotionSnapshot) animateBreakdownFrom(liveMotionSnapshot, { duration: 600 });
 }
 
@@ -2126,7 +2242,7 @@ function periodAttributionRows(period, values, costs) {
 
 function toolRowsForPeriod(period) {
   const clientRows = periodAttributionRows(period, period?.clients, period?.clientCosts)
-    .map(({ key: client, value, cost }) => ({ key: client, name: client === usageAttributionRowsApi.UNATTRIBUTED_KEY ? t('dashboard.tooltip.unclassified') : clientLabels[client] || client, value, cost, color: clientColors[client] || clientColors.default, stale: false, cacheReadTokens: attributionComponent(period, 'clientCacheReads', client), cacheWriteTokens: attributionComponent(period, 'clientCacheWrites', client), outputTokens: attributionComponent(period, 'clientOutputs', client), unclassifiedTokens: attributionComponent(period, 'clientUnclassifiedTokens', client) }));
+    .map(({ key: client, value, cost }) => ({ key: client, name: client === usageAttributionRowsApi.UNATTRIBUTED_KEY ? t('dashboard.tooltip.unclassified') : clientLabels[client] || client, value, cost, color: clientColors[client] || clientColors.default, stale: false, cacheReadTokens: attributionComponent(period, 'clientCacheReads', client), cacheWriteTokens: attributionComponent(period, 'clientCacheWrites', client), outputTokens: attributionComponent(period, 'clientOutputs', client), unclassifiedTokens: attributionComponent(period, 'clientUnclassifiedTokens', client), modelRows: toolDetailsApi.modelRowsForTool(period, client) }));
   if (clientRows.length > 0) {
     const usageSortedRows = clientRows.sort((a, b) => b.value - a.value);
     return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS, state.settings?.pinnedClients);
@@ -7245,6 +7361,7 @@ function render() {
     return;
   }
   if (!state.stats) return;
+  els.toolDetailFooter.classList.add('hidden');
   renderSessionUsageArchiveStatus();
   ensureBreakdownVisible();
   renderViewSwitcher();
