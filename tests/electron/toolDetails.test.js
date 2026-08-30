@@ -5,7 +5,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { tokenComponentBreakdown } = require('../../src/electron/renderer/fixedPeriodRanges');
-const { detailPercentLabel, modelRowsForTool, tokenInputPercentages } = require('../../src/electron/renderer/toolDetails');
+const {
+  detailPercentLabel,
+  modelRowsForTool,
+  tokenInputPercentages,
+  visibleModelRowsForTool
+} = require('../../src/electron/renderer/toolDetails');
 
 test('modelRowsForTool keeps the same model separated by tool and sorts usage', () => {
   const period = {
@@ -49,6 +54,30 @@ test('modelRowsForTool does not invent a remainder without any model attribution
     clients: { codex: 50 },
     clientCosts: { codex: 1 }
   }, 'codex'), []);
+});
+
+test('visibleModelRowsForTool hides only synthetic cost remainders that format as zero', () => {
+  const period = {
+    clients: { 'deepseek-harness': 100 },
+    clientCosts: { 'deepseek-harness': 1.000001 },
+    clientModels: { 'deepseek-harness': { 'deepseek-v4': 100 } },
+    clientModelCosts: { 'deepseek-harness': { 'deepseek-v4': 1 } }
+  };
+  const formatHkd = (value) => `HK$${(Number(value || 0) * 7.8).toFixed(4)}`;
+
+  assert.deepEqual(visibleModelRowsForTool(period, 'deepseek-harness', formatHkd), [
+    { key: 'deepseek-v4', name: 'deepseek-v4', value: 100, cost: 1, percent: 100, unattributed: false }
+  ]);
+
+  period.clientCosts['deepseek-harness'] = 1.01;
+  assert.deepEqual(visibleModelRowsForTool(period, 'deepseek-harness', formatHkd).at(-1), {
+    key: '__unattributed',
+    name: '__unattributed',
+    value: 0,
+    cost: 0.01,
+    percent: 0,
+    unattributed: true
+  });
 });
 
 test('detailPercentLabel does not present small positive shares as zero', () => {

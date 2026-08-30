@@ -41,6 +41,13 @@
       .sort((a, b) => b.value - a.value || b.cost - a.cost || a.name.localeCompare(b.name));
   }
 
+  function visibleModelRowsForTool(period, client, formatCost) {
+    return usageAttributionRowsApi.visibleAttributionRows(
+      modelRowsForTool(period, client),
+      formatCost
+    );
+  }
+
   function detailPercentLabel(value) {
     const percent = amount(value);
     if (percent > 0 && percent < 1) return '<1%';
@@ -57,5 +64,5 @@
     };
   }
 
-  return { detailPercentLabel, modelRowsForTool, tokenInputPercentages };
+  return { detailPercentLabel, modelRowsForTool, tokenInputPercentages, visibleModelRowsForTool };
 });
