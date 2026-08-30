@@ -5909,7 +5909,7 @@ function createWindow(boundsOverride, options = {}) {
   win.on('hide', () => sendMainWindowVisibility(win));
   win.on('minimize', () => sendMainWindowVisibility(win));
   win.on('restore', () => sendMainWindowVisibility(win));
-  win.webContents.once('did-finish-load', () => {
+  win.webContents.on('did-finish-load', () => {
     sendFloatingBubbleState();
     // Only report a window that is already on screen. A window still awaiting its
     // reveal reports isVisible() === false, and loadWindowFile({ waitForContent })
@@ -5917,7 +5917,9 @@ function createWindow(boundsOverride, options = {}) {
     // here stops that render, so the reveal could only come from the 2.5s
     // fallback. Electron reports visibilityState 'visible' for a show:false
     // window, which is the default the renderer keeps; trayMode instead seeds the
-    // hidden state through the windowHidden query flag.
+    // hidden state through the windowHidden query flag. Keep this listener for
+    // later loads too: Cmd+Shift+R retains that query flag, so a visible tray
+    // window needs its native visibility resynced after every renderer reload.
     if (win.isVisible()) sendMainWindowVisibility(win);
   });
   loadWindowFile(win, {

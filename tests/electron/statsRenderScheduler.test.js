@@ -197,18 +197,23 @@ test('native window visibility covers a tray window that has never been shown', 
   assert.match(app, /return document\.hidden \|\| !state\.windowVisible;/);
 });
 
-test('a window awaiting its content-ready reveal is not reported as hidden', () => {
+test('native visibility is resynced after every renderer load without blocking the initial reveal', () => {
   const main = fs.readFileSync(path.join(electronDir, 'main.js'), 'utf8');
   const createWindow = main.slice(main.indexOf('function createWindow('), main.indexOf('function handleZoomShortcut('));
-  const finishLoad = createWindow.slice(createWindow.indexOf("win.webContents.once('did-finish-load'"));
+  const visibilityHooks = createWindow.slice(
+    createWindow.indexOf("win.on('show'"),
+    createWindow.indexOf('loadWindowFile(win')
+  );
 
   // loadWindowFile({ waitForContent }) reveals on window:contentReady, which the
   // renderer only sends once it renders — and it does not render while it
   // believes it is hidden. Reporting the pre-reveal isVisible() === false here
   // would leave the 2.5s fallback as the only way a replaced window can appear.
-  assert.match(finishLoad, /if \(win\.isVisible\(\)\) sendMainWindowVisibility\(win\);/);
-  assert.doesNotMatch(finishLoad, /^\s*sendMainWindowVisibility\(win\);/m);
-  assert.match(main, /win\.on\('show', \(\) => sendMainWindowVisibility\(win\)\)/);
+  // The listener must also survive Cmd+Shift+R: tray-mode URLs retain
+  // windowHidden=1, so a visible reloaded renderer needs the native truth again.
+  assert.match(visibilityHooks, /win\.webContents\.on\('did-finish-load'/);
+  assert.match(visibilityHooks, /if \(win\.isVisible\(\)\) sendMainWindowVisibility\(win\);/);
+  assert.doesNotMatch(visibilityHooks, /^\s*sendMainWindowVisibility\(win\);/m);
 });
 
 test('a window revealed straight into Settings still reports painted content', () => {
