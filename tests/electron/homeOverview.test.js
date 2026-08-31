@@ -26,6 +26,7 @@ const {
   shouldRetryHomeHistory,
   homeHistoryFetchOutcome
 } = require('../../src/electron/renderer/homeOverview');
+const { limitProviderCompactWindows } = require('../../src/electron/renderer/limitProviderPresentation');
 
 const historyWithDays = { daily: [{ date: '2026-06-01', tokens: 10, cost: 1 }], monthly: [], summary: {} };
 const emptyHistory = { daily: [], monthly: [], summary: {} };
@@ -183,6 +184,39 @@ test('homeLimitAccounts keeps account windows together and sorts lowest remainin
   assert.deepEqual(rows[0].windows.map((window) => window.kind), ['session', 'weekly']);
   assert.deepEqual(rows[0].windows.map((window) => window.remainingPercent), [0, 43]);
   assert.equal(rows[1].lowestRemaining, 70);
+});
+
+test('Home keeps canonical Codex quotas ahead of named additional windows', () => {
+  const windows = [
+    { kind: 'session', label: '5-hour', remainingPercent: 40 },
+    { kind: 'weekly', label: 'Weekly', remainingPercent: 70 },
+    { kind: 'session', label: 'Session', limitId: 'gpt-reserve', additional: true, remainingPercent: 100 },
+    { kind: 'weekly', label: 'Weekly', limitId: 'gpt-reserve', additional: true, remainingPercent: 100 }
+  ];
+  const [row] = homeLimitAccounts([{
+    key: 'codex:0',
+    providerId: 'codex',
+    name: 'Codex',
+    windows: limitProviderCompactWindows('codex', windows)
+  }]);
+
+  assert.deepEqual(row.windows.map((window) => window.label), ['5-hour', 'Weekly']);
+});
+
+test('Home keeps Volcengine 5-hour and Daily as its two compact windows', () => {
+  const [row] = homeLimitAccounts([{
+    key: 'volcengine:0',
+    providerId: 'volcengine',
+    name: 'Agent Plan Medium',
+    windows: [
+      { kind: 'billing', remainingPercent: 40 },
+      { kind: 'weekly', remainingPercent: 50 },
+      { kind: 'daily', remainingPercent: 60 },
+      { kind: 'session', remainingPercent: 70 }
+    ]
+  }]);
+
+  assert.deepEqual(row.windows.map((window) => window.kind), ['session', 'daily']);
 });
 
 test('homeLimitAccounts keeps a real billing remaining percentage fallback', () => {

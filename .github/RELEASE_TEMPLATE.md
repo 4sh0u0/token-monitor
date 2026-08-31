@@ -4,26 +4,28 @@
 
 <!-- app-update-notes:en:start -->
 ### Added
-- **Kimi Work usage:** Track Kimi Work usage under Kimi and show available project attribution in the usage breakdown. (#453)
-- **Trae CN Credits:** Track Trae CN and TRAE SOLO Credits in AI Tool Limits. (#483)
-- **Sub2API accounts:** Add a Sub2API-compatible preset under Third-party APIs, with USD balance plus monthly and cumulative spend. (#476)
+- **Antigravity accounts:** Sign in with multiple Google accounts and refresh quotas while Antigravity is closed. (#564)
+- **Tool details:** Expand a tool to reveal the new “Tokens / Models” switch and choose between token details and per-model usage. (#554)
+- **Codex reset forecast:** Shows when quotas are predicted to reset. In Settings → AI Tool Limits, expand Codex and enable “Reset forecast” (off by default). (#555)
+- **Windows taskbar:** Adds an experimental option to restore the floating widget above an overlapping taskbar after switching apps. Disabled by default; brief flickering may occur. (#548)
 
 ### Improved
-- **Usage source compatibility:** Recent Antigravity timestamps and large Cursor exports are handled more reliably. (#501)
+- **Background performance:** Reduces rendering work while windows are hidden or minimized and views are inactive. (#386)
+- **Codex quota label:** Displays `gpt-reserve` as `Luna Reserve`. (#556)
 
 ### Fixed
-- **Usage collection stability:** Restarting usage collection no longer freezes the interface, while repeated tracking changes no longer accumulate obsolete work or memory growth. (#486, #495)
-- **Usage totals:** Reasoning tokens are counted correctly, and DeepSeek Harness compaction contributes to token and cost totals without increasing reply counts. (#501)
-- **Model breakdown clarity:** Unrecognized models now use the Token Monitor mark instead of a vendor-like dot, and fallback colors stay distinct from real vendors.
+- **Antigravity usage refresh:** Detects stale sync locks that block updates and offers a repair-and-rescan action. (#568)
+- **Floating bubble:** Fixes blurry graphics and Settings previews on high-density displays. (#559)
+- **Qoder CN Discord status:** Restores the missing Rich Presence icon when Qoder CN is the most-used tool.
 <!-- app-update-notes:en:end -->
 
 ## Download
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows Installer** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe) (recommended)
-- **Windows Portable** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe) (no install required)
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.51.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.51.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-x64.dmg)
+- **Windows Installer** — [Token-Monitor-Setup-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-Setup-0.51.0.exe) (recommended)
+- **Windows Portable** — [Token-Monitor-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.exe) (no install required)
+- **Linux x64** — [Token-Monitor-0.51.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.AppImage)
 
 <details>
 <summary><strong>First launch and other notes</strong></summary>
@@ -61,26 +63,28 @@ open-source: https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh:start -->
 ### 新增
-- **Kimi Work 用量：** 新增 Kimi Work 用量追踪，并在用量分解中显示可用的项目归因。（#453）
-- **Trae CN Credits：** 支持在 AI 工具额度中查看 Trae CN 和 TRAE SOLO Credits。（#483）
-- **Sub2API 账号：** 在 Third-party APIs 中新增 Sub2API 兼容预设，可查看美元余额、本月支出和累计支出。（#476）
+- **Antigravity 账号：** 支持登录多个 Google 账号，关闭 Antigravity 后仍可刷新额度。（#564）
+- **工具明细：** 展开工具后，可通过新增的“Tokens／模型”切换查看 Token 明细或各模型用量。（#554）
+- **Codex 重置预测：** 支持查看额度的预计重置时间。在“设置 → AI 工具额度”中展开 Codex，开启“重置预测”（默认关闭）。（#555）
+- **Windows 任务栏：** 新增实验性选项，在切换应用后将与任务栏重叠的浮动小组件移回上方。默认关闭，可能出现短暂闪烁。（#548）
 
 ### 改进
-- **用量来源兼容性：** 改进 Antigravity 最新时间戳和大型 Cursor 导出的处理。（#501）
+- **后台性能：** 减少窗口隐藏、最小化及视图未使用时的渲染开销。（#386）
+- **Codex 额度名称：** 将 `gpt-reserve` 显示为 `Luna Reserve`。（#556）
 
 ### 修复
-- **用量采集稳定性：** 重启用量采集时不再冻结界面，反复更改追踪工具也不会累积过时的采集任务和内存占用。（#486, #495）
-- **用量统计：** 正确计入推理 Tokens，DeepSeek Harness 压缩用量也会计入 Token 和成本统计，但不会增加回复次数。（#501）
-- **模型分解显示：** 无法识别的模型现在使用 Token Monitor 标记，而不是容易被误认为供应商图标的圆点；备用颜色也会与真实供应商保持区分。
+- **Antigravity 用量刷新：** 检测阻碍更新的残留同步锁，并提供修复后重新扫描的操作。（#568）
+- **悬浮小窗：** 修复高像素密度屏幕上图像及设置预览模糊的问题。（#559）
+- **Qoder CN Discord 状态：** 修复 Qoder CN 为用量最高的工具时，Rich Presence 缺少图标的问题。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe)（推荐）
-- **Windows 便携版** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe)（免安装）
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.51.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.51.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-x64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-Setup-0.51.0.exe)（推荐）
+- **Windows 便携版** — [Token-Monitor-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.exe)（免安装）
+- **Linux x64** — [Token-Monitor-0.51.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.AppImage)
 
 <details>
 <summary><strong>首次启动与其他说明</strong></summary>
@@ -113,7 +117,7 @@ https://github.com/junhoyeo/tokscale
 ---
 
 <details>
-<summary><strong>Full Changelog:</strong> <a href="https://github.com/Javis603/token-monitor/compare/v0.47.0...v0.48.0">v0.47.0...v0.48.0</a></summary>
+<summary><strong>Full Changelog:</strong> <a href="https://github.com/Javis603/token-monitor/compare/v0.50.0...v0.51.0">v0.50.0...v0.51.0</a></summary>
 
 <!-- github-generated-release-notes -->
 
@@ -131,26 +135,28 @@ https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh-TW:start -->
 ### 新增
-- **Kimi Work 用量：** 新增 Kimi Work 用量追蹤，並在用量分解中顯示可用的專案歸因。（#453）
-- **Trae CN Credits：** 支援在 AI 工具額度中查看 Trae CN 與 TRAE SOLO Credits。（#483）
-- **Sub2API 帳戶：** 在 Third-party APIs 新增 Sub2API 相容預設方案，可查看美元餘額、本月支出與累計支出。（#476）
+- **Antigravity 帳號：** 支援登入多個 Google 帳號，關閉 Antigravity 後仍可重新整理額度。（#564）
+- **工具明細：** 展開工具後，可透過新增的「Tokens／模型」切換查看 Token 明細或各模型用量。（#554）
+- **Codex 重置預測：** 支援查看額度的預計重置時間。在「設定 → AI 工具額度」中展開 Codex，開啟「重置預測」（預設關閉）。（#555）
+- **Windows 工作列：** 新增實驗性選項，在切換應用程式後將與工作列重疊的浮動小工具移回上方。預設關閉，可能出現短暫閃爍。（#548）
 
 ### 改進
-- **用量來源相容性：** 改進 Antigravity 最新時間戳與大型 Cursor 匯出的處理。（#501）
+- **背景效能：** 減少視窗隱藏、最小化及檢視未使用時的繪製負擔。（#386）
+- **Codex 額度名稱：** 將 `gpt-reserve` 顯示為 `Luna Reserve`。（#556）
 
 ### 修復
-- **用量收集穩定性：** 重新啟動用量收集時不再凍結介面，反覆變更追蹤工具也不會累積過時的收集工作和記憶體佔用。（#486, #495）
-- **用量統計：** 正確計入推理 Tokens，DeepSeek Harness 壓縮用量也會計入 Token 與成本統計，但不會增加回覆次數。（#501）
-- **模型分解顯示：** 無法識別的模型現在使用 Token Monitor 標記，而不是容易被誤認為供應商圖示的圓點；備用顏色也會與真實供應商保持區分。
+- **Antigravity 用量更新：** 偵測阻礙更新的殘留同步鎖，並提供修復後重新掃描的操作。（#568）
+- **懸浮小窗：** 修復高像素密度螢幕上圖像及設定預覽模糊的問題。（#559）
+- **Qoder CN Discord 狀態：** 修復 Qoder CN 為用量最高的工具時，Rich Presence 缺少圖示的問題。
 <!-- app-update-notes:zh-TW:end -->
 
 ## 下載
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows 安裝版** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe)（推薦）
-- **Windows 便攜版** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe)（免安裝）
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.51.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.51.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-x64.dmg)
+- **Windows 安裝版** — [Token-Monitor-Setup-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-Setup-0.51.0.exe)（推薦）
+- **Windows 便攜版** — [Token-Monitor-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.exe)（免安裝）
+- **Linux x64** — [Token-Monitor-0.51.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.AppImage)
 
 </details>
 
@@ -163,26 +169,28 @@ https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:ko:start -->
 ### 추가
-- **Kimi Work 사용량:** Kimi Work 사용량을 추적하고 사용량 내역에 확인 가능한 프로젝트 귀속을 표시합니다. (#453)
-- **Trae CN Credits:** AI Tool Limits에서 Trae CN 및 TRAE SOLO Credits를 추적합니다. (#483)
-- **Sub2API 계정:** Third-party APIs에 Sub2API 호환 프리셋을 추가해 USD 잔액과 월간·누적 지출을 표시합니다. (#476)
+- **Antigravity 계정:** 여러 Google 계정으로 로그인하고 Antigravity를 닫은 상태에서도 한도를 새로고침할 수 있습니다. (#564)
+- **도구 상세 내역:** 도구를 펼치면 새로 추가된 ‘토큰 / 모델’ 전환 버튼으로 토큰 상세 내역과 모델별 사용량을 선택해 볼 수 있습니다. (#554)
+- **Codex 리셋 예측:** 한도가 초기화될 것으로 예상되는 시점을 확인할 수 있습니다. 설정 → AI 도구 한도에서 Codex를 펼친 뒤 ‘리셋 예측’을 켜면 사용할 수 있습니다. 기본적으로 꺼져 있습니다. (#555)
+- **Windows 작업 표시줄:** 앱 전환 후 작업 표시줄과 겹친 플로팅 위젯을 다시 위로 올리는 실험적 옵션을 추가했습니다. 기본적으로 꺼져 있으며 잠시 깜박일 수 있습니다. (#548)
 
 ### 개선
-- **사용량 소스 호환성:** 최신 Antigravity 타임스탬프와 대규모 Cursor 내보내기를 더 안정적으로 처리합니다. (#501)
+- **백그라운드 성능:** 창이 숨겨지거나 최소화된 동안, 또는 화면을 사용하지 않을 때 렌더링 부담을 줄였습니다. (#386)
+- **Codex 한도 이름:** `gpt-reserve`를 `Luna Reserve`로 표시합니다. (#556)
 
 ### 수정
-- **사용량 수집 안정성:** 사용량 수집을 다시 시작해도 인터페이스가 멈추지 않으며, 추적 도구를 반복해서 변경해도 오래된 작업이나 메모리가 누적되지 않습니다. (#486, #495)
-- **사용량 합계:** 추론 토큰을 올바르게 합산하고 DeepSeek Harness 압축을 토큰 및 비용 합계에 포함하되 답변 수는 늘리지 않습니다. (#501)
-- **모델 내역 표시:** 인식할 수 없는 모델에 공급자처럼 보이는 점 대신 Token Monitor 마크를 표시하고, 대체 색상도 실제 공급자와 겹치지 않게 합니다.
+- **Antigravity 사용량 갱신:** 업데이트를 막는 오래된 동기화 잠금을 감지하고 복구 후 다시 스캔할 수 있도록 했습니다. (#568)
+- **플로팅 버블:** 고밀도 디스플레이에서 이미지와 설정 미리보기가 흐릿하게 보이던 문제를 수정했습니다. (#559)
+- **Qoder CN Discord 상태:** Qoder CN이 가장 많이 사용한 도구일 때 Rich Presence 아이콘이 표시되지 않던 문제를 수정했습니다.
 <!-- app-update-notes:ko:end -->
 
 ## 다운로드
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows 설치 버전** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe) (권장)
-- **Windows 포터블 버전** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe) (설치 필요 없음)
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.51.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.51.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-x64.dmg)
+- **Windows 설치 버전** — [Token-Monitor-Setup-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-Setup-0.51.0.exe) (권장)
+- **Windows 포터블 버전** — [Token-Monitor-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.exe) (설치 필요 없음)
+- **Linux x64** — [Token-Monitor-0.51.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.AppImage)
 
 </details>
 
@@ -195,26 +203,28 @@ https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:ja:start -->
 ### 追加
-- **Kimi Workの使用量：** Kimi Workの使用量を追跡し、使用量の内訳に取得できるプロジェクト情報を表示します。（#453）
-- **Trae CN Credits：** AI Tool LimitsでTrae CNとTRAE SOLOのCreditsを追跡できます。（#483）
-- **Sub2APIアカウント：** Third-party APIsにSub2API互換プリセットを追加し、USD残高と月間・累計支出を表示します。（#476）
+- **Antigravityアカウント：** 複数のGoogleアカウントでログインし、Antigravityを閉じたまま上限情報を更新できます。（#564）
+- **ツールの詳細：** ツールを展開すると、新しい「トークン／モデル」の切り替えが表示され、トークンの詳細とモデル別の使用量を選んで確認できます。（#554）
+- **Codexリセット予測：** 利用枠のリセット予想時刻を確認できます。「設定 → AIツール制限」でCodexを展開し、「リセット予測」をオンにすると利用できます。初期設定ではオフです。（#555）
+- **Windowsタスクバー：** アプリ切り替え後、タスクバーと重なったフローティングウィジェットを前面に戻す試験的なオプションを追加しました。初期設定ではオフで、一時的にちらつく場合があります。（#548）
 
 ### 改善
-- **使用量ソースの互換性：** 最新のAntigravityのタイムスタンプと大規模なCursorエクスポートをより安定して処理します。（#501）
+- **バックグラウンドの動作：** ウィンドウの非表示・最小化中や、使用していない画面の描画負荷を軽減しました。（#386）
+- **Codexの上限名：** `gpt-reserve`を`Luna Reserve`と表示します。（#556）
 
 ### 修正
-- **使用量収集の安定性：** 使用量収集を再起動しても画面が停止せず、追跡するツールを繰り返し変更しても古い処理やメモリが蓄積しません。（#486, #495）
-- **使用量の合計：** 推論トークンを正しく集計し、DeepSeek Harnessの圧縮をトークンとコストの合計に含めつつ、返信数は増やしません。（#501）
-- **モデル内訳の表示：** 認識できないモデルにベンダー風のドットではなくToken Monitorマークを表示し、フォールバック色も実際のベンダーと重ならないようにします。
+- **Antigravityの使用量更新：** 更新を妨げる古い同期ロックを検出し、修復して再スキャンできるようにしました。（#568）
+- **フローティングバブル：** 高密度ディスプレイで画像や設定のプレビューがぼやける問題を修正しました。（#559）
+- **Qoder CNのDiscordステータス：** Qoder CNが最も使用したツールの場合に、Rich Presenceのアイコンが表示されない問題を修正しました。
 <!-- app-update-notes:ja:end -->
 
 ## ダウンロード
 
-- **macOS Apple Silicon** — [Token-Monitor-0.48.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.48.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0-x64.dmg)
-- **Windows インストーラー** — [Token-Monitor-Setup-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-Setup-0.48.0.exe)（推奨）
-- **Windows ポータブル版** — [Token-Monitor-0.48.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.exe)（インストール不要）
-- **Linux x64** — [Token-Monitor-0.48.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.48.0/Token-Monitor-0.48.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.51.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.51.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0-x64.dmg)
+- **Windows インストーラー** — [Token-Monitor-Setup-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-Setup-0.51.0.exe)（推奨）
+- **Windows ポータブル版** — [Token-Monitor-0.51.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.exe)（インストール不要）
+- **Linux x64** — [Token-Monitor-0.51.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.51.0/Token-Monitor-0.51.0.AppImage)
 
 </details>
 

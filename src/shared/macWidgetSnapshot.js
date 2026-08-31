@@ -11,7 +11,7 @@ const KNOWN_LIMIT_STATUSES = new Set([
   'ok', 'disabled', 'notConfigured', 'unauthorized', 'rateLimited',
   'sourceRateLimited', 'unavailable', 'error'
 ]);
-const KNOWN_WINDOW_KINDS = new Set(['session', 'weekly', 'billing']);
+const KNOWN_WINDOW_KINDS = new Set(['session', 'daily', 'weekly', 'billing']);
 const CURRENCIES = Object.freeze({ USD: '$', TWD: 'NT$', HKD: 'HK$', CNY: '¥' });
 
 function finiteNumber(value, fallback = 0) {
@@ -169,6 +169,11 @@ function buildProviderBalance(provider) {
   return { amount, currency };
 }
 
+function isCanonicalCodexWindow(providerId, window) {
+  if (providerId !== 'codex') return true;
+  return window?.additional !== true;
+}
+
 function buildQuota(limits) {
   const providers = Array.isArray(limits?.providers) ? limits.providers : [];
   const candidates = [];
@@ -177,7 +182,11 @@ function buildQuota(limits) {
     const providerId = String(provider.provider || '').trim().toLowerCase();
     if (!KNOWN_LIMIT_PROVIDERS.has(providerId)) continue;
     const windows = Array.isArray(provider.windows)
-      ? provider.windows.map(buildLimitWindow).filter(Boolean).slice(0, 2)
+      ? provider.windows
+        .filter((window) => isCanonicalCodexWindow(providerId, window))
+        .map(buildLimitWindow)
+        .filter(Boolean)
+        .slice(0, 2)
       : [];
     const balance = buildProviderBalance(provider);
     const accountKey = String(provider.accountKey || '').trim();

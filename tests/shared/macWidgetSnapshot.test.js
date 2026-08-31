@@ -146,6 +146,56 @@ test('allowlists MiMo and DeepSeek balances and ranks numeric quota ahead of sta
   assert.equal(snapshot.quota[0].windows[0].remainingPercent, 2);
 });
 
+test('native widget keeps Volcengine 5-hour and Daily as its two compact windows', () => {
+  const snapshot = buildSnapshot({
+    limits: { providers: [{
+      provider: 'volcengine',
+      status: 'ok',
+      windows: [
+        { kind: 'session', remainingPercent: 70 },
+        { kind: 'daily', remainingPercent: 60 },
+        { kind: 'weekly', remainingPercent: 50 },
+        { kind: 'billing', remainingPercent: 40 }
+      ]
+    }] }
+  }, { now: NOW });
+
+  assert.deepEqual(snapshot.quota[0].windows.map((window) => window.kind), ['session', 'daily']);
+});
+
+test('native widget exports only canonical Codex quota windows', () => {
+  const cases = [
+    {
+      windows: [
+        { kind: 'weekly', remainingPercent: 80 },
+        { kind: 'session', label: 'Session', limitId: 'gpt-reserve', additional: true, remainingPercent: 10 }
+      ],
+      expectedKinds: ['weekly']
+    },
+    {
+      windows: [
+        { kind: 'session', remainingPercent: 70 },
+        { kind: 'weekly', label: 'Weekly', limitId: 'gpt-reserve', additional: true, remainingPercent: 20 }
+      ],
+      expectedKinds: ['session']
+    },
+    {
+      windows: [
+        { kind: 'session', label: '', limitId: 'gpt-reserve', additional: true, remainingPercent: 10 },
+        { kind: 'weekly', label: 'Weekly', limitId: 'gpt-reserve', additional: true, remainingPercent: 20 }
+      ],
+      expectedKinds: []
+    }
+  ];
+
+  for (const { windows, expectedKinds } of cases) {
+    const snapshot = buildSnapshot({
+      limits: { providers: [{ provider: 'codex', status: 'ok', windows }] }
+    }, { now: NOW });
+    assert.deepEqual(snapshot.quota[0].windows.map((window) => window.kind), expectedKinds);
+  }
+});
+
 test('shares the complete provider allowlist and preserves credit window display semantics', () => {
   const snapshot = buildSnapshot({
     limits: { providers: [

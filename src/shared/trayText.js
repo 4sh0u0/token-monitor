@@ -177,9 +177,19 @@
       : limitFillPercent(window?.remainingPercent, window?.usedPercent, false);
   }
 
+  function isCanonicalCodexWindow(provider, window) {
+    if (normalizedProviderId(provider?.provider) !== 'codex') return true;
+    return window?.additional !== true;
+  }
+
   function meteredWindows(provider, kind = '') {
     return (provider?.windows || []).filter((window) => {
-      if (!window || window.showMeter === false || (kind && window.kind !== kind)) return false;
+      if (
+        !window
+        || window.showMeter === false
+        || (kind && window.kind !== kind)
+        || !isCanonicalCodexWindow(provider, window)
+      ) return false;
       return remainingPercent(window, provider) !== null;
     });
   }
@@ -204,11 +214,12 @@
   function compactLimitSelection(provider) {
     if (!provider || provider.status !== 'ok' || provider.stale) return null;
     const session = preferredWindow(provider, 'session');
+    const daily = preferredWindow(provider, 'daily');
     const weekly = preferredWindow(provider, 'weekly');
     const billing = preferredWindow(provider, 'billing');
-    const primaryWindow = session || weekly || billing;
+    const primaryWindow = session || daily || weekly || billing;
     if (!primaryWindow) return null;
-    const secondaryWindow = session ? weekly : null;
+    const secondaryWindow = session ? (daily || weekly) : daily ? weekly : null;
     return {
       provider: normalizedProviderId(provider.provider),
       providerRecord: provider,
@@ -325,8 +336,8 @@
           // remains a compatibility surface.
           weeklyPercent: selection.secondaryWindow?.kind === 'weekly' ? secondaryPercent : null
         };
-        const candidateRank = ['session', 'weekly', 'billing'].indexOf(selection.primaryWindow.kind);
-        const pickRank = pick ? ['session', 'weekly', 'billing'].indexOf(pick.primaryWindow.kind) : Infinity;
+        const candidateRank = ['session', 'daily', 'weekly', 'billing'].indexOf(selection.primaryWindow.kind);
+        const pickRank = pick ? ['session', 'daily', 'weekly', 'billing'].indexOf(pick.primaryWindow.kind) : Infinity;
         if (!pick || candidateRank < pickRank || (candidateRank === pickRank && remaining < pick.remaining)) pick = candidate;
       }
       if (!pick) continue;

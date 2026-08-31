@@ -9,7 +9,8 @@ const VALID_STATUSES = new Set(['ok', 'disabled', 'notConfigured', 'unauthorized
 const VALID_SOURCES = new Set(['oauth', 'cli', 'web', 'rpc', 'local', 'api']);
 const VALID_LIMIT_WINDOW_SOURCES = new Set(['web', 'local']);
 const VALID_SOURCE_DETAILS = new Set(['app', 'cli', 'ide', 'managed', 'unknown']);
-const WINDOW_ORDER = ['session', 'weekly', 'billing'];
+const VALID_ACTION_REQUIREMENTS = new Set(['accountVerification']);
+const WINDOW_ORDER = ['session', 'daily', 'weekly', 'billing'];
 const CODEX_TRANSIENT_WINDOW_RETENTION_MS = 10 * 60 * 1000;
 const CODEX_TRANSIENT_PROVIDER_STATUSES = new Set(['unavailable', 'error', 'rateLimited', 'sourceRateLimited']);
 const MAX_ACCOUNT_LABEL_INPUT_LENGTH = 256;
@@ -48,6 +49,11 @@ function normalizeSource(value) {
 function normalizeSourceDetail(value) {
   const raw = String(value || '').trim().toLowerCase();
   return VALID_SOURCE_DETAILS.has(raw) ? raw : '';
+}
+
+function normalizeActionRequired(value) {
+  const raw = String(value || '').trim();
+  return VALID_ACTION_REQUIREMENTS.has(raw) ? raw : '';
 }
 
 function containsSensitiveAccountText(value) {
@@ -94,6 +100,7 @@ function normalizeAccountEmail(value) {
 function normalizeWindowKind(value) {
   const raw = String(value || '').trim().toLowerCase().replace(/[_\s-]+/g, '');
   if (raw === 'session') return 'session';
+  if (raw === 'daily') return 'daily';
   if (raw === 'weekly') return 'weekly';
   if (raw === 'billing' || raw === 'billingcycle' || raw === 'monthly') return 'billing';
   return null;
@@ -104,6 +111,11 @@ function normalizeWindowLabel(value) {
   if (!raw || raw.length > 32) return '';
   const clean = raw.replace(/[^a-z0-9 +._/-]/gi, '').replace(/\s+/g, ' ').trim();
   return clean.length <= 32 ? clean : '';
+}
+
+function normalizeWindowLimitId(value) {
+  const raw = String(value || '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  return raw && raw.length <= 128 ? raw : '';
 }
 
 function normalizeWindowDetail(value) {
@@ -159,10 +171,13 @@ function normalizeLimitWindow(input) {
   const limit = numberOrNull(input.limit);
   const remaining = numberOrNull(input.remaining);
   const usedPercent = percentFromWindow(input, used, limit);
+  const limitId = normalizeWindowLimitId(input.limitId ?? input.limit_id);
   return {
     kind,
     ...(metric ? { metric } : {}),
     ...(source ? { source } : {}),
+    ...(limitId ? { limitId } : {}),
+    ...(input.additional === true ? { additional: true } : {}),
     label: normalizeWindowLabel(input.label || input.displayLabel || input.title),
     used,
     limit,
@@ -395,6 +410,20 @@ function normalizeOpenCodeAccountKeyAliases(values, accountKey = '') {
     .slice(0, MAX_OPENCODE_ACCOUNT_KEY_ALIASES);
 }
 
+function cursorWindowRank(window) {
+  if (window.metric === 'spend') return 4;
+  if (window.label === 'Requests' || window.label === 'Cursor Models') return 0;
+  if (window.label === 'Other Models') return 1;
+  if (window.label === 'Grok Bot') return 2;
+  return 3;
+}
+
+function codexWindowRank(window) {
+  const kind = String(window?.kind || '');
+  const group = window?.additional === true ? 1 : 0;
+  return group * WINDOW_ORDER.length + WINDOW_ORDER.indexOf(kind);
+}
+
 function normalizeLimitProvider(input) {
   if (!input || typeof input !== 'object') return null;
   const provider = normalizeProviderId(input.provider);
@@ -416,6 +445,15 @@ function normalizeLimitProvider(input) {
     };
     windows.sort((a, b) => groupRank(a) - groupRank(b)
       || WINDOW_ORDER.indexOf(a.kind) - WINDOW_ORDER.indexOf(b.kind));
+  } else if (provider === 'cursor') {
+    // Cursor's official dashboard presents its two monthly model pools first,
+    // followed by the optional Grok Bot allowance and on-demand spend. Generic
+    // kind ordering would incorrectly put the weekly Grok row before both pools.
+    windows.sort((a, b) => cursorWindowRank(a) - cursorWindowRank(b));
+  } else if (provider === 'codex') {
+    // Keep canonical lanes ahead of explicitly marked additional buckets. The
+    // display name is intentionally not an identity signal.
+    windows.sort((a, b) => codexWindowRank(a) - codexWindowRank(b));
   } else {
     windows.sort((a, b) => WINDOW_ORDER.indexOf(a.kind) - WINDOW_ORDER.indexOf(b.kind));
   }
@@ -437,6 +475,7 @@ function normalizeLimitProvider(input) {
       currency: balance.currency
     }));
   }
+  const actionRequired = normalizeActionRequired(input.actionRequired);
   return {
     provider,
     ...(adapterId ? { adapterId } : {}),
@@ -451,6 +490,7 @@ function normalizeLimitProvider(input) {
     accountEmail: normalizeAccountEmail(input.accountEmail ?? input.email),
     workspaceKind: normalizeWorkspaceKind(input.workspaceKind),
     status: normalizeStatus(input.status),
+    ...(actionRequired ? { actionRequired } : {}),
     source: normalizeSource(input.source),
     sourceDetail: normalizeSourceDetail(input.sourceDetail ?? input.source_detail),
     updatedAt: normalizeIsoTimestamp(input.updatedAt) || normalizeIsoTimestamp(input.checkedAt),
@@ -504,7 +544,14 @@ function isProviderStale(provider, summary, device, staleAfterMs, nowMs) {
 }
 
 function providerAggregateKey(provider) {
-  return `${provider.provider}:${provider.accountKey || provider.status}`;
+  const identity = provider.accountKey || provider.status;
+  if (
+    provider.provider === 'antigravity'
+    && !(provider.accountEmail && isConfiguredProvider(provider))
+  ) {
+    return `${provider.provider}:${identity}:device:${provider.sourceDeviceId || ''}`;
+  }
+  return `${provider.provider}:${identity}`;
 }
 
 function isConfiguredProvider(provider) {
@@ -512,6 +559,10 @@ function isConfiguredProvider(provider) {
 }
 
 function providerCollapseKey(provider) {
+  // Antigravity account keys are portable only when a normalized Google email
+  // proves the identity. Anonymous RPC fallback keys are local observations,
+  // so keep the device scope established by providerAggregateKey().
+  if (provider.provider === 'antigravity') return providerAggregateKey(provider);
   if (
     (provider.provider === 'claude'
       || provider.provider === 'codex'
@@ -519,7 +570,11 @@ function providerCollapseKey(provider) {
       || provider.provider === 'openrouter'
       || provider.provider === 'thirdparty'
       || provider.provider === 'mimo'
-      || provider.provider === 'cursor')
+      || provider.provider === 'cursor'
+      // Volcengine's accountKey comes from the AK/SK and region, so it is the
+      // same on every platform. Two keys mean the Coding/Agent plan split, not
+      // one account hashed twice.
+      || provider.provider === 'volcengine')
     && isConfiguredProvider(provider)
   ) {
     return providerAggregateKey(provider);
@@ -858,7 +913,7 @@ function aggregateLimits(devices, staleAfterMs = 0, nowMs = Date.now()) {
         providersWithFreshObservations.add(provider.provider);
         if (isConfiguredProvider(provider)) providersWithFreshConfiguredAccounts.add(provider.provider);
       }
-      const key = providerAggregateKey(provider);
+      const key = providerAggregateKey(candidate);
       if (candidate.provider === 'opencode' && isConfiguredProvider(candidate)) {
         openCodeCandidates.push(candidate);
         continue;

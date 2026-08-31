@@ -24,6 +24,8 @@ const CREDENTIAL_SETTING_PATHS = Object.freeze({
   zaiTeamProjectId: ['providers', 'zaiTeam', 'projectId'],
   volcengineAccessKeyId: ['providers', 'volcengine', 'accessKeyId'],
   volcengineSecretAccessKey: ['providers', 'volcengine', 'secretAccessKey'],
+  volcengineAgentAccessKeyId: ['providers', 'volcengine', 'agentAccessKeyId'],
+  volcengineAgentSecretAccessKey: ['providers', 'volcengine', 'agentSecretAccessKey'],
   qoderCookie: ['providers', 'qoder', 'cookie'],
   traeAccessToken: ['providers', 'trae', 'accessToken'],
   traeDeviceId: ['providers', 'trae', 'deviceId'],
@@ -357,6 +359,31 @@ class CredentialStore {
     deleteValueAt(document.credentials, ['providers', 'mimo', 'accounts', accountId]);
     this.writeDocument(document);
     return !this.readMimoCredential(accountId);
+  }
+
+  readAntigravityCredential(id, document = this.readDocument()) {
+    const accountId = safeDynamicKey(id);
+    if (!accountId) return null;
+    const value = valueAt(document.credentials, ['providers', 'antigravity', 'accounts', accountId, 'credentials']);
+    return isObject(value) ? cloneJson(value) : null;
+  }
+
+  writeAntigravityCredential(id, credentials) {
+    const accountId = safeDynamicKey(id);
+    if (!accountId || !credentialValuePresent(credentials)) return false;
+    const document = this.readDocument();
+    setValueAt(document.credentials, ['providers', 'antigravity', 'accounts', accountId, 'credentials'], credentials);
+    this.writeDocument(document);
+    return true;
+  }
+
+  removeAntigravityCredential(id) {
+    const accountId = safeDynamicKey(id);
+    if (!accountId) return false;
+    const document = this.readDocument();
+    deleteValueAt(document.credentials, ['providers', 'antigravity', 'accounts', accountId]);
+    this.writeDocument(document);
+    return !this.readAntigravityCredential(accountId);
   }
 
   migrateLegacyMimoCredentials(entries) {

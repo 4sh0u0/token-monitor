@@ -76,7 +76,10 @@ const LIMIT_PROVIDER_SETTING_KEYS = Object.freeze({
   copilot: ['copilotApiToken', 'copilotEnterpriseHost'],
   zai: ['zaiApiKey', 'zaiApiRegion'],
   zaiteam: ['zaiTeamApiKey', 'zaiTeamOrganizationId', 'zaiTeamProjectId'],
-  volcengine: ['volcengineAccessKeyId', 'volcengineSecretAccessKey', 'volcengineRegion'],
+  volcengine: [
+    'volcengineAccessKeyId', 'volcengineSecretAccessKey', 'volcengineRegion',
+    'volcengineAgentAccessKeyId', 'volcengineAgentSecretAccessKey', 'volcengineAgentRegion'
+  ],
   qoder: ['qoderCookie', 'qoderSite'],
   trae: ['traeAccessToken', 'traeDeviceId'],
   // The desktop widget auto-detects WorkBuddy when the provider itself is
@@ -178,6 +181,9 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
     volcengineAccessKeyId: settings.volcengineAccessKeyId || '',
     volcengineSecretAccessKey: settings.volcengineSecretAccessKey || '',
     volcengineRegion: settings.volcengineRegion || '',
+    volcengineAgentAccessKeyId: settings.volcengineAgentAccessKeyId || '',
+    volcengineAgentSecretAccessKey: settings.volcengineAgentSecretAccessKey || '',
+    volcengineAgentRegion: settings.volcengineAgentRegion || '',
     qoderCookie: settings.qoderCookie || '',
     qoderSite: settings.qoderSite || 'global',
     traeAccessToken: settings.traeAccessToken
@@ -226,6 +232,7 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
     kimiWebAccessToken: settings.kimiWebAccessToken || '',
     ollamaCookie: settings.ollamaCookie || '',
     codexManagedAccounts: context.codexManagedAccounts ?? settings.codexManagedAccounts ?? [],
+    antigravityManagedAccounts: context.antigravityManagedAccounts ?? settings.antigravityManagedAccounts ?? [],
     mimoManagedAccounts: context.mimoManagedAccounts ?? settings.mimoManagedAccounts ?? [],
     thirdPartyProfiles: settings.thirdPartyProfiles || {}
   };

@@ -750,6 +750,7 @@ test('API key account entries share styling and Copilot uses the folded token en
   assert.doesNotMatch(css, /#copilotManualPanel > \.accordion-animation-inner/);
   assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#zaiApiRegionInput,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#qoderManualPanel select,\n#traeManualPanel input,\n#commandcodeManualPanel textarea,\n#ollamaManualPanel textarea,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#kimiManualPanel textarea,\n#copilotManualDetails input\s*\{[\s\S]*?font-size: 12px;/);
   assert.match(css, /#deepseekManualPanel input,\n#minimaxManualPanel input,\n#zaiManualPanel input,\n#zaiteamManualPanel input,\n#volcengineManualPanel input,\n#qoderManualPanel textarea,\n#traeManualPanel input,\n#commandcodeManualPanel textarea,\n#ollamaManualPanel textarea,\n#mimoManualPanel input,\n#mimoManualPanel textarea,\n#kimiManualPanel input,\n#kimiManualPanel textarea,\n#copilotManualDetails input\s*\{[\s\S]*?font-family: monospace;/);
+
   assert.match(css, /\.thirdparty-field :is\(input, select\)\s*\{[\s\S]*?font-size: 12px;/);
 });
 
@@ -801,14 +802,17 @@ test('Copilot account panel provides GitHub sign-in plus manual token fallback',
 test('Z.ai, Volcengine, Qoder, Trae, and Ollama account panels are exposed in settings', () => {
   const html = readRendererFile('index.html');
   assert.match(html, /<div id="zaiAccountGroup"[\s\S]*?<select id="zaiApiRegionInput">[\s\S]*?<input id="zaiApiKeyInput" type="password"[\s\S]*?<button id="zaiApiKeySubmit"[\s\S]*data-i18n="settings\.zai\.saveApiKey">/);
-  assert.match(html, /<div id="volcengineAccountGroup"[\s\S]*?data-i18n="settings\.volcengine\.accessKeyId">API key \/ Access key ID[\s\S]*?<input id="volcengineAccessKeyInput" type="password"[\s\S]*placeholder="ark-\.\.\. or AKLT\.\.\."[\s\S]*?<input id="volcengineSecretAccessKeyInput" type="password"[\s\S]*?<input id="volcengineRegionInput" type="text"[\s\S]*?<button id="volcengineCredentialsSubmit"[\s\S]*data-i18n="settings\.volcengine\.saveCredentials">/);
+  assert.match(html, /<div id="volcengineAccountGroup"[\s\S]*?data-i18n="settings\.volcengine\.accessKeyId">Access key ID \/ API key[\s\S]*?<input id="volcengineAccessKeyInput" type="password"[\s\S]*placeholder="AKLT\.\.\. or ark-\.\.\."[\s\S]*?<input id="volcengineSecretAccessKeyInput" type="password"[\s\S]*?<input id="volcengineRegionInput" type="text"[\s\S]*?<button id="volcengineCredentialsSubmit"[\s\S]*data-i18n="settings\.volcengine\.saveCredentials">/);
   assert.match(html, /<div id="qoderAccountGroup"[\s\S]*?<select id="qoderSiteInput">[\s\S]*?<textarea id="qoderCookieInput"[\s\S]*?<button id="qoderCookieSubmit"[\s\S]*data-i18n="settings\.qoder\.saveCookie">/);
-  assert.match(html, /<div id="traeAccountGroup"[\s\S]*?<input id="traeTokenInput" type="password"[\s\S]*?data-i18n-placeholder="settings\.trae\.tokenPlaceholder"[\s\S]*?<input id="traeDeviceIdInput" type="text"[\s\S]*?data-i18n-placeholder="settings\.trae\.deviceIdPlaceholder"[\s\S]*?<button id="traeTokenSubmit"[\s\S]*data-i18n="settings\.trae\.saveCredentials">/);
+  assert.match(html, /<div id="traeAccountGroup"[\s\S]*?<input id="traeTokenInput" type="password"[\s\S]*?<input id="traeDeviceIdInput" type="text"[\s\S]*?data-i18n-placeholder="settings\.trae\.deviceIdPlaceholder"[\s\S]*?<button id="traeTokenSubmit"[\s\S]*data-i18n="settings\.trae\.saveCredentials">/);
   const traeDetails = html.match(/<div id="traeSettingsDetails"[\s\S]*?<div id="traeErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
   assert.match(traeDetails, /<strong>1\.<\/strong> <span data-i18n="settings\.trae\.step1">/);
-  assert.match(traeDetails, /<strong>2\.<\/strong> <span data-i18n="settings\.trae\.step2">/);
-  assert.match(traeDetails, /<strong>3\.<\/strong> <span data-i18n="settings\.trae\.step3">/);
+  assert.match(traeDetails, /<strong>2\.<\/strong> <span data-i18n="settings\.trae\.step2Before">[\s\S]*?> www\.trae\.cn\.<br>/);
+  assert.match(traeDetails, /<strong>3\.<\/strong> <span data-i18n="settings\.trae\.step3Before">[\s\S]*?<code>Cloud-IDE-Token<\/code>[\s\S]*?<span data-i18n="settings\.trae\.step3After">/);
   assert.match(traeDetails, /<strong>4\.<\/strong> <span data-i18n="settings\.trae\.step4">/);
+  assert.match(traeDetails, /id="traeTokenInput"[^>]*placeholder="Cloud-IDE-Token"/);
+  assert.match(traeDetails, /id="traeDeviceIdInput"[^>]*placeholder="X-Device-Id"[^>]*data-i18n-placeholder="settings\.trae\.deviceIdPlaceholder"/);
+  assert.match(traeDetails, /data-i18n="settings\.trae\.deviceIdNote">[^<]*ide_user_ent_usage[^<]*X-Device-Id/);
   assert.doesNotMatch(traeDetails, /settings\.trae\.note/);
   assert.match(html, /<div id="ollamaAccountGroup"[\s\S]*?<textarea id="ollamaCookieInput"[\s\S]*?<button id="ollamaCookieSubmit"[\s\S]*data-i18n="settings\.ollama\.saveCookie">/);
   const ollamaDetails = html.match(/<div id="ollamaSettingsDetails"[\s\S]*?<div id="ollamaErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
@@ -1772,7 +1776,7 @@ test('remote Hub build status is wired as a separate localized sync hint', () =>
   assert.match(refreshBody, /const request = \+\+hubBuildStatusRequest/);
   assert.equal([...refreshBody.matchAll(/request !== hubBuildStatusRequest/g)].length, 2);
   assert.match(app, /HUB_BUILD_STATUS_REFRESH_TTL_MS = 5 \* 60 \* 1000/);
-  assert.match(app, /visibilitychange[\s\S]*hubBuildStatusRefreshDue\(\)[\s\S]*void refreshHubBuildStatus\(\)/);
+  assert.match(app, /handleWindowVisibilityChange[\s\S]*hubBuildStatusRefreshDue\(\)[\s\S]*void refreshHubBuildStatus\(\)/);
   assert.match(preload, /getHubBuildStatus: \(\) => ipcRenderer\.invoke\('hub:getBuildStatus'\)/);
   assert.match(main, /ipcMain\.handle\('hub:getBuildStatus'/);
   assert.equal([...i18n.matchAll(/'settings\.sync\.hubBuild\.current':/g)].length, 5);
@@ -1921,6 +1925,60 @@ test('Limits groups multiple Cursor accounts with separate identity and plan row
   assert.match(groupBody, /renderLimitProviderRow\('cursor', limitAccountTitle\('cursor', provider, index, providers\), provider, color/);
   assert.match(renderLimitsBody, /if \(id === 'cursor' && Array\.isArray\(visibleProviders\) && visibleProviders\.length > 1\) \{/);
   assert.match(renderLimitsBody, /nodes\.push\(renderCursorAccountGroup\(label, visibleProviders, color\)\);/);
+});
+
+test('Limits groups the Volcengine Coding and Agent plans as rows of one card', () => {
+  const app = readRendererFile('app.js');
+  const groupBody = functionBody(app, 'renderVolcengineAccountGroup', 'renderLimits');
+  const renderLimitsBody = functionBody(app, 'renderLimits', 'serviceStatusLabel');
+  // Both plans are subscriptions on one account, so the rows are titled by the
+  // plan rather than by an account identity the record does not carry.
+  assert.match(groupBody, /renderNamedApiAccountGroup\('volcengine', label, providers, color/);
+  assert.match(groupBody, /groupPlanText: t\('settings\.volcengine\.nPlans', \{ count: providers\.length \}\)/);
+  assert.match(renderLimitsBody, /if \(id === 'volcengine' && Array\.isArray\(visibleProviders\) && visibleProviders\.length > 1\) \{/);
+  assert.match(renderLimitsBody, /nodes\.push\(renderVolcengineAccountGroup\(label, visibleProviders, color\)\);/);
+  // Without an entry here the rows fall back to "Account 1"/"Account 2", since
+  // accountTitleLabel reads accountName/accountEmail and these rows carry
+  // neither — only accountLabel, which holds the plan name.
+  assert.match(app, /volcengine: \(provider, index, providers\) => volcenginePlanAccountTitle\(provider, index, providers\)/);
+});
+
+// Re-saving with the Agent fields empty deliberately preserves the stored
+// override, so without a dedicated control the only way back to the main account
+// is the provider logout, which also clears the Coding Plan credentials.
+test('the Volcengine Agent override can be cleared without clearing the Coding Plan', () => {
+  const app = readRendererFile('app.js');
+  const html = readRendererFile('index.html');
+  const overrideBody = functionBody(app, 'renderVolcengineAgentOverrideState', 'setVolcengineAgentExpanded');
+
+  assert.match(html, /<button id="volcengineAgentClearButton" class="hidden" data-i18n="settings\.volcengine\.agentClear">/);
+  assert.match(overrideBody, /volcengineAgentClearButton/);
+  const clearHandler = app.slice(app.indexOf("getElementById('volcengineAgentClearButton')?.addEventListener"));
+  const saveCall = clearHandler.slice(0, clearHandler.indexOf('});'));
+  assert.match(saveCall, /volcengineAgentAccessKeyId: ''/);
+  assert.match(saveCall, /volcengineAgentSecretAccessKey: ''/);
+  assert.match(saveCall, /volcengineAgentRegion: ''/);
+  // The Coding Plan credentials must not ride along; that is what logout is for.
+  assert.doesNotMatch(saveCall, /volcengineAccessKeyId: ''/);
+});
+
+test('the Volcengine Agent override shows that it is set, from the one flag that means it', () => {
+  const app = readRendererFile('app.js');
+  const main = fs.readFileSync(path.join(rendererDir, '..', 'main.js'), 'utf8');
+  const statusBody = functionBody(app, 'renderExternalProviderStatus', 'renderVolcengineAgentOverrideState');
+  const overrideBody = functionBody(app, 'renderVolcengineAgentOverrideState', 'setVolcengineAgentExpanded');
+
+  // Password inputs are cleared after saving and never repopulated, so without
+  // this the panel looks identical whether or not a second account is stored.
+  assert.match(statusBody, /if \(providerName === 'volcengine'\) renderVolcengineAgentOverrideState\(\);/);
+  assert.match(overrideBody, /state\.settings\?\.volcengineAgentAccessKeyId/);
+  assert.match(overrideBody, /'set'/);
+
+  // volcengineAgentCredentials falls back to the Coding Plan key, so a
+  // "configured" flag derived from it is true for every Coding-only user and
+  // would light this indicator up for all of them.
+  assert.doesNotMatch(main, /volcengineAgentCredentialsConfigured/);
+  assert.doesNotMatch(main, /volcengineAgentCredentialsSource/);
 });
 
 test('a zero-config OpenCode machine is not reported as unconfigured', () => {

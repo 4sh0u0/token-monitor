@@ -160,6 +160,19 @@ test('tray layout editing keeps item ids stable and supports add, move, update a
   assert.deepEqual(layout.items.map((item) => item.id), ['bars', 'quota']);
 });
 
+test('tray layout normalization preserves the Daily window selector', () => {
+  const normalized = normalizeTrayLayout({
+    items: [{
+      id: 'daily',
+      type: 'text',
+      metric: 'percent',
+      source: { provider: 'volcengine', accountMode: 'lowest', window: 'daily' }
+    }]
+  });
+
+  assert.equal(normalized.items[0].source.window, 'daily');
+});
+
 test('tray layouts support optional shared icons, stacked values and configurable spacers', () => {
   const normalized = normalizeTrayLayout({
     version: 1,
@@ -335,6 +348,40 @@ test('specific account and exact window selectors do not silently fall back', ()
     accountMode: 'specific',
     accountKey: 'missing',
     window: 'primary'
+  }), null);
+});
+
+test('custom tray selections keep Codex additional quota windows out of compact layouts', () => {
+  const canonicalWeekly = { kind: 'weekly', remainingPercent: 80 };
+  const additionalSession = { kind: 'session', label: 'Session', limitId: 'gpt-reserve', additional: true, remainingPercent: 10 };
+  const compactStats = {
+    limits: {
+      providers: [{
+        provider: 'codex',
+        status: 'ok',
+        accountKey: 'active',
+        windows: [canonicalWeekly, additionalSession]
+      }]
+    }
+  };
+
+  assert.equal(selectSource(compactStats, {
+    provider: 'codex',
+    accountMode: 'specific',
+    accountKey: 'active',
+    window: 'primary'
+  }).window, canonicalWeekly);
+  assert.equal(selectSource(compactStats, {
+    provider: 'codex',
+    accountMode: 'specific',
+    accountKey: 'active',
+    window: 'secondary'
+  }), null);
+  assert.equal(selectSource(compactStats, {
+    provider: 'codex',
+    accountMode: 'specific',
+    accountKey: 'active',
+    window: windowKey(additionalSession)
   }), null);
 });
 
