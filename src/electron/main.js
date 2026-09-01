@@ -80,6 +80,7 @@ const {
 } = require('../shared/collector');
 const { deviceRecordFromAnchor } = require('../shared/anchorSeed');
 const { sendWhenRendererReady } = require('./deferredWindowSend');
+const { applyInitialLimitProviderSeed } = require('./initialLimitProviderSeed');
 const { createDeviceRuntime } = require('../shared/deviceRuntime');
 const { createDiagnosticJournal } = require('../shared/diagnosticJournal');
 const { createDiagnosticReportGenerator } = require('./diagnostics');
@@ -401,6 +402,7 @@ let dashboardWindow = null;
 let dashboardWindowNativeBlurEnabled = false;
 let settingsPath = null;
 let settings = null;
+let initialLimitProvidersPending = false;
 let claudeWebCookieMutationRevision = 0;
 let persistedSettingsSnapshot = null;
 let credentialStore = null;
@@ -2323,6 +2325,7 @@ function migrateLegacyMimoCredentialFiles(accounts) {
 
 function readSettings() {
   settingsPath = path.join(app.getPath('userData'), 'settings.json');
+  const settingsFileExisted = fs.existsSync(settingsPath);
   try {
     const defaults = defaultSettings();
     let saved = {};
@@ -2341,6 +2344,11 @@ function readSettings() {
     const storedCredentials = loadCredentialSettings(saved);
     if (!saved.secret && defaults.secret) delete saved.secret;
     const merged = { ...defaults, ...saved, ...storedCredentials };
+    // A missing settings file is the only reliable fresh-install signal: a
+    // missing limitProviders field also occurs when an existing installation
+    // upgrades, where changing the user's effective defaults would be wrong.
+    initialLimitProvidersPending = !settingsFileExisted
+      && process.env.TOKEN_MONITOR_LIMIT_PROVIDERS === undefined;
     // Migrate older configs that predate hubMode: infer from hubUrl.
     if (saved.hubMode === undefined) {
       merged.hubMode = (saved.hubUrl && String(saved.hubUrl).trim()) ? 'client' : 'local';
@@ -2485,6 +2493,19 @@ function saveSettings(options = {}) {
     if (options.throwOnError) throw error;
     return false;
   }
+}
+
+function seedInitialLimitProviders(summary) {
+  return applyInitialLimitProviderSeed(initialLimitProvidersPending, summary, {
+    settings,
+    saveSettings,
+    onPersisted() {
+      // Consume the one-shot seed before reconfiguration can publish again.
+      initialLimitProvidersPending = false;
+      deviceRuntimeHandle?.reconfigureLimits(electronLimitsConfig());
+      pushSettingsToRenderer();
+    }
+  });
 }
 
 function loginItemEnabledHere() {
@@ -3679,6 +3700,7 @@ function startSyncCollector() {
   });
   const sink = {
     async enqueue(summary, revision) {
+      seedInitialLimitProviders(summary);
       if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
       const visibleSummary = {
         ...summary,
@@ -3719,6 +3741,7 @@ function startHostCollector() {
   stopSyncCollector();
   const sink = {
     enqueue(summary) {
+      seedInitialLimitProviders(summary);
       if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
       const visibleSummary = summary;
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
@@ -4281,6 +4304,7 @@ function startLocalCollector() {
     usageOptions,
     progressive: true,
     onRecord: (summary, meta) => {
+      seedInitialLimitProviders(summary);
       const reason = meta.reason;
       const visibleSummary = summary;
       localDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
@@ -6681,6 +6705,7 @@ app.whenReady().then(() => {
       settings = previousSettingsState;
       throw error;
     }
+    if (patch?.limitProviders !== undefined) initialLimitProvidersPending = false;
     if (JSON.stringify(settings.customModelPricing || []) !== previousCustomModelPricing) {
       regenerateTokscalePricing();
       refreshAfterPricingChange();
