@@ -88,6 +88,7 @@ const LIMIT_PROVIDERS = [
   { id: 'kimi', label: 'Kimi' },
   { id: 'grok', label: 'Grok' },
   { id: 'copilot', label: 'GitHub Copilot' },
+  { id: 'zed', label: 'Zed' },
   { id: 'commandcode', label: 'Command Code' },
   { id: 'mimo', label: 'MiMo' },
   { id: 'zai', label: 'GLM' },
@@ -110,6 +111,7 @@ const LIMIT_PROVIDER_ACCOUNT_GROUP_IDS = {
   cursor: 'cursorAccountGroup',
   antigravity: 'antigravityAccountGroup',
   kimi: 'kimiAccountGroup',
+  zed: 'zedAccountGroup',
   copilot: 'copilotAccountGroup',
   mimo: 'mimoAccountGroup',
   zai: 'zaiAccountGroup',
@@ -131,6 +133,7 @@ const LIMIT_PROVIDER_ACCOUNT_STATUS_IDS = {
   cursor: 'cursorAccountStatus',
   antigravity: 'antigravityAccountStatus',
   kimi: 'kimiAccountStatus',
+  zed: 'zedAccountStatus',
   copilot: 'copilotApiTokenStatus',
   mimo: 'mimoAccountStatus',
   zai: 'zaiAccountStatus',
@@ -319,6 +322,8 @@ function normalizeInitialViewValue(value, allowed, fallback) {
 }
 
 const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, limitDetailTooltipHasOpened: false, limitDetailTooltipActive: false, limitDetailTooltipRenderPending: false, settings: null, windowVisible: new URLSearchParams(window.location.search).get('windowHidden') !== '1', stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistorySignature: '', homeHistoryRetries: 0, homeHistoryRetryTimer: null, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, limitProviderSettingsExpanded: '', clientHealthExpanded: '', clientSources: clientSourceCacheApi.createClientSourceCache(), clientSourcesKey: '', clientSourcesRequest: 0, subscriptionEditingId: '', subscriptionTopUps: [], subscriptionFormBase: null, subscriptionEditorTransitionId: 0, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, systemDarkUi: false, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, hubBuildStatus: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexWorkspaceChoices: [], codexWorkspaceId: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, claudeAccountExpanded: false, claudePendingCheckSince: 0, opencodeProfileCount: 0, opencodeCookieExpanded: false, openrouterProfileCount: 0, openrouterAccountExpanded: false, thirdPartyProfileCount: 0, thirdPartyAccountExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, volcengineAgentExpanded: false, qoderAccountExpanded: false, qoderPendingCheckSince: 0, commandcodeAccountExpanded: false, commandcodePendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', antigravityAccountExpanded: false, antigravityAccountError: '', antigravitySignInBusy: false, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+state.zedAccountExpanded = false;
+state.zedPendingCheckSince = 0;
 state.toolDetailMode = 'tokens';
 state.codexResetForecast = null;
 state.codexResetForecastBusy = false;
@@ -2401,7 +2406,7 @@ function limitProviderMeta(provider, provenance = null) {
 function limitProviderPlan(provider) {
   if (provider?.status && provider.status !== 'ok' && !provider.stale) return limitStatusLabel(provider.status, false);
   const label = String(provider?.planLabel || provider?.accountLabel || '').trim();
-  if (label) return limitProviderPresentationApi.limitProviderDisplayLabel(label);
+  if (label) return limitProviderPresentationApi.limitProviderPlanDisplayLabel(provider, label);
   return provider?.status && provider.status !== 'ok' ? limitStatusLabel(provider.status, false) : '';
 }
 
@@ -3936,6 +3941,19 @@ function formatCursorSpendValue(window) {
     : usedText;
 }
 
+function formatZedBillingValue(window) {
+  const editPredictions = window?.limitId === 'zed.edit-predictions';
+  if (editPredictions && String(window?.detail || '').trim().toLowerCase() === 'unlimited') {
+    return 'Unlimited';
+  }
+  const used = optionalFiniteNumber(window?.used);
+  const limit = optionalFiniteNumber(window?.limit);
+  if (used === null || limit === null) return null;
+  if (editPredictions) return `${formatNumber(used)} / ${formatNumber(limit)}`;
+  const currency = window?.currency || 'USD';
+  return `${formatMoney(used, currency)} / ${formatMoney(limit, currency)}`;
+}
+
 function formatBalanceAmount(value, source) {
   return formatMoney(value, source?.currency);
 }
@@ -4335,17 +4353,19 @@ function thirdPartyQuotaWindow(provider) {
 function formatLimitWindowValue(window, fillPercent, hasPercent, showUsed) {
   if (hasPercent) return `${formatPercent(fillPercent)} ${limitModeSuffix(showUsed)}`;
   if (!window) return '--';
-  const remaining = Number(window?.remaining);
-  if (Number.isFinite(remaining)) {
+  if (String(window.detail || '').toLowerCase() === 'unlimited') return t('settings.thirdparty.unlimited');
+  const remaining = optionalFiniteNumber(window?.remaining);
+  if (remaining !== null) {
     return window?.showMeter === false ? formatLimitAmount(remaining) : `${formatLimitAmount(remaining)} left`;
   }
-  const limit = Number(window?.limit);
-  if (Number.isFinite(limit)) return `${formatLimitAmount(limit)} cap`;
-  return '';
+  const limit = optionalFiniteNumber(window?.limit);
+  if (limit !== null) return `${formatLimitAmount(limit)} cap`;
+  return window.detail || '';
 }
 
 function formatHomeLimitWindowValue(window, showUsed) {
   if (window?.planStatus === 'expired') return t('limits.mimo.planExpired');
+  if (String(window?.detail || '').toLowerCase() === 'unlimited') return t('settings.thirdparty.unlimited');
   if (isCreditsWindow(window)) {
     if (window.remaining == null) {
       return String(window.detail || '').toLowerCase() === 'unlimited'
@@ -5031,6 +5051,23 @@ function renderProviderWindows(provider, color) {
     for (const billing of billingWindows) {
       const node = limitWindowNode(billing?.label || 'Monthly', billing, color, 0.68);
       node.classList.add('limit-window-wide');
+      windows.append(node);
+    }
+  } else if (provider.provider === 'zed') {
+    windows.classList.add('limit-windows-zed');
+    for (const billing of windowsForKind(provider, 'billing')) {
+      const unlimitedEditPredictions = billing?.limitId === 'zed.edit-predictions'
+        && String(billing?.detail || '').trim().toLowerCase() === 'unlimited';
+      const billingValue = formatZedBillingValue(billing);
+      const node = limitWindowNode(
+        billing?.label || 'Token Spend',
+        billing,
+        color,
+        0.95,
+        billingValue
+      );
+      node.classList.add('limit-window-wide');
+      if (unlimitedEditPredictions) node.classList.add('limit-window-no-reset');
       windows.append(node);
     }
   } else if (provider.provider === 'zai' || provider.provider === 'zaiteam') {
@@ -9350,6 +9387,7 @@ function syncSettingsForm() {
   renderExternalProviderStatus('volcengine');
   renderExternalProviderStatus('qoder');
   renderExternalProviderStatus('trae');
+  renderExternalProviderStatus('zed');
   renderExternalProviderStatus('commandcode');
   renderExternalProviderStatus('kimi');
   renderExternalProviderStatus('ollama');
@@ -12537,6 +12575,7 @@ function renderStatsUpdate() {
   renderExternalProviderStatus('volcengine');
   renderExternalProviderStatus('qoder');
   renderExternalProviderStatus('trae');
+  renderExternalProviderStatus('zed');
   renderExternalProviderStatus('commandcode');
   renderExternalProviderStatus('kimi');
   renderExternalProviderStatus('ollama');
@@ -14481,6 +14520,11 @@ const externalLimitAccountConfig = {
     sourceKey: 'traeAccessTokenSource',
     pendingKey: 'traePendingCheckSince'
   },
+  zed: {
+    configuredKey: 'zedCookieConfigured',
+    sourceKey: 'zedCookieSource',
+    pendingKey: 'zedPendingCheckSince'
+  },
   commandcode: {
     configuredKey: 'commandcodeCookieConfigured',
     sourceKey: 'commandcodeCookieSource',
@@ -14672,6 +14716,10 @@ function commandcodePlatformUrl() {
   // path resolves to it and bounces through signin?returnTo= when signed out,
   // so it is the one link that works without knowing the username.
   return 'https://commandcode.ai/settings/usage';
+}
+
+function zedPlatformUrl() {
+  return 'https://dashboard.zed.dev/';
 }
 
 function ollamaValidationError(provider) {
@@ -17009,6 +17057,57 @@ function setupCursorAccountUI() {
     });
   }
 
+  const zedToggle = document.getElementById('zedSettingsToggle');
+  if (zedToggle) {
+    zedToggle.addEventListener('click', () => setExternalAccountExpanded('zed', !state.zedAccountExpanded));
+    setExternalAccountExpanded('zed', false);
+    renderExternalProviderStatus('zed');
+
+    document.getElementById('zedOpenBrowser').addEventListener('click', () => {
+      window.tokenMonitor.openExternal(zedPlatformUrl());
+    });
+
+    document.getElementById('zedLogoutButton').addEventListener('click', async () => {
+      await saveSettings({ zedCookie: '' });
+      clearExternalProviderCheckPending('zed');
+      clearExternalProviderPendingStatus('zed');
+      renderExternalProviderStatus('zed');
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('zedRefreshButton').addEventListener('click', async () => {
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('zedCookieSubmit').addEventListener('click', async () => {
+      const input = document.getElementById('zedCookieInput');
+      const errorEl = document.getElementById('zedErrorMessage');
+      errorEl.classList.add('hidden');
+      if (!String(input.value || '').trim()) {
+        errorEl.textContent = t('settings.zed.statusNotSet');
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      try {
+        markExternalProviderCheckPending('zed');
+        await saveSettings({
+          zedCookie: input.value,
+          limitProviders: limitProviderSelectionIncluding('zed'),
+          limitsEnabled: true
+        });
+        input.value = '';
+        renderExternalProviderStatus('zed');
+        await refreshStats({ force: true });
+        setExternalAccountExpanded('zed', !externalProviderAccountLinked('zed'));
+        renderExternalProviderStatus('zed');
+      } catch (err) {
+        clearExternalProviderCheckPending('zed');
+        errorEl.textContent = t('settings.zed.saveFailed', { message: err.message });
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
   const commandcodeToggle = document.getElementById('commandcodeSettingsToggle');
   if (commandcodeToggle) {
     commandcodeToggle.addEventListener('click', () => setExternalAccountExpanded('commandcode', !state.commandcodeAccountExpanded));
@@ -17481,6 +17580,7 @@ function initSettingsAnimationWrappers() {
     '#volcengineManualPanel',
     '#qoderManualPanel',
     '#traeManualPanel',
+    '#zedManualPanel',
     '#commandcodeManualPanel',
     '#kimiManualPanel',
     '#ollamaManualPanel'

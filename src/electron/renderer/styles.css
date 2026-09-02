@@ -3491,6 +3491,10 @@ html.is-windows .settings-panel select option {
   -webkit-mask-image: url(../../../assets/icons/copilot.svg);
   mask-image: url(../../../assets/icons/copilot.svg);
 }
+.limit-icon-zed {
+  -webkit-mask-image: url(../../../assets/icons/zed.svg);
+  mask-image: url(../../../assets/icons/zed.svg);
+}
 .limit-icon-kiro {
   -webkit-mask-image: url(../../../assets/icons/kiro.svg);
   mask-image: url(../../../assets/icons/kiro.svg);
@@ -5242,6 +5246,7 @@ html.is-windows .limit-live-badge {
 #volcengineManualPanel.hidden,
 #qoderManualPanel.hidden,
 #traeManualPanel.hidden,
+#zedManualPanel.hidden,
 #commandcodeManualPanel.hidden,
 #ollamaManualPanel.hidden,
 #mimoManualPanel.hidden,
@@ -5266,6 +5271,7 @@ html.is-windows .limit-live-badge {
 #volcengineErrorMessage.hidden,
 #qoderErrorMessage.hidden,
 #traeErrorMessage.hidden,
+#zedErrorMessage.hidden,
 #commandcodeErrorMessage.hidden,
 #ollamaErrorMessage.hidden,
 #kimiErrorMessage.hidden,
@@ -5281,6 +5287,7 @@ html.is-windows .limit-live-badge {
 #volcengineManualPanel,
 #qoderManualPanel,
 #traeManualPanel,
+#zedManualPanel,
 #commandcodeManualPanel,
 #ollamaManualPanel,
 #mimoManualPanel,
@@ -5298,6 +5305,7 @@ html.is-windows .limit-live-badge {
 #volcengineManualPanel > .accordion-animation-inner,
 #qoderManualPanel > .accordion-animation-inner,
 #traeManualPanel > .accordion-animation-inner,
+#zedManualPanel > .accordion-animation-inner,
 #commandcodeManualPanel > .accordion-animation-inner,
 #ollamaManualPanel > .accordion-animation-inner,
 #mimoManualPanel > .accordion-animation-inner,
@@ -5332,6 +5340,7 @@ html.is-windows .limit-live-badge {
 #qoderManualPanel textarea,
 #qoderManualPanel select,
 #traeManualPanel input,
+#zedManualPanel textarea,
 #commandcodeManualPanel textarea,
 #ollamaManualPanel textarea,
 #mimoManualPanel input,
@@ -5363,6 +5372,7 @@ html.is-windows .limit-live-badge {
 #volcengineManualPanel input,
 #qoderManualPanel textarea,
 #traeManualPanel input,
+#zedManualPanel textarea,
 #commandcodeManualPanel textarea,
 #ollamaManualPanel textarea,
 #mimoManualPanel input,
