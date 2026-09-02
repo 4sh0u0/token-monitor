@@ -888,7 +888,7 @@ test('Grok renders its single Monthly billing window full-width instead of an em
   assert.match(renderProviderWindows, /limit-window-wide/);
 });
 
-test('Zed renders unlimited Edit Predictions plus monetary Token Spend with a Limits icon', () => {
+test('Zed renders unlimited Edit Predictions plus a percent-led Token Spend with a Limits icon', () => {
   const app = readRendererFile('app.js');
   const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
   const css = readRendererFile('styles.css');
@@ -897,35 +897,40 @@ test('Zed renders unlimited Edit Predictions plus monetary Token Spend with a Li
   assert.match(renderProviderWindows, /windowsForKind\(provider, 'billing'\)/);
   assert.match(renderProviderWindows, /billing\?\.limitId === 'zed\.edit-predictions'/);
   assert.match(renderProviderWindows, /billing\?\.label \|\| 'Token Spend'/);
-  assert.match(renderProviderWindows, /formatZedBillingValue\(billing\)/);
+  // The money belongs in the detail slot under the bar, not in the headline
+  // value: a valueOverride also disables the showLimitUsed flip for the row.
+  assert.match(
+    renderProviderWindows,
+    /limitWindowNode\(\s*billing\?\.label \|\| 'Token Spend',\s*billing,\s*color,\s*0\.95,\s*null,\s*formatZedBillingDetail\(billing\)\s*\)/
+  );
   assert.doesNotMatch(renderProviderWindows, /settings\.subscriptions\.renewsOn|renewalDetail/);
   assert.doesNotMatch(renderProviderWindows, /zed\.billing-cycle|zed\.overdue-invoices/);
   assert.match(css, /\.limit-icon-zed\s*\{[^}]*assets\/icons\/zed\.svg[^}]*\}/s);
 });
 
-test('Zed metered Edit Predictions render as counts while Token Spend stays monetary', () => {
+test('Zed details follow showLimitUsed: counts for Edit Predictions, money for Token Spend', () => {
   const app = readRendererFile('app.js');
-  const formatter = functionBody(app, 'formatZedBillingValue', 'formatBalanceAmount');
-  const renderValue = (window) => vm.runInNewContext(
-    `${formatter}\nformatZedBillingValue(${JSON.stringify(window)});`,
+  const formatter = functionBody(app, 'formatZedBillingDetail', 'formatBalanceAmount');
+  const limitCount = functionBody(app, 'formatLimitCount', 'formatCommandcodeCreditsDetail');
+  const renderDetail = (window, showLimitUsed = false) => vm.runInNewContext(
+    `${formatter}\n${limitCount}\nformatZedBillingDetail(${JSON.stringify(window)});`,
     {
+      state: { settings: { showLimitUsed } },
       optionalFiniteNumber: (value) => Number.isFinite(Number(value)) ? Number(value) : null,
-      formatNumber: (value) => Math.round(Number(value)).toLocaleString('en-US'),
       formatMoney: (value, currency) => `${currency === 'USD' ? '$' : `${currency} `}${Number(value).toFixed(2)}`
     }
   );
 
-  assert.equal(renderValue({
-    limitId: 'zed.edit-predictions',
-    used: 500,
-    limit: 2000
-  }), '500 / 2,000');
-  assert.equal(renderValue({
-    limitId: 'zed.token-spend',
-    used: 2.5,
-    limit: 10,
-    currency: 'USD'
-  }), '$2.50 / $10.00');
+  const editPredictions = { limitId: 'zed.edit-predictions', used: 500, limit: 2000 };
+  const tokenSpend = { limitId: 'zed.token-spend', used: 2.5, limit: 10, currency: 'USD' };
+
+  // Quota mode: the detail mirrors the bar, which fills with what is left.
+  assert.equal(renderDetail(editPredictions), '1500/2000');
+  assert.equal(renderDetail(tokenSpend), '$7.50 / $10.00');
+  assert.equal(renderDetail(editPredictions, true), '500/2000');
+  assert.equal(renderDetail(tokenSpend, true), '$2.50 / $10.00');
+  // Unlimited Edit Predictions carry no numbers; the headline says it instead.
+  assert.equal(renderDetail({ limitId: 'zed.edit-predictions', detail: 'Unlimited' }), '');
 });
 
 test('Zed compact windows label unlimited Edit Predictions without a fake reset', () => {

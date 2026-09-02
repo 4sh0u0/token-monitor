@@ -3941,17 +3941,20 @@ function formatCursorSpendValue(window) {
     : usedText;
 }
 
-function formatZedBillingValue(window) {
-  const editPredictions = window?.limitId === 'zed.edit-predictions';
-  if (editPredictions && String(window?.detail || '').trim().toLowerCase() === 'unlimited') {
-    return 'Unlimited';
-  }
+// Zed's billing rows follow the Command Code shape: the headline and bar carry
+// the percentage, and the absolute figure sits under the bar — money for Token
+// Spend, a raw count for metered Edit Predictions. Both follow showLimitUsed,
+// so the number under the bar can never contradict the bar's own direction.
+// Unlimited Edit Predictions have no numbers at all; formatLimitWindowValue
+// already turns their `detail` into the translated headline.
+function formatZedBillingDetail(window) {
   const used = optionalFiniteNumber(window?.used);
   const limit = optionalFiniteNumber(window?.limit);
-  if (used === null || limit === null) return null;
-  if (editPredictions) return `${formatNumber(used)} / ${formatNumber(limit)}`;
+  if (used === null || limit === null || limit <= 0) return '';
+  const showUsed = Boolean(state.settings?.showLimitUsed);
+  if (window?.limitId === 'zed.edit-predictions') return formatLimitCount(window, showUsed);
   const currency = window?.currency || 'USD';
-  return `${formatMoney(used, currency)} / ${formatMoney(limit, currency)}`;
+  return `${formatMoney(showUsed ? used : Math.max(0, limit - used), currency)} / ${formatMoney(limit, currency)}`;
 }
 
 function formatBalanceAmount(value, source) {
@@ -5058,13 +5061,13 @@ function renderProviderWindows(provider, color) {
     for (const billing of windowsForKind(provider, 'billing')) {
       const unlimitedEditPredictions = billing?.limitId === 'zed.edit-predictions'
         && String(billing?.detail || '').trim().toLowerCase() === 'unlimited';
-      const billingValue = formatZedBillingValue(billing);
       const node = limitWindowNode(
         billing?.label || 'Token Spend',
         billing,
         color,
         0.95,
-        billingValue
+        null,
+        formatZedBillingDetail(billing)
       );
       node.classList.add('limit-window-wide');
       if (unlimitedEditPredictions) node.classList.add('limit-window-no-reset');
