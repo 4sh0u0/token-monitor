@@ -267,6 +267,20 @@ test('runtime config scopes Trae credentials and prefers saved settings over env
   assert.deepEqual(classification.limitScopes, [{ provider: 'trae' }]);
 });
 
+test('runtime config prefers the saved Zed dashboard Cookie and scopes changes to Zed', () => {
+  const settings = { zedCookie: 'zed.session=saved' };
+  const limits = limitsConfigFromSettings(settings, {
+    env: { TOKEN_MONITOR_ZED_COOKIE: 'zed.session=env' }
+  });
+  assert.equal(limits.zedCookie, 'zed.session=saved');
+
+  const classification = classifySettingsChange(settings, {
+    ...settings,
+    zedCookie: 'zed.session=next'
+  });
+  assert.deepEqual(classification.limitScopes, [{ provider: 'zed' }]);
+});
+
 test('limits config resolves managed credentials at dispatch time through context', () => {
   const limits = limitsConfigFromSettings({ codexManagedAccounts: [{ id: 'stale' }] }, {
     env: {},

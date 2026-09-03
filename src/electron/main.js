@@ -80,6 +80,7 @@ const {
 } = require('../shared/collector');
 const { deviceRecordFromAnchor } = require('../shared/anchorSeed');
 const { sendWhenRendererReady } = require('./deferredWindowSend');
+const { applyInitialLimitProviderSeed } = require('./initialLimitProviderSeed');
 const { createDeviceRuntime } = require('../shared/deviceRuntime');
 const { createDiagnosticJournal } = require('../shared/diagnosticJournal');
 const { createDiagnosticReportGenerator } = require('./diagnostics');
@@ -88,7 +89,7 @@ const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
 const { probeHubBuild } = require('./hubBuildStatus');
-const { claudeWebCookie, deepseekToken, fetchClaudeLimits, normalizeClaudeWebCookieInput, normalizeLimitsRefreshMode, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, traeAccessToken, traeDeviceId, commandcodeCookie, kimiToken, kimiWebToken, ollamaSessionCookie } = require('../shared/limitCollector');
+const { claudeWebCookie, deepseekToken, fetchClaudeLimits, normalizeClaudeWebCookieInput, normalizeLimitsRefreshMode, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, traeAccessToken, traeDeviceId, commandcodeCookie, kimiToken, kimiWebToken, ollamaSessionCookie, zedCookie } = require('../shared/limitCollector');
 const { fetchOllamaLimits, rememberOllamaValidation } = require('../shared/ollamaLimits');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
 const {
@@ -114,6 +115,7 @@ const {
   normalizeHiddenClients,
   normalizePinnedClients
 } = require('./renderer/clientDisplayPreferences');
+const { normalizeRankingMetric } = require('./renderer/usageAttributionRows');
 const { LANGUAGE_OPTIONS, resolveLocale, translate } = require('./renderer/i18n');
 const {
   defaultViewDisplayPreferences,
@@ -269,6 +271,7 @@ const {
   mainWindowCloseAction,
   normalizeTrayModeSettings,
   shouldCreateTray,
+  skipTaskbarForSettings,
   trayToggleAction
 } = require('./trayModeSettings');
 const { SERVICE_STATUS_PROVIDERS, createServiceStatusClient } = require('./serviceStatus');
@@ -401,6 +404,7 @@ let dashboardWindow = null;
 let dashboardWindowNativeBlurEnabled = false;
 let settingsPath = null;
 let settings = null;
+let initialLimitProvidersPending = false;
 let claudeWebCookieMutationRevision = 0;
 let persistedSettingsSnapshot = null;
 let credentialStore = null;
@@ -480,6 +484,7 @@ function defaultSettings() {
     compactTokenUnits: 'western',
     tokenRateMode: 'speed',
     heatmapMetric: 'cost',
+    modelRankingMetric: 'tokens',
     homeActiveDaysWindow: 'all',
     periodMonthMode: 'month',
     themeColors: {},
@@ -543,6 +548,7 @@ function defaultSettings() {
     // Third-party global reset predictions are opt-in and remain separate from
     // the account-specific limits wire shape.
     codexResetForecastEnabled: false,
+    showCodexAdditionalLimits: true,
     showLimitUsed: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_USED, false),
     // Manual subscription metadata. Plain preferences, not credentials, so they
     // live in settings.json and cross to the renderer unredacted.
@@ -559,6 +565,7 @@ function defaultSettings() {
     zoomFactor: 1,
     showTrayIcon: true,
     trayMode: false,
+    hideAppIcon: false,
     trayContent: 'tokens',
     trayCustomLayout: createDefaultTrayLayout(),
     showTrayProviderBadge: false,
@@ -592,6 +599,7 @@ function defaultSettings() {
     qoderSite: 'global',
     traeAccessToken: '',
     traeDeviceId: '',
+    zedCookie: '',
     commandcodeCookie: '',
     kimiApiKey: '',
     kimiWebAccessToken: '',
@@ -859,6 +867,14 @@ function normalizeTraeDeviceId(value) {
 
 function currentTraeAccessToken() {
   return settings?.traeAccessToken || traeAccessToken(process.env);
+}
+
+function normalizeZedCookie(value) {
+  return zedCookie({}, { zedCookie: String(value || '') });
+}
+
+function currentZedCookie() {
+  return settings?.zedCookie || zedCookie(process.env);
 }
 
 function normalizeCommandcodeCookie(value) {
@@ -2323,6 +2339,7 @@ function migrateLegacyMimoCredentialFiles(accounts) {
 
 function readSettings() {
   settingsPath = path.join(app.getPath('userData'), 'settings.json');
+  const settingsFileExisted = fs.existsSync(settingsPath);
   try {
     const defaults = defaultSettings();
     let saved = {};
@@ -2341,6 +2358,11 @@ function readSettings() {
     const storedCredentials = loadCredentialSettings(saved);
     if (!saved.secret && defaults.secret) delete saved.secret;
     const merged = { ...defaults, ...saved, ...storedCredentials };
+    // A missing settings file is the only reliable fresh-install signal: a
+    // missing limitProviders field also occurs when an existing installation
+    // upgrades, where changing the user's effective defaults would be wrong.
+    initialLimitProvidersPending = !settingsFileExisted
+      && process.env.TOKEN_MONITOR_LIMIT_PROVIDERS === undefined;
     // Migrate older configs that predate hubMode: infer from hubUrl.
     if (saved.hubMode === undefined) {
       merged.hubMode = (saved.hubUrl && String(saved.hubUrl).trim()) ? 'client' : 'local';
@@ -2375,6 +2397,7 @@ function readSettings() {
     merged.showHomeLimitBars = parseBoolean(merged.showHomeLimitBars, false);
     merged.showHomeLimitProviderNames = parseBoolean(merged.showHomeLimitProviderNames, false);
     merged.codexResetForecastEnabled = parseBoolean(merged.codexResetForecastEnabled, false);
+    merged.showCodexAdditionalLimits = parseBoolean(merged.showCodexAdditionalLimits, true);
     merged.opencodeLocalLimitsEnabled = parseBoolean(merged.opencodeLocalLimitsEnabled, false);
     delete merged.workbuddyLocalAppEnabled;
     merged.windowMaximized = parseBoolean(merged.windowMaximized, false);
@@ -2403,6 +2426,7 @@ function readSettings() {
     merged.collectionIntervalMs = normalizeCollectionIntervalMs(merged.collectionIntervalMs);
     merged.syncUploadIntervalMs = normalizeSyncUploadIntervalMs(merged.syncUploadIntervalMs);
     merged.heatmapMetric = normalizeHeatmapMetric(merged.heatmapMetric);
+    merged.modelRankingMetric = normalizeRankingMetric(merged.modelRankingMetric);
     merged.homeActiveDaysWindow = normalizeHomeActiveDaysWindow(merged.homeActiveDaysWindow);
     merged.reduceMotion = motionPreferenceApi.normalize(merged.reduceMotion);
     merged.compactTokenUnits = normalizeCompactTokenUnits(merged.compactTokenUnits);
@@ -2485,6 +2509,19 @@ function saveSettings(options = {}) {
     if (options.throwOnError) throw error;
     return false;
   }
+}
+
+function seedInitialLimitProviders(summary) {
+  return applyInitialLimitProviderSeed(initialLimitProvidersPending, summary, {
+    settings,
+    saveSettings,
+    onPersisted() {
+      // Consume the one-shot seed before reconfiguration can publish again.
+      initialLimitProvidersPending = false;
+      deviceRuntimeHandle?.reconfigureLimits(electronLimitsConfig());
+      pushSettingsToRenderer();
+    }
+  });
 }
 
 function loginItemEnabledHere() {
@@ -2642,7 +2679,15 @@ function applyMacSpaceBehavior(trayMode = Boolean(settings?.trayMode)) {
     }
   } else {
     if (typeof mainWindow.setVisibleOnAllWorkspaces === 'function') {
-      mainWindow.setVisibleOnAllWorkspaces(false);
+      // skipTransformProcessType is not just a flicker optimisation here. Left
+      // at its default, Electron transforms the process back to a foreground
+      // app on this call, which re-shows the Dock icon and silently undoes the
+      // accessory policy hideAppIcon depends on. The invariant that makes
+      // skipping safe is that applyMacActivationPolicy() is the only thing that
+      // decides the process type and has already run on every path into here —
+      // enumerating those paths is what rots, so anything new that reaches this
+      // function has to apply the policy first rather than be added to a list.
+      mainWindow.setVisibleOnAllWorkspaces(false, { skipTransformProcessType: true });
     }
     if (typeof mainWindow.setHiddenInMissionControl === 'function') {
       mainWindow.setHiddenInMissionControl(false);
@@ -2705,7 +2750,7 @@ function applyWindowSettings() {
     mainWindow.setIgnoreMouseEvents(behavior.mousePassthrough);
   }
   if (typeof mainWindow.setFocusable === 'function') mainWindow.setFocusable(behavior.focusable);
-  if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(Boolean(settings?.trayMode));
+  if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(skipTaskbarForSettings(settings));
   if (!behavior.focusable && typeof mainWindow.blur === 'function') mainWindow.blur();
   syncTaskbarZOrder();
 }
@@ -3679,6 +3724,7 @@ function startSyncCollector() {
   });
   const sink = {
     async enqueue(summary, revision) {
+      seedInitialLimitProviders(summary);
       if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
       const visibleSummary = {
         ...summary,
@@ -3719,6 +3765,7 @@ function startHostCollector() {
   stopSyncCollector();
   const sink = {
     enqueue(summary) {
+      seedInitialLimitProviders(summary);
       if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
       const visibleSummary = summary;
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
@@ -4281,6 +4328,7 @@ function startLocalCollector() {
     usageOptions,
     progressive: true,
     onRecord: (summary, meta) => {
+      seedInitialLimitProviders(summary);
       const reason = meta.reason;
       const visibleSummary = summary;
       localDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
@@ -4655,6 +4703,11 @@ function settingsForRenderer() {
     : traeAccessToken(process.env)
       ? 'env'
       : '';
+  const zedCookieSource = settings?.zedCookie
+    ? 'settings'
+    : zedCookie(process.env)
+      ? 'env'
+      : '';
   const commandcodeCookieSource = settings?.commandcodeCookie
     ? 'settings'
     : commandcodeCookie(process.env)
@@ -4714,6 +4767,7 @@ function settingsForRenderer() {
     qoderCookie: settings?.qoderCookie ? 'set' : '',
     traeAccessToken: settings?.traeAccessToken ? 'set' : '',
     traeDeviceId: settings?.traeDeviceId ? 'set' : '',
+    zedCookie: settings?.zedCookie ? 'set' : '',
     commandcodeCookie: settings?.commandcodeCookie ? 'set' : '',
     ollamaCookie: settings?.ollamaCookie ? 'set' : '',
     // Never ship OpenCode session cookies to the renderer; the UI only needs to
@@ -4751,6 +4805,8 @@ function settingsForRenderer() {
     qoderCookieSource,
     traeAccessTokenConfigured: Boolean(currentTraeAccessToken()),
     traeAccessTokenSource,
+    zedCookieConfigured: Boolean(currentZedCookie()),
+    zedCookieSource,
     commandcodeCookieConfigured: Boolean(currentCommandcodeCookie()),
     commandcodeCookieSource,
     ollamaCookieConfigured: Boolean(currentOllamaCookie()),
@@ -5150,7 +5206,10 @@ function enterTrayMode() {
 function exitTrayMode() {
   applyMacActivationPolicy({ mainWindowVisible: true });
   if (mainWindow && !mainWindow.isDestroyed()) {
-    if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(false);
+    // Not an unconditional false: leaving tray-only mode with hideAppIcon still
+    // on keeps the widget off the taskbar. applyWindowSettings() below would
+    // correct it either way, but only after a visible flash of the entry.
+    if (typeof mainWindow.setSkipTaskbar === 'function') mainWindow.setSkipTaskbar(skipTaskbarForSettings(settings));
     setWindowMaximizable(mainWindow, true);
     applyMacSpaceBehavior(false);
     const restore = restoredBounds() || DEFAULT_WINDOW;
@@ -5971,6 +6030,7 @@ function isAllowedExternalUrl(value) {
   if (parsed.hostname === 'qoder.com' || parsed.hostname === 'www.qoder.com' || parsed.hostname === 'qoder.com.cn' || parsed.hostname === 'www.qoder.com.cn') return true;
   if (parsed.hostname === 'trae.cn' || parsed.hostname === 'www.trae.cn') return true;
   if (parsed.hostname === 'commandcode.ai' || parsed.hostname === 'www.commandcode.ai') return true;
+  if (parsed.hostname === 'dashboard.zed.dev') return true;
   if ((parsed.hostname === 'ollama.com' || parsed.hostname === 'www.ollama.com') && (parsed.pathname === '/settings' || parsed.pathname === '/signin')) return true;
   if ((parsed.hostname === 'kimi.com' || parsed.hostname === 'www.kimi.com') && parsed.pathname.startsWith('/code')) return true;
   if (STATUS_PAGE_HOSTS.has(parsed.hostname) && (parsed.pathname === '' || parsed.pathname === '/')) return true;
@@ -6060,7 +6120,7 @@ function createWindow(boundsOverride, options = {}) {
     show: false,
     backgroundColor: '#00000000',
     ...appWindowIcon(),
-    skipTaskbar: collapsedFloatingBubble || Boolean(settings?.trayMode),
+    skipTaskbar: collapsedFloatingBubble || skipTaskbarForSettings(settings),
     ...(collapsedFloatingBubble ? { fullscreenable: false, maximizable: false, minimizable: false } : {}),
     // Keeps a popover unmaximizable across rebuilds, which never re-run enterTrayMode().
     ...(settings?.trayMode ? { maximizable: false } : {}),
@@ -6474,6 +6534,7 @@ app.whenReady().then(() => {
     const previousDiscordRpcEnabled = settings.discordRpcEnabled;
     const previousShowTrayIcon = settings.showTrayIcon;
     const previousTrayMode = settings.trayMode;
+    const previousHideAppIcon = settings.hideAppIcon;
     const previousTrayContent = settings.trayContent;
     const previousTrayCustomLayout = JSON.stringify(settings.trayCustomLayout || {});
     const previousFloatingBubbleCustomLayout = JSON.stringify(settings.floatingBubbleCustomLayout || {});
@@ -6537,6 +6598,7 @@ app.whenReady().then(() => {
     if (patch.qoderSite !== undefined) normalizedPatch.qoderSite = normalizeQoderSite(patch.qoderSite);
     if (patch.traeAccessToken !== undefined) normalizedPatch.traeAccessToken = normalizeTraeAccessToken(patch.traeAccessToken);
     if (patch.traeDeviceId !== undefined) normalizedPatch.traeDeviceId = normalizeTraeDeviceId(patch.traeDeviceId);
+    if (patch.zedCookie !== undefined) normalizedPatch.zedCookie = normalizeZedCookie(patch.zedCookie);
     if (patch.commandcodeCookie !== undefined) normalizedPatch.commandcodeCookie = normalizeCommandcodeCookie(patch.commandcodeCookie);
     if (patch.kimiApiKey !== undefined) normalizedPatch.kimiApiKey = normalizeKimiApiKey(patch.kimiApiKey);
     if (patch.kimiWebAccessToken !== undefined) normalizedPatch.kimiWebAccessToken = normalizeKimiWebAccessToken(patch.kimiWebAccessToken);
@@ -6606,6 +6668,7 @@ app.whenReady().then(() => {
       hiddenHomeLimitProviders: patch.hiddenHomeLimitProviders !== undefined ? normalizeHiddenLimitProviders(patch.hiddenHomeLimitProviders) : normalizeHiddenLimitProviders(settings.hiddenHomeLimitProviders),
       homeLimitAccountCount: normalizeHomeLimitAccountCount(patch.homeLimitAccountCount ?? settings.homeLimitAccountCount),
       periodMonthMode: normalizePeriodMonthMode(patch.periodMonthMode ?? settings.periodMonthMode),
+      modelRankingMetric: normalizeRankingMetric(patch.modelRankingMetric ?? settings.modelRankingMetric),
       historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, false),
       projectsEnabled: parseBoolean(patch.projectsEnabled ?? settings.projectsEnabled, true),
       historyIntervalMs: normalizeHistoryIntervalMs(patch.historyIntervalMs ?? settings.historyIntervalMs),
@@ -6623,6 +6686,7 @@ app.whenReady().then(() => {
       maskLimitAccountEmails: parseBoolean(patch.maskLimitAccountEmails ?? settings.maskLimitAccountEmails, false),
       claudePrepaidBalanceEnabled: parseBoolean(patch.claudePrepaidBalanceEnabled ?? settings.claudePrepaidBalanceEnabled, true),
       codexResetForecastEnabled: parseBoolean(patch.codexResetForecastEnabled ?? settings.codexResetForecastEnabled, false),
+      showCodexAdditionalLimits: parseBoolean(patch.showCodexAdditionalLimits ?? settings.showCodexAdditionalLimits, true),
       opencodeAmbientEnabled: parseBoolean(patch.opencodeAmbientEnabled ?? settings.opencodeAmbientEnabled, true),
       opencodeLocalLimitsEnabled: parseBoolean(patch.opencodeLocalLimitsEnabled ?? settings.opencodeLocalLimitsEnabled, false),
       showLimitUsed: parseBoolean(patch.showLimitUsed ?? settings.showLimitUsed, false),
@@ -6631,7 +6695,8 @@ app.whenReady().then(() => {
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),
       ...normalizeTrayModeSettings({
         showTrayIcon: patch.showTrayIcon ?? settings.showTrayIcon,
-        trayMode: patch.trayMode ?? settings.trayMode
+        trayMode: patch.trayMode ?? settings.trayMode,
+        hideAppIcon: patch.hideAppIcon ?? settings.hideAppIcon
       }),
       trayContent: normalizeTrayContent(patch.trayContent ?? settings.trayContent),
       trayCustomLayout: normalizeTrayLayout(patch.trayCustomLayout ?? settings.trayCustomLayout),
@@ -6666,6 +6731,7 @@ app.whenReady().then(() => {
       qoderSite: patch.qoderSite !== undefined ? normalizeQoderSite(patch.qoderSite) : normalizeQoderSite(settings.qoderSite || 'global'),
       traeAccessToken: patch.traeAccessToken !== undefined ? normalizeTraeAccessToken(patch.traeAccessToken) : (settings.traeAccessToken || ''),
       traeDeviceId: patch.traeDeviceId !== undefined ? normalizeTraeDeviceId(patch.traeDeviceId) : (settings.traeDeviceId || ''),
+      zedCookie: patch.zedCookie !== undefined ? normalizeZedCookie(patch.zedCookie) : (settings.zedCookie || ''),
       commandcodeCookie: patch.commandcodeCookie !== undefined ? normalizeCommandcodeCookie(patch.commandcodeCookie) : (settings.commandcodeCookie || ''),
       ollamaCookie: patch.ollamaCookie !== undefined ? normalizeOllamaCookie(patch.ollamaCookie) : (settings.ollamaCookie || ''),
       customModelPricing: patch.customModelPricing !== undefined
@@ -6681,6 +6747,7 @@ app.whenReady().then(() => {
       settings = previousSettingsState;
       throw error;
     }
+    if (patch?.limitProviders !== undefined) initialLimitProvidersPending = false;
     if (JSON.stringify(settings.customModelPricing || []) !== previousCustomModelPricing) {
       regenerateTokscalePricing();
       refreshAfterPricingChange();
@@ -6761,6 +6828,11 @@ app.whenReady().then(() => {
       settings.language !== previousLanguage
     ) {
       updateTrayDisplay();
+    }
+    // enterTrayMode()/exitTrayMode() already re-apply the policy; this covers a
+    // hideAppIcon flip on its own, which is the only other input to it.
+    if (settings.hideAppIcon !== previousHideAppIcon && settings.trayMode === previousTrayMode) {
+      applyMacActivationPolicy();
     }
     if (patch.currency !== undefined || patch.currencyRates !== undefined) {
       applyEffectiveRates();               // sync: settingsForRenderer() below sees fresh effective map
@@ -8031,7 +8103,15 @@ app.whenReady().then(() => {
   });
   ipcMain.on('dashboard:minimize', (event) => { BrowserWindow.fromWebContents(event.sender)?.minimize(); });
   ipcMain.on('dashboard:close', (event) => { BrowserWindow.fromWebContents(event.sender)?.close(); });
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // The window this builds is about to be on screen, so the policy is resolved
+  // for a visible window exactly as focusExistingWindow() does. Without it this
+  // was the one path reaching applyMacSpaceBehavior() with a process type
+  // nothing had decided, which skipTransformProcessType now preserves.
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length > 0) return;
+    applyMacActivationPolicy({ mainWindowVisible: true });
+    createWindow();
+  });
   maybeRunBackgroundUpdateCheck();
   startAppUpdateBackgroundChecks();
 });

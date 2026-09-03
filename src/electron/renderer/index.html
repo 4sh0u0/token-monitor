@@ -222,6 +222,13 @@
                   <input id="currencyRateOverrideInput" type="number" step="0.0001" min="0" />
                 </div>
               </div>
+              <div class="settings-item">
+                <span id="modelRankingMetricLabel" class="settings-item-text"><span class="settings-item-title" data-i18n="settings.modelRanking.label">Model ranking</span></span>
+                <div class="inline-options" role="radiogroup" aria-labelledby="modelRankingMetricLabel">
+                  <label class="inline-option"><input type="radio" name="modelRankingMetric" value="tokens" id="modelRankingMetricTokens" /><span data-i18n="settings.modelRanking.tokens">Tokens</span></label>
+                  <label class="inline-option"><input type="radio" name="modelRankingMetric" value="cost" id="modelRankingMetricCost" /><span data-i18n="settings.modelRanking.cost">Cost</span></label>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -318,6 +325,10 @@
                   <label class="checkbox-label settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.trayMode">Tray-only mode</span></span><input id="trayModeInput" type="checkbox" /></label>
                   <div id="trayOptions" class="presence-feature-body hidden">
                     <p class="settings-note" data-i18n="settings.display.trayNote">Hide the main window; show a popover from the macOS menu bar or Windows system tray.</p>
+                  </div>
+                  <label id="hideAppIconRow" class="checkbox-label settings-item hidden"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.display.hideAppIcon">Hide taskbar/Dock icon</span></span><input id="hideAppIconInput" type="checkbox" /></label>
+                  <div id="hideAppIconOptions" class="presence-feature-body hidden">
+                    <p class="settings-note" data-i18n="settings.display.hideAppIconNote">The widget stays on the desktop; use the tray icon or the shortcut to bring it to the front.</p>
                   </div>
                 </div>
               </div>
@@ -463,6 +474,9 @@
                   <button id="showAllClientsButton" class="tool-header-action" type="button" title="Show all" aria-label="Show all" data-i18n-title="settings.tools.showAll" data-i18n-aria-label="settings.tools.showAll"><span class="tool-header-eye" aria-hidden="true"></span></button>
                 </div>
               </div>
+              <div class="settings-list-search">
+                <input id="clientDisplaySearchInput" class="settings-list-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search tools" data-i18n-placeholder="settings.tools.search" aria-label="Search tools" data-i18n-aria-label="settings.tools.search" aria-controls="clientDisplayList" />
+              </div>
               <div id="clientDisplayList" class="tool-preference-list"></div>
             </div>
             <div class="settings-subgroup settings-collection-cadence">
@@ -591,6 +605,9 @@
           </button>
           <div id="limitsSettingsDetails" class="settings-section-details hidden">
             <p class="settings-note" data-i18n="settings.limits.reorderNote">Drag a provider to reorder the list.</p>
+            <div class="settings-list-search">
+              <input id="limitProviderSearchInput" class="settings-list-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search providers" data-i18n-placeholder="settings.limits.search" aria-label="Search providers" data-i18n-aria-label="settings.limits.search" aria-controls="limitProviderCheckboxes" />
+            </div>
             <div id="limitProviderCheckboxes" class="client-checkboxes limit-provider-list"></div>
             <label class="settings-item"><span class="settings-item-text"><span class="settings-item-title" data-i18n="settings.limits.refresh">Refresh</span></span>
               <select id="limitsRefreshInput">
@@ -1120,6 +1137,35 @@
                   </div>
                 </div>
                 <div id="traeErrorMessage" class="settings-note error hidden"></div>
+              </div>
+            </div>
+            <div id="zedAccountGroup" class="settings-group cursor-account-group">
+              <button id="zedSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="zedSettingsDetails">
+                <span data-i18n="settings.zed.title">Zed Account</span>
+                <span class="cursor-settings-summary">
+                  <span id="zedAccountStatus" class="cursor-status-pill">Not configured</span>
+                  <span class="cursor-disclosure-icon" aria-hidden="true"></span>
+                </span>
+              </button>
+              <div id="zedSettingsDetails" class="cursor-settings-details hidden">
+                <div class="settings-actions">
+                  <button id="zedOpenBrowser" data-i18n="settings.zed.openBrowser">Open Zed in browser</button>
+                  <button id="zedLogoutButton" class="hidden" data-i18n="settings.zed.clearCookie">Clear cookie</button>
+                  <button id="zedRefreshButton" data-i18n="settings.common.refresh">Refresh</button>
+                </div>
+                <div id="zedManualPanel">
+                  <p class="settings-note">
+                    <strong>1.</strong> <span data-i18n="settings.zed.step1">Open Zed in your browser (button above), sign in, then select the organization.</span><br>
+                    <strong>2.</strong> <span data-i18n="settings.zed.step2">Open DevTools (F12 or Cmd+Opt+I) -> Network, reload the page, then select the usage request.</span><br>
+                    <strong>3.</strong> <span data-i18n="settings.zed.step3">In Headers -> Request Headers, copy the full Cookie value.</span><br>
+                    <strong>4.</strong> <span data-i18n="settings.zed.step4">Paste it below and click Save cookie.</span>
+                  </p>
+                  <textarea id="zedCookieInput" rows="3" autocomplete="off" spellcheck="false" placeholder="zed.session=...; c15t=..." data-i18n-placeholder="settings.zed.cookiePlaceholder"></textarea>
+                  <div class="settings-actions">
+                    <button id="zedCookieSubmit" data-i18n="settings.zed.saveCookie">Save cookie</button>
+                  </div>
+                </div>
+                <div id="zedErrorMessage" class="settings-note error hidden" role="alert"></div>
               </div>
             </div>
             <div id="commandcodeAccountGroup" class="settings-group cursor-account-group">
@@ -1685,6 +1731,7 @@
     <script src="serviceStatusPresentation.js"></script>
     <script src="serviceStatusProviderPreferences.js"></script>
     <script src="clientDisplayPreferences.js"></script>
+    <script src="settingsListFilter.js"></script>
     <script src="viewDisplayPreferences.js"></script>
     <script src="homeModulePreferences.js"></script>
     <script src="fixedPeriodRanges.js"></script>

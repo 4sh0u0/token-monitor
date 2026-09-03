@@ -59,6 +59,7 @@ const kimiLimits = require('./kimiLimits');
 const { kimiToken, kimiWebToken, fetchKimiLimits } = kimiLimits;
 const workbuddyLimits = require('./workbuddyLimits');
 const traeLimits = require('./traeLimits');
+const zedLimits = require('./zedLimits');
 const {
   grokCredential,
   readAuthJson,
@@ -115,9 +116,9 @@ function parseBoolean(value, fallback = true) {
 }
 
 function parseLimitProviders(value) {
-  const isEmpty = value === undefined || value === null || value === ''
-    || (Array.isArray(value) && value.length === 0);
-  const source = isEmpty ? LIMIT_PROVIDER_IDS : value;
+  // Omission keeps the historical default; an explicitly empty setting means
+  // that no provider is enabled and must survive persistence/reload.
+  const source = value === undefined || value === null ? LIMIT_PROVIDER_IDS : value;
   const raw = Array.isArray(source) ? source : String(source).split(',');
   const seen = new Set();
   const providers = [];
@@ -4040,6 +4041,7 @@ function providerFetchers(deps = {}) {
     workbuddy: (providerOptions, probeDeps) => workbuddyLimits.fetchWorkbuddyLimits(providerOptions, probeDeps),
     ollama: (providerOptions, probeDeps) => ollamaLimits.fetchOllamaLimits(providerOptions, probeDeps),
     kimi: (providerOptions, probeDeps) => kimiLimits.fetchKimiLimits(providerOptions, probeDeps),
+    zed: (providerOptions, probeDeps) => zedLimits.fetchZedLimits(providerOptions, probeDeps),
     thirdparty: (providerOptions, probeDeps) => thirdPartyLimits.fetchThirdPartyLimits(providerOptions, probeDeps),
     ...(deps.providerFetchers || {})
   };
@@ -4446,6 +4448,9 @@ module.exports = {
   kimiToken,
   kimiWebToken,
   fetchKimiLimits,
+  zedCookie: zedLimits.zedCookie,
+  normalizeZedCookieHeader: zedLimits.normalizeZedCookieHeader,
+  fetchZedLimits: zedLimits.fetchZedLimits,
   mapClaudeCliUsageToProvider,
   mapClaudeUsageToProvider,
   mapCodexRateLimitsToProvider,

@@ -326,3 +326,10 @@ test('stores and removes Antigravity OAuth credentials without exposing them as 
   assert.equal(store.readAntigravityCredential('account-1'), null);
   assert.equal(store.writeAntigravityCredential('__proto__', credentials), false);
 });
+
+test('stores Zed dashboard Cookie as a fixed credential and redacts it for renderer settings', (t) => {
+  const store = new CredentialStore(tempDataDir(t));
+  store.replaceSettingsCredentials({ zedCookie: 'zed.session=secret; c15t=challenge' });
+  assert.equal(store.settingsCredentials().zedCookie, 'zed.session=secret; c15t=challenge');
+  assert.equal(credentialSettingsForRenderer({ zedCookie: 'secret' }).zedCookie, '');
+});

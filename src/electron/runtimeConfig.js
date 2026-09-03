@@ -82,6 +82,7 @@ const LIMIT_PROVIDER_SETTING_KEYS = Object.freeze({
   ],
   qoder: ['qoderCookie', 'qoderSite'],
   trae: ['traeAccessToken', 'traeDeviceId'],
+  zed: ['zedCookie'],
   // The desktop widget auto-detects WorkBuddy when the provider itself is
   // enabled. Token and metadata fields remain available to headless/CLI deployments.
   workbuddy: ['workbuddyAccessToken', 'workbuddyUserId', 'workbuddyEnterpriseId', 'workbuddyLocale', 'workbuddyDomain', 'workbuddyDepartmentInfo'],
@@ -193,6 +194,10 @@ function limitsConfigFromSettings(settings = {}, context = {}) {
     traeDeviceId: settings.traeDeviceId
       || env.TOKEN_MONITOR_TRAE_DEVICE_ID
       || env.TRAE_DEVICE_ID
+      || '',
+    zedCookie: settings.zedCookie
+      || env.TOKEN_MONITOR_ZED_COOKIE
+      || env.ZED_COOKIE
       || '',
     commandcodeCookie: settings.commandcodeCookie || '',
     workbuddyAccessToken: workbuddySettings.workbuddyAccessToken

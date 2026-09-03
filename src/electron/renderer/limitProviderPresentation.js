@@ -29,6 +29,7 @@
     mimo: { web: 'Web' },
     grok: { rpc: 'CLI', web: 'Web' },
     copilot: { api: 'API' },
+    zed: { web: 'Web' },
     kiro: { cli: 'CLI' },
     zai: { api: 'API' },
     zaiteam: { api: 'API' },
@@ -61,6 +62,7 @@
     mimo: ['Token Plan', 'Web'],
     grok: ['Auto', 'CLI/Web'],
     copilot: ['Manual login', 'API'],
+    zed: ['Manual login', 'Web'],
     kiro: ['Auto', 'CLI'],
     zai: ['Coding Plan', 'API key'],
     zaiteam: ['Team Plan', 'API key'],
@@ -127,6 +129,16 @@
     return label.replace(/^[a-z]/, (letter) => letter.toUpperCase());
   }
 
+  function limitProviderPlanDisplayLabel(providerOrId, value) {
+    const label = limitProviderDisplayLabel(value);
+    if (providerId(providerOrId) !== 'zed') return label;
+    // Zed's API returns canonical names such as "Zed Student" and "Zed Pro".
+    // The provider heading already supplies "Zed", so keep only the meaningful
+    // plan portion in both the Limits card and managed-account row. Unknown
+    // custom plan names pass through untouched.
+    return label.replace(/^Zed\s+/iu, '').trim() || label;
+  }
+
   function codexAdditionalQuotaDisplayName(value) {
     const name = String(value || '').trim();
     return normalizeId(name) === 'gpt-reserve' ? 'Luna Reserve' : name;
@@ -164,6 +176,14 @@
   function limitProviderCompactWindows(providerOrId, windows = []) {
     const provider = providerId(providerOrId);
     if (provider === 'codex') return (windows || []).filter(isCanonicalCodexWindow);
+    if (provider === 'zed') {
+      return (windows || []).map((window) => (
+        window?.limitId === 'zed.edit-predictions'
+          && normalizeId(window?.detail) === 'unlimited'
+          ? { ...window, value: 'Unlimited', resetDescription: '' }
+          : window
+      ));
+    }
     if (provider !== 'antigravity') return windows;
     const entries = (windows || []).map((window, index) => ({
       window,
@@ -251,7 +271,8 @@
     return (providerName === 'claude' && source === 'web')
       || providerName === 'cursor'
       || (providerName === 'opencode' && source === 'web')
-      || (providerName === 'mimo' && source === 'web');
+      || (providerName === 'mimo' && source === 'web')
+      || (providerName === 'zed' && source === 'web');
   }
 
   function limitProviderStatusLabel(provider = {}) {
@@ -287,7 +308,7 @@
     if (status === 'notConfigured') {
       if (providerName === 'kimi') return { label: 'Add credential', tone: 'setup' };
       if (providerName === 'antigravity') return { label: 'Not set up', tone: 'setup' };
-      if (providerName === 'cursor' || providerName === 'copilot' || providerName === 'qoder' || providerName === 'trae' || providerName === 'workbuddy' || providerName === 'commandcode' || providerName === 'ollama') return { label: 'Sign in', tone: 'setup' };
+      if (providerName === 'cursor' || providerName === 'copilot' || providerName === 'zed' || providerName === 'qoder' || providerName === 'trae' || providerName === 'workbuddy' || providerName === 'commandcode' || providerName === 'ollama') return { label: 'Sign in', tone: 'setup' };
       if (providerName === 'thirdparty') return { label: 'Add credential', tone: 'setup' };
       if (providerName === 'openrouter' || providerName === 'deepseek' || providerName === 'minimax' || providerName === 'zai' || providerName === 'zaiteam' || providerName === 'volcengine' || providerName === 'kimi') return { label: 'Add API key', tone: 'setup' };
       if (providerName === 'grok') return { label: 'Run grok login', tone: 'setup' };
@@ -435,6 +456,7 @@
     limitProviderCompactWindowPeriodLabel,
     limitProviderCompactWindows,
     limitProviderDisplayLabel,
+    limitProviderPlanDisplayLabel,
     limitProviderMainDeviceLabel,
     namedApiProfileStatus,
     limitProviderProvenance,
