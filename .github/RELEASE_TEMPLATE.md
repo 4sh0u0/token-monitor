@@ -4,24 +4,23 @@
 
 <!-- app-update-notes:en:start -->
 ### Added
-- **Zed dashboard limits:** Adds Token Spend and Edit Predictions limits using a manually supplied dashboard cookie. (#580)
-- **Daily model export:** Adds a daily per-model CSV export with token components and estimated cost to both manual and automatic exports. (#573)
-- **Codex additional quotas:** Adds a setting to hide separately metered additional quotas while keeping the main Codex limit visible. (#577)
-- **Taskbar/Dock icon:** Adds an option in Settings → Display to hide the Windows taskbar or macOS Dock icon while keeping the desktop widget visible. The option appears when the tray icon is enabled. (#587)
-- **Model ranking:** Adds token- or cost-based ranking to the Models breakdown. (#585)
+- **Settings list search:** Adds search fields for filtering the tracked tools and AI Tool Limits providers. (#590)
 
-### Improved
-- **First-run AI Limits:** Selects providers from detected tools on new installations, with Codex as the fallback when no supported tools are detected. (#566)
-- **Hub settings:** Improves Save-state handling so the button is enabled only when connection settings change, while preventing duplicate submissions. (#445)
+### Fixed
+- **Cursor usage:** Fixes Cursor usage fetch failures caused by an upstream connection change. (#596)
+- **Cursor status (Windows):** Fixes Cursor being incorrectly reported as undetected when its cache is stored in the user's home directory. (#563)
+- **DeepSeek Harness and Command Code usage:** Corrects DeepSeek Harness summary counts and Command Code v3 usage and cost totals. (#596)
+- **Hidden UI:** Fixes hidden panels, notices, and controls remaining visible or reserving space. (#593)
+- **Muse models:** Fixes Muse models using a fallback color instead of Meta's color in the Models breakdown.
 <!-- app-update-notes:en:end -->
 
 ## Download
 
-- **macOS Apple Silicon** — [Token-Monitor-0.52.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.52.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-x64.dmg)
-- **Windows Installer** — [Token-Monitor-Setup-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-Setup-0.52.0.exe) (recommended)
-- **Windows Portable** — [Token-Monitor-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.exe) (no install required)
-- **Linux x64** — [Token-Monitor-0.52.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.53.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.53.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-x64.dmg)
+- **Windows Installer** — [Token-Monitor-Setup-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-Setup-0.53.0.exe) (recommended)
+- **Windows Portable** — [Token-Monitor-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.exe) (no install required)
+- **Linux x64** — [Token-Monitor-0.53.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.AppImage)
 
 <details>
 <summary><strong>First launch and other notes</strong></summary>
@@ -59,24 +58,23 @@ open-source: https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh:start -->
 ### 新增
-- **Zed 控制台额度：** 支持使用手动提供的控制台 Cookie 查看 Token Spend 和 Edit Predictions 额度。（#580）
-- **每日模型导出：** 手动和自动导出均新增一份每日模型 CSV，包含 Token 组成和预估成本。（#573）
-- **Codex 额外额度：** 新增隐藏单独计量额度的设置，同时保留 Codex 主额度。（#577）
-- **任务栏／Dock 图标：** 可在“设置 → 显示”中隐藏 Windows 任务栏或 macOS Dock 图标，同时保留桌面小组件。启用托盘图标后才会显示此选项。（#587）
-- **模型排序：** 支持在“模型”明细中按 Tokens 或成本排序。（#585）
+- **设置列表搜索：** 新增搜索栏，可筛选“工具”列表中的已追踪工具，以及“AI 工具额度”列表中的提供方。（#590）
 
-### 改进
-- **AI 工具额度初始设置：** 新安装会根据检测到的工具预选额度提供方；未检测到支持的工具时默认选择 Codex。（#566）
-- **Hub 设置：** 改进“保存”按钮的状态判断，仅在连接设置发生变化时启用，并避免重复提交。（#445）
+### 修复
+- **Cursor 用量：** 修复 Cursor 用量获取失败的问题。（#596）
+- **Cursor 状态（Windows）：** 修复 Cursor 缓存位于用户主目录时被错误识别为未检测到的问题。（#563）
+- **DeepSeek Harness 与 Command Code 用量：** 修正 DeepSeek Harness 摘要计数，以及 Command Code v3 的用量和成本统计。（#596）
+- **隐藏内容：** 修复部分已隐藏的面板、提示和控件仍会显示或占用空间的问题。（#593）
+- **Muse 模型：** 修复“模型”明细中的 Muse 模型未使用 Meta 配色的问题。
 <!-- app-update-notes:zh:end -->
 
 ## 下载
 
-- **macOS Apple Silicon** — [Token-Monitor-0.52.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.52.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-x64.dmg)
-- **Windows 安装版** — [Token-Monitor-Setup-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-Setup-0.52.0.exe)（推荐）
-- **Windows 便携版** — [Token-Monitor-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.exe)（免安装）
-- **Linux x64** — [Token-Monitor-0.52.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.53.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.53.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-x64.dmg)
+- **Windows 安装版** — [Token-Monitor-Setup-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-Setup-0.53.0.exe)（推荐）
+- **Windows 便携版** — [Token-Monitor-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.exe)（免安装）
+- **Linux x64** — [Token-Monitor-0.53.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.AppImage)
 
 <details>
 <summary><strong>首次启动与其他说明</strong></summary>
@@ -109,7 +107,7 @@ https://github.com/junhoyeo/tokscale
 ---
 
 <details>
-<summary><strong>Full Changelog:</strong> <a href="https://github.com/Javis603/token-monitor/compare/v0.51.0...v0.52.0">v0.51.0...v0.52.0</a></summary>
+<summary><strong>Full Changelog:</strong> <a href="https://github.com/Javis603/token-monitor/compare/v0.52.0...v0.53.0">v0.52.0...v0.53.0</a></summary>
 
 <!-- github-generated-release-notes -->
 
@@ -127,24 +125,23 @@ https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:zh-TW:start -->
 ### 新增
-- **Zed 控制台額度：** 支援使用手動提供的控制台 Cookie 查看 Token Spend 與 Edit Predictions 額度。（#580）
-- **每日模型匯出：** 手動和自動匯出均新增一份每日模型 CSV，包含 Token 組成及預估成本。（#573）
-- **Codex 額外額度：** 新增隱藏獨立計量額度的設定，同時保留 Codex 主要額度。（#577）
-- **工作列／Dock 圖示：** 可在「設定 → 顯示」中隱藏 Windows 工作列或 macOS Dock 圖示，同時保留桌面小工具。啟用系統匣圖示後才會顯示此選項。（#587）
-- **模型排序：** 支援在「模型」明細中按 Tokens 或成本排序。（#585）
+- **設定列表搜尋：** 新增搜尋欄，可篩選「工具」列表中的已追蹤工具，以及「AI 工具額度」列表中的供應商。（#590）
 
-### 改進
-- **AI 工具額度初始設定：** 新安裝會根據偵測到的工具預選額度提供者；未偵測到支援的工具時預設選擇 Codex。（#566）
-- **Hub 設定：** 改進「儲存」按鈕的狀態判斷，僅在連線設定變更時啟用，並避免重複提交。（#445）
+### 修復
+- **Cursor 用量：** 修復 Cursor 用量取得失敗的問題。（#596）
+- **Cursor 狀態（Windows）：** 修復 Cursor 快取位於使用者主目錄時，被錯誤判定為未偵測到的問題。（#563）
+- **DeepSeek Harness 與 Command Code 用量：** 修正 DeepSeek Harness 摘要計數，以及 Command Code v3 的用量與成本統計。（#596）
+- **隱藏內容：** 修復部分已隱藏的面板、提示與控制項仍會顯示或佔用空間的問題。（#593）
+- **Muse 模型：** 修復「模型」明細中的 Muse 模型未使用 Meta 配色的問題。
 <!-- app-update-notes:zh-TW:end -->
 
 ## 下載
 
-- **macOS Apple Silicon** — [Token-Monitor-0.52.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.52.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-x64.dmg)
-- **Windows 安裝版** — [Token-Monitor-Setup-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-Setup-0.52.0.exe)（推薦）
-- **Windows 便攜版** — [Token-Monitor-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.exe)（免安裝）
-- **Linux x64** — [Token-Monitor-0.52.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.53.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.53.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-x64.dmg)
+- **Windows 安裝版** — [Token-Monitor-Setup-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-Setup-0.53.0.exe)（推薦）
+- **Windows 便攜版** — [Token-Monitor-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.exe)（免安裝）
+- **Linux x64** — [Token-Monitor-0.53.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.AppImage)
 
 </details>
 
@@ -157,24 +154,23 @@ https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:ko:start -->
 ### 추가
-- **Zed 대시보드 한도:** 수동으로 입력한 대시보드 Cookie로 Token Spend와 Edit Predictions 한도를 확인할 수 있습니다. (#580)
-- **일별 모델 내보내기:** 수동 및 자동 내보내기에 토큰 구성과 예상 비용을 담은 일별 모델 CSV를 추가했습니다. (#573)
-- **Codex 추가 할당량:** Codex 기본 한도는 유지하면서 별도로 측정되는 추가 할당량을 숨기는 설정을 추가했습니다. (#577)
-- **작업 표시줄/Dock 아이콘:** 설정 → 디스플레이에서 Windows 작업 표시줄 또는 macOS Dock 아이콘을 숨겨도 데스크톱 위젯은 계속 표시됩니다. 트레이 아이콘을 켜면 이 옵션이 나타납니다. (#587)
-- **모델 정렬:** 모델 상세 내역을 토큰 또는 비용 기준으로 정렬할 수 있습니다. (#585)
+- **설정 목록 검색:** 추적 도구와 AI 도구 한도 제공자 목록을 검색하는 필드를 추가했습니다. (#590)
 
-### 개선
-- **AI 도구 한도 첫 설정:** 새로 설치하면 감지된 도구에 맞춰 한도 제공자를 선택하며, 지원되는 도구가 감지되지 않으면 Codex를 사용합니다. (#566)
-- **Hub 설정:** 연결 설정이 바뀐 경우에만 저장 버튼을 활성화하도록 상태 처리를 개선하고 중복 제출을 방지합니다. (#445)
+### 수정
+- **Cursor 사용량:** 업스트림 연결 변경으로 Cursor 사용량을 가져오지 못하던 문제를 수정했습니다. (#596)
+- **Cursor 상태(Windows):** 사용자 홈 디렉터리에 Cursor 캐시가 있을 때 Windows에서 Cursor가 감지되지 않은 것으로 잘못 표시되던 문제를 수정했습니다. (#563)
+- **DeepSeek Harness 및 Command Code 사용량:** DeepSeek Harness 요약 횟수와 Command Code v3 사용량 및 비용 집계를 수정했습니다. (#596)
+- **숨겨진 요소:** 숨긴 패널, 안내문, 컨트롤이 여전히 표시되거나 공간을 차지하던 문제를 수정했습니다. (#593)
+- **Muse 모델:** 모델 상세 내역에서 Muse 모델이 Meta 색상 대신 대체 색상을 사용하던 문제를 수정했습니다.
 <!-- app-update-notes:ko:end -->
 
 ## 다운로드
 
-- **macOS Apple Silicon** — [Token-Monitor-0.52.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.52.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-x64.dmg)
-- **Windows 설치 버전** — [Token-Monitor-Setup-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-Setup-0.52.0.exe) (권장)
-- **Windows 포터블 버전** — [Token-Monitor-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.exe) (설치 필요 없음)
-- **Linux x64** — [Token-Monitor-0.52.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.53.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.53.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-x64.dmg)
+- **Windows 설치 버전** — [Token-Monitor-Setup-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-Setup-0.53.0.exe) (권장)
+- **Windows 포터블 버전** — [Token-Monitor-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.exe) (설치 필요 없음)
+- **Linux x64** — [Token-Monitor-0.53.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.AppImage)
 
 </details>
 
@@ -187,24 +183,23 @@ https://github.com/junhoyeo/tokscale
 
 <!-- app-update-notes:ja:start -->
 ### 追加
-- **Zedダッシュボードの上限：** 手動で入力したダッシュボードのCookieから、Token SpendとEdit Predictionsの上限を確認できます。（#580）
-- **日別モデルエクスポート：** 手動および自動エクスポートに、トークン内訳と推定コストを含む日別モデルCSVを追加しました。（#573）
-- **Codexの追加割り当て：** Codexのメイン上限を残したまま、個別に計測される追加割り当てを非表示にする設定を追加しました。（#577）
-- **タスクバー／Dockアイコン：** 「設定 → 表示」でWindowsのタスクバーまたはmacOSのDockアイコンを非表示にしても、デスクトップウィジェットは表示されたままです。トレイアイコンを有効にすると、この項目が表示されます。（#587）
-- **モデルの並び順：** モデルの内訳をトークンまたはコスト順に並べられます。（#585）
+- **設定リスト検索：** 追跡ツールとAIツール制限のプロバイダーを検索する欄を追加しました。（#590）
 
-### 改善
-- **AIツール制限の初期設定：** 新規インストールでは検出したツールに合わせてプロバイダーを選択し、対応ツールが検出されない場合はCodexを使用します。（#566）
-- **Hub設定：** 接続設定が変わった場合だけ保存ボタンが有効になるよう状態処理を改善し、重複送信を防ぎます。（#445）
+### 修正
+- **Cursorの使用量：** アップストリーム接続の変更によりCursorの使用量を取得できなくなっていた問題を修正しました。（#596）
+- **Cursorの状態（Windows）：** Cursorのキャッシュがユーザーのホームディレクトリにある場合に、Cursorが未検出と誤って表示される問題を修正しました。（#563）
+- **DeepSeek HarnessとCommand Codeの使用量：** DeepSeek Harnessの要約回数とCommand Code v3の使用量・コスト集計を修正しました。（#596）
+- **非表示要素：** 非表示にしたパネル、通知、コントロールが表示されたままになったり、空間を占有したりする問題を修正しました。（#593）
+- **Museモデル：** 「モデル」の内訳でMuseモデルがMetaの色ではなくフォールバック色を使用していた問題を修正しました。
 <!-- app-update-notes:ja:end -->
 
 ## ダウンロード
 
-- **macOS Apple Silicon** — [Token-Monitor-0.52.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-arm64.dmg)
-- **macOS Intel** — [Token-Monitor-0.52.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0-x64.dmg)
-- **Windows インストーラー** — [Token-Monitor-Setup-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-Setup-0.52.0.exe)（推奨）
-- **Windows ポータブル版** — [Token-Monitor-0.52.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.exe)（インストール不要）
-- **Linux x64** — [Token-Monitor-0.52.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.52.0/Token-Monitor-0.52.0.AppImage)
+- **macOS Apple Silicon** — [Token-Monitor-0.53.0-arm64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-arm64.dmg)
+- **macOS Intel** — [Token-Monitor-0.53.0-x64.dmg](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0-x64.dmg)
+- **Windows インストーラー** — [Token-Monitor-Setup-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-Setup-0.53.0.exe)（推奨）
+- **Windows ポータブル版** — [Token-Monitor-0.53.0.exe](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.exe)（インストール不要）
+- **Linux x64** — [Token-Monitor-0.53.0.AppImage](https://github.com/Javis603/token-monitor/releases/download/v0.53.0/Token-Monitor-0.53.0.AppImage)
 
 </details>
 
