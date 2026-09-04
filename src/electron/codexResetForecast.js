@@ -61,13 +61,8 @@ function dateMs(value) {
 function forecastAtTime(forecast, nowMs) {
   if (forecast?.status !== 'active') return forecast;
   const expiresAtMs = dateMs(forecast.expiresAt);
-  const observedAtMs = dateMs(forecast.observedAt);
-  const latestResetAtMs = dateMs(forecast.latestResetAt);
   const expired = expiresAtMs !== null && expiresAtMs <= nowMs;
-  const superseded = observedAtMs !== null
-    && latestResetAtMs !== null
-    && latestResetAtMs >= observedAtMs;
-  return expired || superseded ? { ...forecast, status: 'inactive' } : forecast;
+  return expired ? { ...forecast, status: 'inactive' } : forecast;
 }
 
 function cacheDurationForForecast(forecast, nowMs, maximumMs) {
@@ -211,6 +206,13 @@ function normalizeCodexResetForecast(payload, options = {}) {
     latestResetRecord.date,
     latestResetRecord.at
   ));
+  const latestResetTypeValue = String(firstDefined(
+    latestResetRecord.resetType,
+    latestResetRecord.reset_type
+  ) || '').trim().toLowerCase();
+  const latestResetType = ['banked', 'regular'].includes(latestResetTypeValue)
+    ? latestResetTypeValue
+    : '';
   const sourceAuthor = String(firstDefined(
     source.authorHandle,
     source.author_handle,
@@ -226,6 +228,7 @@ function normalizeCodexResetForecast(payload, options = {}) {
       observedAt,
       sourceAuthor,
       latestResetAt,
+      latestResetType,
       checkedAt,
       pageUrl: CODEX_RESET_FORECAST_PAGE_URL
     };
@@ -242,6 +245,7 @@ function normalizeCodexResetForecast(payload, options = {}) {
     observedAt,
     sourceAuthor,
     latestResetAt,
+    latestResetType,
     checkedAt,
     pageUrl: CODEX_RESET_FORECAST_PAGE_URL
   }, nowMs);
