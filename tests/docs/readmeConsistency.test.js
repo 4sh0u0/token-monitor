@@ -76,6 +76,7 @@ const supportedToolOrder = [
   'Volcengine',
   'Ollama',
   'Trae CN',
+  'Alibaba Cloud',
   'Third-party APIs'
 ];
 
@@ -113,6 +114,7 @@ const supportedToolIdOrder = [
   'volcengine',
   'ollama',
   'trae',
+  'alibaba',
   'thirdparty'
 ];
 
