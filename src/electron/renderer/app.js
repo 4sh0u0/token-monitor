@@ -1,6 +1,9 @@
 'use strict';
 
-const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes Agent', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', commandcode: 'Command Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy', proma: 'Proma', qodercn: 'Qoder CN', reasonix: 'Reasonix', dsh: 'DeepSeek Harness', cherrystudio: 'Cherry Studio', lmstudio: 'LM Studio' };
+// Client identity — ids, labels and display order — comes from the shared
+// catalog (loaded as a script before this file). Destructured to the bare
+// names the call sites below already use.
+const { CLIENT_LABELS: clientLabels, KNOWN_CLIENT_LIST: KNOWN_CLIENTS } = window.TokenMonitorClientCatalog;
 const reasonixSessionGuard = window.TokenMonitorReasonixSessionGuard;
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
 const motionPreferenceApi = window.TokenMonitorMotionPreference;
@@ -13,10 +16,10 @@ const tokenRateApi = window.TokenMonitorTokenRate;
 const { tokenRatePerSecond, tokenBurnPerMinute } = tokenRateApi;
 const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const clientsWithIcon = new Set([
-  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'qodercn', 'reasonix', 'dsh', 'cherrystudio', 'lmstudio',
+  'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'proma', 'qodercn', 'reasonix', 'dsh', 'cherrystudio', 'lmstudio', 'unsloth',
   'xai', 'openrouter', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'mimo', 'minimax', 'doubao', 'volcengine', 'qoder', 'trae', 'ollama', 'thirdparty', 'hunyuan'
 ]);
-const limitMarksWithIcon = new Set([...clientsWithIcon, 'newapi', 'sub2api']);
+const limitMarksWithIcon = new Set([...clientsWithIcon, 'newapi', 'sub2api', 'alibaba']);
 
 function osIconFor(platform) {
   const prefix = String(platform || '').toLowerCase().split('-')[0];
@@ -50,60 +53,7 @@ function iconKindFor(rowData, breakdown) {
     : { kind: 'dot' };
 }
 
-const KNOWN_CLIENTS = [
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'opencode', label: 'OpenCode' },
-  { id: 'hermes', label: 'Hermes Agent' },
-  { id: 'openclaw', label: 'OpenClaw' },
-  { id: 'cursor', label: 'Cursor' },
-  { id: 'antigravity', label: 'Antigravity' },
-  { id: 'cline', label: 'Cline' },
-  { id: 'kimi', label: 'Kimi' },
-  { id: 'qwen', label: 'Qwen' },
-  { id: 'grok', label: 'Grok Build' },
-  { id: 'copilot', label: 'GitHub Copilot' },
-  { id: 'pi', label: 'Pi' },
-  { id: 'zed', label: 'Zed' },
-  { id: 'kilocode', label: 'Kilo Code' },
-  { id: 'commandcode', label: 'Command Code' },
-  { id: 'micode', label: 'MiMo Code' },
-  { id: 'zcode', label: 'ZCode' },
-  { id: 'kiro', label: 'Kiro' },
-  { id: 'codebuddy', label: 'CodeBuddy' },
-  { id: 'workbuddy', label: 'WorkBuddy' },
-  { id: 'proma', label: 'Proma' },
-  { id: 'qodercn', label: 'Qoder CN' },
-  { id: 'reasonix', label: 'Reasonix' },
-  { id: 'dsh', label: 'DeepSeek Harness' },
-  { id: 'cherrystudio', label: 'Cherry Studio' },
-  { id: 'lmstudio', label: 'LM Studio' }
-];
-const LIMIT_PROVIDERS = [
-  { id: 'claude', label: 'Claude', settingsLabel: 'Claude Code' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'opencode', label: 'OpenCode' },
-  { id: 'cursor', label: 'Cursor' },
-  { id: 'antigravity', label: 'Antigravity' },
-  { id: 'kimi', label: 'Kimi' },
-  { id: 'grok', label: 'Grok' },
-  { id: 'copilot', label: 'GitHub Copilot' },
-  { id: 'zed', label: 'Zed' },
-  { id: 'commandcode', label: 'Command Code' },
-  { id: 'mimo', label: 'MiMo' },
-  { id: 'zai', label: 'GLM' },
-  { id: 'zaiteam', label: 'GLM Team' },
-  { id: 'kiro', label: 'Kiro' },
-  { id: 'workbuddy', label: 'WorkBuddy' },
-  { id: 'qoder', label: 'Qoder' },
-  { id: 'deepseek', label: 'DeepSeek' },
-  { id: 'openrouter', label: 'OpenRouter' },
-  { id: 'minimax', label: 'Minimax' },
-  { id: 'volcengine', label: 'Volcengine' },
-  { id: 'ollama', label: 'Ollama' },
-  { id: 'trae', label: 'Trae CN' },
-  { id: 'thirdparty', label: 'Third-party APIs' }
-];
+const LIMIT_PROVIDERS = window.TokenMonitorLimitProviders.LIMIT_PROVIDER_CATALOG;
 const LIMIT_PROVIDER_ACCOUNT_GROUP_IDS = {
   claude: 'claudeAccountGroup',
   codex: 'codexAccountGroup',
@@ -124,6 +74,7 @@ const LIMIT_PROVIDER_ACCOUNT_GROUP_IDS = {
   trae: 'traeAccountGroup',
   commandcode: 'commandcodeAccountGroup',
   ollama: 'ollamaAccountGroup',
+  alibaba: 'alibabaAccountGroup',
   thirdparty: 'thirdpartyAccountGroup'
 };
 const LIMIT_PROVIDER_ACCOUNT_STATUS_IDS = {
@@ -146,6 +97,7 @@ const LIMIT_PROVIDER_ACCOUNT_STATUS_IDS = {
   trae: 'traeAccountStatus',
   commandcode: 'commandcodeAccountStatus',
   ollama: 'ollamaAccountStatus',
+  alibaba: 'alibabaAccountStatus',
   thirdparty: 'thirdpartyStatus'
 };
 const LIMIT_PROVIDER_CONNECTION_DETAIL_KEYS = {
@@ -5226,6 +5178,25 @@ function renderProviderWindows(provider, color) {
       node.classList.add('limit-window-wide');
       windows.append(node);
     }
+  } else if (provider.provider === 'alibaba') {
+    // Team returns one credit pool; Personal/Solo returns rolling 5-hour and
+    // weekly windows. Both are the same provider, so the shape decides the
+    // layout rather than the configured variant — a device syncing another
+    // machine's row has no access to that setting.
+    const billing = windowForKind(provider, 'billing');
+    const session = windowForKind(provider, 'session');
+    const weekly = windowForKind(provider, 'weekly');
+    if (billing) {
+      const node = limitWindowNode(billing.label || 'Monthly', billing, color, 0.68);
+      node.classList.add('limit-window-wide');
+      windows.append(node);
+    }
+    if (session) {
+      const node = limitWindowNode(session.label || '5-hour', session, color, 0.95);
+      if (!weekly) node.classList.add('limit-window-wide');
+      windows.append(node);
+    }
+    if (weekly) windows.append(limitWindowNode(weekly.label || 'Weekly', weekly, color, 0.68));
   } else if (provider.provider === 'ollama') {
     const session = windowForKind(provider, 'session');
     const weekly = windowForKind(provider, 'weekly');
@@ -5348,9 +5319,19 @@ function positionCodexResetForecastTooltip(wrap) {
   tooltip.classList.toggle('is-below', roomAbove < tooltip.offsetHeight + 5);
 }
 
+function codexResetForecastType(value) {
+  const type = String(value || '').trim().toLowerCase();
+  if (type !== 'banked' && type !== 'regular') return '';
+  return t(`limits.codexResetForecast.resetType.${type}`);
+}
+
 function codexResetForecastTooltip(forecast) {
   const entries = [];
   const disclaimer = t('limits.codexResetForecast.disclaimer');
+  const latestResetType = codexResetForecastType(forecast?.latestResetType);
+  if (latestResetType) {
+    entries.push([t('limits.codexResetForecast.resetType'), latestResetType]);
+  }
   const latestReset = codexResetForecastDate(forecast?.latestResetAt);
   if (latestReset) {
     const age = codexResetForecastAge(forecast.latestResetAt);
@@ -6386,13 +6367,14 @@ function isRendererWindowHidden() {
 function visibleStatsSurface() {
   return statsRenderSchedulerApi.visibleStatsSurface(
     isRendererWindowHidden(),
-    state.floatingBubble.collapsed,
-    isSettingsPanelOpen()
+    state.floatingBubble.collapsed
   );
 }
 
 function isSettingsSurfaceVisible() {
-  return visibleStatsSurface() === 'settings';
+  return !isRendererWindowHidden()
+    && !state.floatingBubble.collapsed
+    && isSettingsPanelOpen();
 }
 
 function serviceStatusSurfaceVisible() {
@@ -6451,14 +6433,15 @@ function openSettingsPanel() {
 
 function openViewFromTray(viewId) {
   if (!availableBreakdownIds().includes(viewId)) return;
-  const settingsWasOpen = isSettingsPanelOpen();
   if (state.viewSwitcherOpen) setViewSwitcherOpen(false);
   stopWindowShortcutRecording();
   resetSettingsListSearch();
   els.settingsPanel?.classList.add('hidden');
   els.shell.classList.remove('settings-open');
   state.openSession = null;
-  if (!renderBreakdownChange(viewId, { allowHidden: true }) && settingsWasOpen) render();
+  // Navigating to the view already on screen changes no breakdown, so it never
+  // repaints on its own — but the open session was just cleared above.
+  if (!renderBreakdownChange(viewId, { allowHidden: true })) render();
   ensureServiceStatusTicker();
 }
 
@@ -8567,12 +8550,8 @@ function applyFloatingBubbleState(payload = {}, options = {}) {
   }
   if (options.renderContent === false) return;
   if (wasCollapsed && !state.floatingBubble.collapsed) {
-    if (isSettingsPanelOpen()) {
-      syncSettingsForm();
-      renderConnectionStatus('settings');
-    } else {
-      renderStatsUpdate();
-    }
+    if (isSettingsPanelOpen()) syncSettingsForm();
+    renderStatsUpdate();
   } else {
     renderFloatingBubbleContent();
   }
@@ -9432,6 +9411,7 @@ function syncSettingsForm() {
   renderExternalProviderStatus('commandcode');
   renderExternalProviderStatus('kimi');
   renderExternalProviderStatus('ollama');
+  renderExternalProviderStatus('alibaba');
   renderAntigravityStatus();
   renderMimoStatus();
   renderCopilotStatus();
@@ -11842,7 +11822,7 @@ async function saveSettings(patch) {
     try { state.settings = await window.tokenMonitor.getSettings(); } catch (_) {}
     applyEffectiveCurrencyRates();
     preserveSettingsPanelScroll(syncSettingsForm);
-    if (!isSettingsSurfaceVisible()) statsRenderScheduler.request();
+    if (isSettingsSurfaceVisible()) render(); else statsRenderScheduler.request();
     restartTimer();
     maybeUpdateBarsIcon();
     throw error;
@@ -11854,7 +11834,7 @@ async function saveSettings(patch) {
   // their accordion/switch layout transition.
   if (state.settingsPushRevision === settingsPushRevision) {
     preserveSettingsPanelScroll(syncSettingsForm);
-    if (!isSettingsSurfaceVisible()) statsRenderScheduler.request();
+    if (isSettingsSurfaceVisible()) render(); else statsRenderScheduler.request();
   }
   restartTimer();
   maybeUpdateBarsIcon();
@@ -12079,17 +12059,26 @@ els.breakdown.addEventListener('click', (event) => {
   });
 });
 
-els.pinButton.addEventListener('click', () => {
+els.pinButton.addEventListener('click', (event) => {
+  // Pointer focus would keep .window-actions:focus-within true after the cursor
+  // leaves, pinning the hover-only controls open. Keyboard activation keeps
+  // focus so the controls remain reachable without a pointer.
+  if (event.detail > 0) els.pinButton.blur();
   saveSettings({ windowBehavior: nextWindowBehavior(currentWindowBehavior()) });
 });
 els.settingsButton.addEventListener('click', (event) => {
   if (state.viewSwitcherOpen) setViewSwitcherOpen(false);
   els.settingsPanel.classList.toggle('hidden');
   const settingsOpen = isSettingsPanelOpen();
-  if (!settingsOpen) resetSettingsListSearch();
-  if (settingsOpen) syncSettingsForm();
-  else render();
-  if (!settingsOpen) stopWindowShortcutRecording();
+  // Settings is an overlay over a surface that keeps rendering behind it, so
+  // closing it needs no catch-up repaint. Only the panel's own DOM has to be
+  // caught up when it opens, because its renderers idle while it is closed.
+  if (settingsOpen) {
+    syncSettingsForm();
+  } else {
+    resetSettingsListSearch();
+    stopWindowShortcutRecording();
+  }
   els.shell.classList.toggle('settings-open', settingsOpen);
   if (!settingsOpen && event.detail > 0) els.settingsButton.blur();
   els.shell.style.transform = 'translateZ(0)';
@@ -12559,8 +12548,14 @@ els.refreshButton.addEventListener('click', () => {
   // on every one of them.
   else refreshStats({ force: true, forceHistory: true, forceSelfSync: true, feedback: true });
 });
-els.minButton.addEventListener('click', () => window.tokenMonitor.minimize());
-els.closeButton.addEventListener('click', () => window.tokenMonitor.close());
+els.minButton.addEventListener('click', (event) => {
+  if (event.detail > 0) els.minButton.blur();
+  window.tokenMonitor.minimize();
+});
+els.closeButton.addEventListener('click', (event) => {
+  if (event.detail > 0) els.closeButton.blur();
+  window.tokenMonitor.close();
+});
 els.trendsPanel.addEventListener('click', (event) => {
   if (event.target.closest('.trends-spark, .trends-open-hint')) window.tokenMonitor.openDashboard();
 });
@@ -12680,7 +12675,7 @@ window.tokenMonitor.onSettingsPush?.((next) => {
   state.settings = next;
   applyEffectiveCurrencyRates();
   preserveSettingsPanelScroll(syncSettingsForm);
-  if (!isSettingsSurfaceVisible()) statsRenderScheduler.request();
+  if (isSettingsSurfaceVisible()) render(); else statsRenderScheduler.request();
   maybeUpdateBarsIcon();
 });
 
@@ -12719,25 +12714,23 @@ window.tokenMonitor.onTokscalePush?.((payload) => {
 });
 
 function renderConnectionStatus(surface = visibleStatsSurface()) {
-  if (surface !== 'main' && surface !== 'settings') return;
+  if (surface !== 'main') return;
   setLiveDot(state.streamConnected);
   setStatus(statusTextFor(state.mode, state.streamConnected));
-  if (surface === 'settings') renderSyncClientStatus();
+  if (isSettingsSurfaceVisible()) renderSyncClientStatus();
 }
 
 function renderStatsUpdate() {
   const surface = visibleStatsSurface();
   renderConnectionStatus(surface);
-  if (surface === 'main') {
-    render();
-    return;
-  }
   if (surface === 'bubble') {
     renderFloatingBubbleContent();
     signalContentReady();
     return;
   }
-  if (surface !== 'settings') return;
+  if (surface !== 'main') return;
+  render();
+  if (!isSettingsSurfaceVisible()) return;
   renderCodexAccounts();
   renderSettingsSummaries();
   renderLimitProviderCheckboxes();
@@ -12757,6 +12750,7 @@ function renderStatsUpdate() {
   renderExternalProviderStatus('commandcode');
   renderExternalProviderStatus('kimi');
   renderExternalProviderStatus('ollama');
+  renderExternalProviderStatus('alibaba');
   renderCopilotStatus();
   signalContentReady();
 }
@@ -12772,17 +12766,14 @@ function handleWindowVisibilityChange() {
   if (!isRendererWindowHidden() && state.settings?.hubMode === 'client' && hubBuildStatusRefreshDue()) {
     void refreshHubBuildStatus();
   }
-  if (isSettingsSurfaceVisible()) {
-    statsRenderScheduler.clear();
-    syncSettingsForm();
-    renderConnectionStatus('settings');
-    // syncSettingsForm() covers what the dropped catch-up render would have
-    // drawn, but it is not a stats render and never reaches signalContentReady().
-    // A window revealed straight into Settings must still report it has painted.
+  const settingsVisible = isSettingsSurfaceVisible();
+  if (settingsVisible || settingsDomSyncPending) syncSettingsForm();
+  statsRenderScheduler.flush();
+  if (settingsVisible) {
+    renderConnectionStatus();
+    // syncSettingsForm() is not a stats render, so a window revealed straight
+    // into Settings still needs to report that its visible content has painted.
     signalContentReady();
-  } else {
-    if (settingsDomSyncPending) syncSettingsForm();
-    statsRenderScheduler.flush();
   }
   ensureServiceStatusTicker();
 }
@@ -14717,6 +14708,11 @@ const externalLimitAccountConfig = {
     configuredKey: 'ollamaCookieConfigured',
     sourceKey: 'ollamaCookieSource',
     pendingKey: 'ollamaPendingCheckSince'
+  },
+  alibaba: {
+    configuredKey: 'alibabaCookieConfigured',
+    sourceKey: 'alibabaCookieSource',
+    pendingKey: 'alibabaPendingCheckSince'
   }
 };
 
@@ -14889,6 +14885,58 @@ function ollamaPlatformUrl() {
   return 'https://ollama.com/settings';
 }
 
+const ALIBABA_DASHBOARD_URLS = {
+  cn: 'https://bailian.console.aliyun.com/cn-beijing?tab=plan#/efm/subscription/token-plan',
+  intl: 'https://modelstudio.console.alibabacloud.com/ap-southeast-1/?tab=plan#/efm/subscription/token-plan',
+  'cn-personal': 'https://bailian.console.aliyun.com/cn-beijing?tab=plan#/efm/subscription/token-plan/personal',
+  'intl-personal': 'https://modelstudio.console.alibabacloud.com/ap-southeast-1/?tab=plan#/efm/subscription/token-plan/personal'
+};
+
+// Mirrors normalizeAlibabaCookieHeader's preprocessing in the main process:
+// surrounding quotes and a `Cookie:` prefix come off before the pair check, so
+// the two sides accept and reject exactly the same inputs.
+function alibabaCookieCandidate(value) {
+  let raw = String(value || '').trim();
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+    raw = raw.slice(1, -1).trim();
+  }
+  return raw.replace(/^cookie\s*:\s*/i, '').trim();
+}
+
+function alibabaVariantOr(value) {
+  return ALIBABA_DASHBOARD_URLS[value] ? value : 'cn';
+}
+
+// What the user is looking at right now: the live select wins so the "Open
+// Token Plan" button and the request hint follow the dropdown before the
+// change has been saved.
+function alibabaSelectedVariant() {
+  const selected = document.getElementById('alibabaVariantInput')?.value;
+  return alibabaVariantOr(selected || state.settings?.alibabaVariant);
+}
+
+// What is stored. Used when re-rendering the form, so a settings reload can put
+// the select back rather than reading its own value and never changing.
+function alibabaSavedVariant() {
+  return alibabaVariantOr(state.settings?.alibabaVariant);
+}
+
+function alibabaPlatformUrl() {
+  return ALIBABA_DASHBOARD_URLS[alibabaSelectedVariant()];
+}
+
+// Personal/Solo quota comes from a different host than the dashboard, so the
+// cookie has to be copied from that request. Naming the right request is the
+// difference between a working paste and an `unauthorized` the user cannot
+// explain.
+function renderAlibabaVariantHints() {
+  const variant = alibabaSelectedVariant();
+  const personal = variant.endsWith('-personal');
+  const hint = document.getElementById('alibabaRequestHint');
+  if (hint) hint.textContent = personal ? '/tokenplan/personal/api/v2/usage' : 'GetSubscriptionSummary';
+  document.getElementById('alibabaPersonalNote')?.classList.toggle('hidden', !personal);
+}
+
 function commandcodePlatformUrl() {
   // Account-scoped in the address bar (/<username>/settings/usage), but this
   // path resolves to it and bounces through signin?returnTo= when signed out,
@@ -14940,6 +14988,11 @@ function renderExternalProviderStatus(providerName) {
     const siteInput = document.getElementById('qoderSiteInput');
     if (siteInput) siteInput.value = state.settings?.qoderSite === 'cn' ? 'cn' : 'global';
     updateQoderUsagePageHint();
+  }
+  if (providerName === 'alibaba') {
+    const variantInput = document.getElementById('alibabaVariantInput');
+    if (variantInput) variantInput.value = alibabaSavedVariant();
+    renderAlibabaVariantHints();
   }
   setCursorStatusText(
     statusEl,
@@ -17337,6 +17390,80 @@ function setupCursorAccountUI() {
     });
   }
 
+  const alibabaToggle = document.getElementById('alibabaSettingsToggle');
+  if (alibabaToggle) {
+    alibabaToggle.addEventListener('click', () => setExternalAccountExpanded('alibaba', !state.alibabaAccountExpanded));
+    setExternalAccountExpanded('alibaba', false);
+    renderExternalProviderStatus('alibaba');
+
+    const variantInput = document.getElementById('alibabaVariantInput');
+    if (variantInput) {
+      variantInput.value = alibabaSavedVariant();
+      variantInput.addEventListener('change', async () => {
+        renderAlibabaVariantHints();
+        // Switching console switches account: the stored cookie belongs to the
+        // console it was copied from and cannot authenticate the other one.
+        // Clearing it here is honest about that instead of leaving a saved
+        // credential that will only ever answer `unauthorized`.
+        await saveSettings({ alibabaVariant: variantInput.value || 'cn', alibabaCookie: '' });
+        clearExternalProviderCheckPending('alibaba');
+        clearExternalProviderPendingStatus('alibaba');
+        renderExternalProviderStatus('alibaba');
+        await refreshStats({ force: true });
+      });
+    }
+    renderAlibabaVariantHints();
+
+    document.getElementById('alibabaOpenBrowser').addEventListener('click', () => {
+      window.tokenMonitor.openExternal(alibabaPlatformUrl());
+    });
+    document.getElementById('alibabaLogoutButton').addEventListener('click', async () => {
+      await saveSettings({ alibabaCookie: '' });
+      clearExternalProviderCheckPending('alibaba');
+      clearExternalProviderPendingStatus('alibaba');
+      renderExternalProviderStatus('alibaba');
+      await refreshStats({ force: true });
+    });
+    document.getElementById('alibabaRefreshButton').addEventListener('click', async () => {
+      await refreshStats({ force: true });
+    });
+    document.getElementById('alibabaCookieSubmit').addEventListener('click', async () => {
+      const input = document.getElementById('alibabaCookieInput');
+      const errorEl = document.getElementById('alibabaErrorMessage');
+      errorEl.classList.add('hidden');
+      // The main process rejects a header with no name=value pair, so catching
+      // it here keeps a mis-paste from being reported back as "saved" while the
+      // stored value is silently empty.
+      // Same anchored rule as normalizeAlibabaCookieHeader in the main process.
+      // A looser test here lets a pasted URL pass, save as empty, and surface as
+      // "Not configured" instead of telling the user the paste was wrong.
+      if (!/(?:^|;\s*)[A-Za-z0-9!#$%&'*+\-.^_`|~]+=/.test(alibabaCookieCandidate(input.value))) {
+        errorEl.textContent = t('settings.alibaba.invalidCookie');
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      try {
+        markExternalProviderCheckPending('alibaba');
+        renderExternalProviderStatus('alibaba');
+        await saveSettings({
+          alibabaCookie: input.value,
+          alibabaVariant: alibabaSelectedVariant(),
+          limitProviders: limitProviderSelectionIncluding('alibaba'),
+          limitsEnabled: true
+        });
+        input.value = '';
+        renderExternalProviderStatus('alibaba');
+        await refreshStats({ force: true });
+        renderExternalProviderStatus('alibaba');
+      } catch (err) {
+        clearExternalProviderCheckPending('alibaba');
+        renderExternalProviderStatus('alibaba');
+        errorEl.textContent = t('settings.alibaba.saveFailed', { message: err.message });
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
   const ollamaToggle = document.getElementById('ollamaSettingsToggle');
   if (ollamaToggle) {
     ollamaToggle.addEventListener('click', () => setExternalAccountExpanded('ollama', !state.ollamaAccountExpanded));
@@ -17761,7 +17888,8 @@ function initSettingsAnimationWrappers() {
     '#zedManualPanel',
     '#commandcodeManualPanel',
     '#kimiManualPanel',
-    '#ollamaManualPanel'
+    '#ollamaManualPanel',
+    '#alibabaManualPanel'
   ].join(', ');
 
   document.querySelectorAll(selectors).forEach(el => {
