@@ -41,7 +41,7 @@ test('app.js takes client identity from the catalog and keeps no copy of it', ()
 
 test('renderer known clients include current tokscale-supported tools', () => {
   const clients = knownClientIds();
-  for (const client of ['cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'reasonix', 'dsh']) {
+  for (const client of ['cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilo', 'commandcode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy', 'reasonix', 'dsh']) {
     assert.ok(clients.includes(client), `${client} should be a known renderer client`);
   }
 });
@@ -50,8 +50,8 @@ test('renderer distinguishes Grok model and Grok Build tool icons', () => {
   const styles = rendererStyles();
   assert.match(styles, /\.row-icon-xai\s*\{[^}]*assets\/icons\/grok\.svg/s);
   assert.match(styles, /\.row-icon-grok\s*\{[^}]*assets\/icons\/xai\.svg/s);
-  assert.match(styles, /\.limit-icon-grok\s*\{[^}]*assets\/icons\/grok\.svg/s);
-  assert.match(styles, /\.limit-icon-copilot\s*\{[^}]*assets\/icons\/copilot\.svg/s);
+  assert.match(styles, /\.limit-icon\.row-icon-grok\s*\{[^}]*assets\/icons\/grok\.svg/s);
+  assert.match(styles, /^\.row-icon-copilot\s*\{[^}]*assets\/icons\/copilot\.svg/m);
 });
 
 test('renderer reuses vendor icons for MiMo Code and ZCode tool rows', () => {
@@ -70,11 +70,10 @@ test('renderer wires limit provider brand icons for Z.ai, Volcengine, and Qoder'
   const styles = rendererStyles();
 
   assert.match(source, /clientsWithIcon = new Set\(\[[\s\S]*'zai'[\s\S]*'volcengine'[\s\S]*'qoder'/);
-  assert.match(styles, /\.limit-icon-zai\s*\{[^}]*assets\/icons\/zai\.svg/s);
-  assert.match(styles, /\.limit-icon-volcengine\s*\{[^}]*assets\/icons\/volcengine\.svg/s);
-  assert.match(styles, /\.limit-icon-qoder\s*\{[^}]*assets\/icons\/qoder\.svg/s);
-  assert.match(styles, /\.limit-icon-ollama\s*\{[^}]*assets\/icons\/ollama\.svg/s);
-  assert.match(styles, /\.row-icon-ollama\s*\{[^}]*assets\/icons\/ollama\.svg/s);
+  assert.match(styles, /^\.row-icon-zai\s*\{[^}]*assets\/icons\/zai\.svg/m);
+  assert.match(styles, /^\.row-icon-volcengine\s*\{[^}]*assets\/icons\/volcengine\.svg/m);
+  assert.match(styles, /^\.row-icon-qoder\s*\{[^}]*assets\/icons\/qoder\.svg/m);
+  assert.match(styles, /^\.row-icon-ollama\s*\{[^}]*assets\/icons\/ollama\.svg/m);
 });
 
 test('renderer wires the Doubao vendor icon for Doubao model rows', () => {
