@@ -3969,6 +3969,19 @@ function formatCommandcodeCreditsDetail(window) {
   return `${formatMoney(value, window?.currency)} / ${formatMoney(limit, window?.currency)}`;
 }
 
+// ZCode plan buckets are token pools, so their detail counts tokens: "124M /
+// 305M" (remaining mode) or "181M / 305M" (used mode), from the same values
+// the meter derives from. Nothing when either side is missing — a bucket
+// without absolute units keeps its percentage-only look.
+function formatZcodeTokensDetail(window) {
+  const remaining = optionalFiniteNumber(window?.remaining);
+  const limit = optionalFiniteNumber(window?.limit);
+  if (remaining === null || limit === null || limit <= 0) return '';
+  const showUsed = Boolean(state.settings?.showLimitUsed);
+  const value = showUsed ? Math.max(0, limit - remaining) : remaining;
+  return `${formatCompact(value)} / ${formatCompact(limit)}`;
+}
+
 // One-line Overage value: "12.5 credits · $3.20" (credits used, then est. cost).
 // Either piece may be absent; the row only renders when at least one is present.
 function formatKiroOverageValue(window) {
@@ -5057,19 +5070,61 @@ function renderProviderWindows(provider, color) {
       windows.append(node);
     }
   } else if (provider.provider === 'zai' || provider.provider === 'zaiteam') {
-    const fiveHour = windowForKind(provider, 'session');
+    // Billing-kind windows are one of three things: the subscription MCP
+    // monthly bucket (no metric, no limitId), ZCode Start/Weekend plan
+    // buckets (limitId set, per-model labels), or the cash balance
+    // (metric 'credits'). Each renders in its own slot below.
+    const session = windowForKind(provider, 'session');
     const weekly = windowForKind(provider, 'weekly');
-    const mcp = windowForKind(provider, 'billing');
-    if (fiveHour) {
-      const fiveHourNode = limitWindowNode('5-hour', fiveHour, color, 0.95);
-      if (!weekly) fiveHourNode.classList.add('limit-window-wide');
-      windows.append(fiveHourNode);
+    const billingWindows = windowsForKind(provider, 'billing');
+    const dailyWindows = windowsForKind(provider, 'daily');
+    const planBuckets = billingWindows.filter((window) => window?.limitId && !window?.metric);
+    const monthlyWindows = billingWindows.filter((window) => !window?.metric && !window?.limitId);
+    const balanceWindow = (provider.windows || []).find((window) => window?.metric === 'credits');
+    const nodes = [
+      session && limitWindowNode(session.label || '5-hour', session, color, 0.95),
+      ...dailyWindows.map((window, index) => limitWindowNode(
+        window.label || (dailyWindows.length > 1 ? `Daily ${index + 1}` : 'Daily'),
+        window,
+        color,
+        0.78,
+        null,
+        window.detail || formatZcodeTokensDetail(window)
+      )),
+      weekly && limitWindowNode(weekly.label || 'Weekly', weekly, color, 0.68),
+      ...planBuckets.map((window) => limitWindowNode(
+        window.label || 'Start Plan',
+        window,
+        color,
+        0.68,
+        null,
+        window.detail || formatZcodeTokensDetail(window)
+      ))
+    ].filter(Boolean);
+    if (nodes.length % 2 === 1) nodes.at(-1).classList.add('limit-window-wide');
+    windows.append(...nodes);
+    // Monthly subscription buckets stay full width, independent of the
+    // paired quota count. Preserve all legacy billing windows without ids.
+    for (const monthly of monthlyWindows) {
+      const node = limitWindowNode(monthly.label || 'MCP', monthly, color, 0.68, null, monthly.detail || '');
+      node.classList.add('limit-window-wide');
+      windows.append(node);
     }
-    if (weekly) windows.append(limitWindowNode('Weekly', weekly, color, 0.68));
-    if (mcp) {
-      const mcpNode = limitWindowNode('MCP', mcp, color, 0.68);
-      mcpNode.classList.add('limit-window-wide');
-      windows.append(mcpNode);
+    // Balance sits at the bottom on its own full-width row: coding-plan quota
+    // is consumed before the cash pool, so the money line reads as the last
+    // resort.
+    if (balanceWindow) {
+      const balanceNode = limitWindowNode(
+        'Balance',
+        { remainingPercent: creditsMeterPercent(provider, balanceWindow) },
+        color,
+        0.95,
+        formatMoney(balanceWindow.remaining, balanceWindow.currency)
+      );
+      balanceNode.classList.add('limit-window-wide', 'limit-window-no-reset');
+      windows.append(balanceNode);
+      const spendNode = provider.balance && providerSpendNode(provider.balance);
+      if (spendNode) windows.append(spendNode);
     }
   } else if (provider.provider === 'volcengine') {
     const session = windowForKind(provider, 'session');
@@ -14842,7 +14897,10 @@ function copilotAccountStatusText(provider, configured, source, enabled = true) 
 function apiKeyAccountStatusText(providerName, provider, configured, source, enabled = true) {
   const accountStatus = limitProviderPresentationApi.apiKeyAccountStatus(provider, configured, enabled);
   if (accountStatus === 'linked') {
-    return t(source === 'env' ? `settings.${providerName}.statusEnv` : `settings.${providerName}.statusSet`);
+    // A ZCode-discovered login is an OAuth-style link, not a pasted API key,
+    // so it reads as connected the way Zed's linked sessions do.
+    const linkedKey = providerName === 'zai' && source === 'zcode-auto' ? 'settings.zai.statusLinked' : null;
+    return t(linkedKey || (source === 'env' ? `settings.${providerName}.statusEnv` : `settings.${providerName}.statusSet`));
   }
   if (accountStatus === 'invalid') return t(`settings.${providerName}.statusInvalid`);
   if (accountStatus === 'notConfigured') return t(`settings.${providerName}.statusNotSet`);
@@ -15039,8 +15097,20 @@ function renderExternalProviderStatus(providerName) {
     statusEl,
     pending ? t('settings.common.checking') : apiKeyAccountStatusText(providerName, provider, configured, source, enabled)
   );
+  // A local ZCode install keeps the Z.ai row honest when unchecked: the
+  // auto-discovered plans still exist, so the pill shows auto-detect instead
+  // of the final "disabled" state the generic seven-state map lands on.
+  if (providerName === 'zai' && !enabled && state.settings?.zcodeLoginDetected === true) {
+    setCursorStatusText(statusEl, t('settings.limits.connection.autoDetect'));
+  }
   manualPanel.classList.toggle('hidden', linked);
   openBtn.classList.toggle('hidden', linked);
+  if (providerName === 'zai' && source === 'zcode-auto') {
+    // The discovered login is not user-entered, so the override input and the
+    // console link stay reachable instead of hiding behind linked.
+    manualPanel.classList.remove('hidden');
+    openBtn.classList.remove('hidden');
+  }
   const canClearConfiguredClaude = providerName === 'claude' && configured;
   logoutBtn.classList.toggle('hidden', source !== 'settings' || (!linked && !canClearConfiguredClaude));
   refreshBtn.classList.toggle('hidden', !configured);

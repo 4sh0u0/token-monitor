@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const accountIdentityApi = require('../../src/electron/renderer/accountIdentity');
+const compactTokenApi = require('../../src/shared/compactTokens');
 const limitProviderOrderApi = require('../../src/electron/renderer/limitProviderOrder');
 const settingsListFilterApi = require('../../src/electron/renderer/settingsListFilter');
 const { LIMIT_PROVIDER_LABELS } = require('../../src/shared/limitProviders');
@@ -62,6 +63,13 @@ test('limitProviderDisplayLabel normalizes short account labels without rewritin
 
 test('Zed plan labels omit only the redundant provider prefix', () => {
   assert.equal(limitProviderPlanDisplayLabel('zed', 'Zed Student'), 'Student');
+  // Z.ai subscription names repeat the provider heading ("GLM Coding Pro");
+  // only the tier remains. Z.ai-prefixed and ZCode plan names keep theirs.
+  assert.equal(limitProviderPlanDisplayLabel('zai', 'GLM Coding Pro'), 'Pro');
+  assert.equal(limitProviderPlanDisplayLabel('zai', 'GLM Coding Lite'), 'Lite');
+  assert.equal(limitProviderPlanDisplayLabel('zai', 'GLM Coding Max'), 'Max');
+  assert.equal(limitProviderPlanDisplayLabel('zai', 'Z.ai Max'), 'Z.ai Max');
+  assert.equal(limitProviderPlanDisplayLabel('zai', 'ZCode Start Plan'), 'ZCode Start Plan');
   assert.equal(limitProviderPlanDisplayLabel('zed', 'Zed Pro'), 'Pro');
   assert.equal(limitProviderPlanDisplayLabel('zed', 'Zed Pro Trial'), 'Pro Trial');
   assert.equal(limitProviderPlanDisplayLabel('zed', 'Zed Business'), 'Business');
@@ -1100,19 +1108,41 @@ test('Volcengine renders quota windows as paired rows with an odd final window f
   assert.match(renderProviderWindows, /windows\.append\(\.\.\.nodes\)/);
 });
 
-test('Z.ai renders 5-hour and Weekly first, then MCP full-width', () => {
+test('Z.ai and Team keep all billing windows and render MCP full width after paired quotas', () => {
   const app = readRendererFile('app.js');
-  const renderProviderWindows = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
-
-  assert.match(renderProviderWindows, /provider\.provider === 'zai'/);
-  assert.match(renderProviderWindows, /const fiveHour = windowForKind\(provider, 'session'\);/);
-  assert.match(renderProviderWindows, /const weekly = windowForKind\(provider, 'weekly'\);/);
-  assert.match(renderProviderWindows, /const mcp = windowForKind\(provider, 'billing'\);/);
-  assert.match(renderProviderWindows, /const fiveHourNode = limitWindowNode\('5-hour', fiveHour, color, 0\.95\)/);
-  assert.match(renderProviderWindows, /if \(!weekly\) fiveHourNode\.classList\.add\('limit-window-wide'\)/);
-  assert.match(renderProviderWindows, /limitWindowNode\('Weekly', weekly, color, 0\.68\)/);
-  assert.match(renderProviderWindows, /const mcpNode = limitWindowNode\('MCP', mcp, color, 0\.68\)/);
-  assert.match(renderProviderWindows, /mcpNode\.classList\.add\('limit-window-wide'\)/);
+  const render = functionBody(app, 'renderProviderWindows', 'renderLimitProviderRow');
+  const node = () => ({ children: [], classes: new Set(),
+    classList: { add(...values) { values.forEach(value => this.owner.classes.add(value)); } },
+    append(...children) { this.children.push(...children); } });
+  const makeNode = () => { const result = node(); result.classList.owner = result; return result; };
+  for (const provider of ['zai', 'zaiteam']) {
+    const context = {
+      document: { createElement: makeNode },
+      windowForKind: (p, kind) => p.windows.find(w => w.kind === kind),
+      windowsForKind: (p, kind) => p.windows.filter(w => w.kind === kind),
+      limitWindowNode: (label, window, _color, _tone, _value, detail) => Object.assign(makeNode(), { label, window, detail }),
+      provider: { provider, windows: [
+        { kind: 'weekly', label: 'Weekly' },
+        { kind: 'billing', label: 'MCP' },
+        { kind: 'billing', label: 'Legacy bucket', detail: 'Missing plan id' }
+      ] }
+    };
+    const rendered = vm.runInNewContext(`${render}\nrenderProviderWindows(provider, 'blue')`, context);
+    assert.deepEqual(Array.from(rendered.children, n => n.label), ['Weekly', 'MCP', 'Legacy bucket']);
+    assert.ok(rendered.children.every(n => n.classes.has('limit-window-wide')));
+    assert.equal(rendered.children[2].detail, 'Missing plan id');
+    context.provider.windows = [
+      { kind: 'daily', label: 'model-alpha', detail: 'Daily' },
+      { kind: 'billing', limitId: 'model-beta', label: 'model-beta', detail: 'Combined grant' },
+      { kind: 'billing', label: 'MCP' }
+    ];
+    const paired = vm.runInNewContext(`${render}\nrenderProviderWindows(provider, 'blue')`, context);
+    assert.equal(paired.children[0].detail, 'Daily');
+    assert.equal(paired.children[1].detail, 'Combined grant');
+    assert.equal(paired.children[0].classes.has('limit-window-wide'), false);
+    assert.equal(paired.children[1].classes.has('limit-window-wide'), false);
+    assert.equal(paired.children[2].classes.has('limit-window-wide'), true);
+  }
 });
 
 test('Copilot renders monthly Premium and Chat quotas as billing windows', () => {
@@ -2444,8 +2474,9 @@ test('copilot setup status asks for sign-in instead of an API key', () => {
   );
 });
 
-test('Z.ai, Volcengine, Qoder, Trae, WorkBuddy, and Ollama source labels and setup statuses', () => {
-  assert.deepEqual(presentation.limitProviderCapabilityTags('zai'), ['Coding Plan', 'API key']);
+test('Z.ai, GLM Team, Volcengine, Qoder, Trae, WorkBuddy, and Ollama source labels and setup statuses', () => {
+  assert.deepEqual(presentation.limitProviderCapabilityTags('zai'), ['Auto', 'Coding Plan', 'API key']);
+  assert.deepEqual(presentation.limitProviderCapabilityTags('zaiteam'), ['Team Plan', 'API key']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('volcengine'), ['Coding/Agent Plan', 'API key']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('qoder'), ['Manual login', 'Web']);
   assert.deepEqual(presentation.limitProviderCapabilityTags('trae'), ['Manual login', 'Web']);
@@ -4861,4 +4892,35 @@ test('switching hubs does not wait out the old hub request before starting', () 
   // Nothing awaits it any more, so it has to keep its own failures rather than
   // surface them as an unhandled rejection.
   assert.match(functionBody(main, 'reconcileSharedSubscriptions', 'restartDeviceRuntimeForMode'), /\} catch \(error\) \{/);
+});
+
+test('GLM Home daily windows retain returned model names instead of the generic daily label', () => {
+  const window = { kind: 'daily', label: 'arbitrary-model-name' };
+  assert.equal(limitProviderCompactWindowLabel('zai', window), window.label);
+  assert.equal(limitProviderCompactWindowPeriodLabel('zai', window), '');
+  assert.equal(limitProviderCompactWindowLabel('zaiteam', window), '');
+});
+
+test('Z.ai token-pool windows print an absolute token pair through the detail slot', () => {
+  const app = readRendererFile('app.js');
+  const body = functionBody(app, 'formatZcodeTokensDetail', 'formatKiroOverageValue');
+  const detail = (window, showLimitUsed, unitSystem = 'western', locale = 'en') => vm.runInNewContext(
+    `${body}\nformatZcodeTokensDetail(window)`,
+    {
+      window,
+      optionalFiniteNumber: (value) => { const n = Number(value); return Number.isFinite(n) ? n : null; },
+      formatCompact: (value) => compactTokenApi.formatCompactTokens(value, unitSystem, locale),
+      state: { settings: { showLimitUsed } }
+    }
+  );
+  const pool = { limit: 305_000_000, remaining: 195_850_553 };
+  assert.equal(detail(pool, false), '195.9M / 305M');
+  assert.equal(detail(pool, true), '109.1M / 305M');
+  assert.equal(detail(pool, false, 'localized', 'zh-TW'), '1.96億 / 3.05億');
+  // Buckets without absolute units keep their percentage-only look.
+  assert.equal(detail({ usedPercent: 42 }, false), '');
+  assert.equal(detail({ limit: 0, remaining: 5 }, false), '');
+  // Shared compact formatting keeps its normal rounding and promotion rules.
+  assert.equal(detail({ limit: 3_000_000, remaining: 2_578_372 }, false), '2.6M / 3M');
+  assert.equal(detail({ limit: 999_950, remaining: 999_950 }, false), '1M / 1M');
 });
