@@ -1776,7 +1776,8 @@ function animateLimitResetPercent(el, from, to, duration, startedAt = performanc
   }
   const delta = to - from;
   const motion = { handle: 0, target: to, suffix };
-  el.textContent = `${formatPercent(from)} ${suffix}`;
+  let renderedText = `${formatPercent(from)} ${suffix}`;
+  el.textContent = renderedText;
   function frame(now) {
     if (prefersReducedMotion()) {
       el.textContent = `${formatPercent(to)} ${suffix}`;
@@ -1785,7 +1786,13 @@ function animateLimitResetPercent(el, from, to, duration, startedAt = performanc
     }
     const progress = Math.min(1, (now - startedAt) / duration);
     const eased = 1 - ((1 - progress) * (1 - progress));
-    el.textContent = `${formatPercent(from + delta * eased)} ${suffix}`;
+    const nextText = `${formatPercent(from + delta * eased)} ${suffix}`;
+    // The displayed value is integer-rounded, so several animation frames can
+    // resolve to the same string. Avoid invalidating text layout on those frames.
+    if (nextText !== renderedText) {
+      renderedText = nextText;
+      el.textContent = nextText;
+    }
     if (progress < 1) {
       motion.handle = requestAnimationFrame(frame);
     } else if (limitResetNumberAnimations.get(el) === motion) {
@@ -1798,21 +1805,24 @@ function animateLimitResetPercent(el, from, to, duration, startedAt = performanc
 
 function animateLimitResetCompletion(fill, duration) {
   if (!fill?.animate || prefersReducedMotion()) return;
-  const restingOpacity = Number(fill.style.opacity);
-  const baseOpacity = Number.isFinite(restingOpacity) ? restingOpacity : 1;
-  fill.animate([
-    { filter: 'brightness(1) saturate(1)', opacity: baseOpacity },
+  const highlight = document.createElement('span');
+  highlight.className = 'limit-meter-completion';
+  fill.append(highlight);
+  const animation = highlight.animate([
+    { opacity: 0 },
     {
       offset: LIMIT_RESET_GLOW_LEAD_MS / LIMIT_RESET_GLOW_MS,
-      filter: 'brightness(1.48) saturate(0.88)',
-      opacity: Math.min(1, baseOpacity + 0.22)
+      opacity: 0.52
     },
-    { filter: 'brightness(1) saturate(1)', opacity: baseOpacity }
+    { opacity: 0 }
   ], {
     duration: LIMIT_RESET_GLOW_MS,
     delay: Math.max(0, duration - LIMIT_RESET_GLOW_LEAD_MS),
     easing: 'linear'
   });
+  const removeHighlight = () => highlight.remove();
+  animation.onfinish = removeHighlight;
+  animation.oncancel = removeHighlight;
 }
 
 function captureTrendBarMotion() {
@@ -1898,6 +1908,17 @@ function applyBarScale(fill, scale) {
   fill.style.setProperty('--bar-scale', String(safeScale));
   if (!state.animateBarsFromZero || prefersReducedMotion() || !fill.animate) return;
   animateBarBetween(fill, 0, safeScale, 0, 420);
+}
+
+function animateCachedLimitBarsFromZero() {
+  if (!state.animateBarsFromZero || prefersReducedMotion()) return;
+  for (const fill of els.limitsPanel?.querySelectorAll('.limit-meter-fill') || []) {
+    const targetScale = Math.max(
+      0,
+      Math.min(1, Number(fill.style.getPropertyValue('--bar-scale')) || 0)
+    );
+    animateBarBetween(fill, 0, targetScale, 0, 420);
+  }
 }
 
 function rowTemplate(rowData) {
@@ -6276,6 +6297,9 @@ function renderLimits() {
     state.limitPanelRenderSignature === renderSignature
     && els.limitsPanel.children.length === orderedProviders.length
   ) {
+    // View changes intentionally reuse the rendered Limits DOM. Replaying the
+    // entrance motion here keeps that cache from swallowing the normal bar fill.
+    animateCachedLimitBarsFromZero();
     return;
   }
   const resetMotionSnapshot = captureLimitResetMotion();
