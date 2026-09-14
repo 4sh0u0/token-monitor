@@ -96,7 +96,7 @@ const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
 const { probeHubBuild } = require('./hubBuildStatus');
-const { claudeWebCookie, deepseekToken, fetchClaudeLimits, normalizeClaudeWebCookieInput, normalizeLimitsRefreshMode, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, traeAccessToken, traeDeviceId, commandcodeCookie, kimiToken, kimiWebToken, ollamaSessionCookie, zedCookie, alibabaCookie, alibabaVariant, normalizeAlibabaCookieHeader } = require('../shared/limits/collector');
+const { claudeWebCookie, deepseekToken, factoryEnvApiKey, fetchClaudeLimits, fetchFactoryLimits, normalizeClaudeWebCookieInput, normalizeLimitsRefreshMode, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, resolveFactoryAutomaticApiKey, runCodexLogin, minimaxToken, copilotToken, zaiToken, zaiRegion, zaiTeamToken, volcengineCredentials, qoderCookie, traeAccessToken, traeDeviceId, commandcodeCookie, kimiToken, kimiWebToken, ollamaSessionCookie, zedCookie, alibabaCookie, alibabaVariant, normalizeAlibabaCookieHeader } = require('../shared/limits/collector');
 const { discoverZcodeConnection } = require('../shared/providers/zai/zcodeDiscovery');
 const { fetchOllamaLimits, rememberOllamaValidation } = require('../shared/providers/ollama/limits');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/providers/copilot/deviceFlow');
@@ -595,6 +595,7 @@ function defaultSettings() {
     minimaxApiKey: '',
     copilotApiToken: '',
     copilotEnterpriseHost: '',
+    factoryApiKey: '',
     zaiApiKey: '',
     zaiApiRegion: normalizeZaiApiRegion(process.env.TOKEN_MONITOR_ZAI_API_REGION || process.env.ZAI_API_REGION || process.env.Z_AI_API_HOST || 'global'),
     zaiTeamApiKey: '',
@@ -821,6 +822,28 @@ function normalizeCopilotApiToken(value) {
 
 function currentCopilotApiToken() {
   return settings?.copilotApiToken || copilotToken(process.env);
+}
+
+function normalizeFactoryApiKey(value) {
+  return normalizeSecretSetting(value);
+}
+
+function currentFactoryApiKey() {
+  return settings?.factoryApiKey || factoryEnvApiKey({}, { env: process.env });
+}
+
+async function validateFactoryApiKey(raw, deps = {}) {
+  const apiKey = (deps.normalizeApiKey || normalizeFactoryApiKey)(raw);
+  if (!apiKey) return { ok: false, status: 'notConfigured' };
+  try {
+    const provider = await (deps.fetchLimits || fetchFactoryLimits)(
+      { factoryApiKey: apiKey },
+      deps.providerDeps || electronProviderDeps()
+    );
+    return { ok: provider?.status === 'ok', status: provider?.status || 'unavailable' };
+  } catch (error) {
+    return { ok: false, status: error?.status || 'unavailable' };
+  }
 }
 
 function normalizeSecretSetting(value) {
@@ -4734,6 +4757,8 @@ function settingsForRenderer() {
     : copilotToken(process.env)
       ? 'env'
       : '';
+  const factoryAutomaticCredential = resolveFactoryAutomaticApiKey({}, { env: process.env });
+  const factoryCredentialSource = settings?.factoryApiKey ? 'settings' : factoryAutomaticCredential.source;
   const zcodeAutoCredential = currentZcodeAutoCredential();
   // "A usable local ZCode login exists" — advertised so the renderer shows
   // the auto-detect state instead of "disabled" when the provider is
@@ -4866,6 +4891,8 @@ function settingsForRenderer() {
     minimaxApiKeySource,
     copilotApiTokenConfigured: Boolean(currentCopilotApiToken()),
     copilotApiTokenSource,
+    factoryCredentialConfigured: Boolean(currentFactoryApiKey()),
+    factoryCredentialSource,
     zaiApiKeyConfigured: Boolean(currentZaiApiKey() || zcodeAutoCredential),
     zaiApiKeySource,
     zcodeLoginDetected,
@@ -6098,6 +6125,7 @@ function isAllowedExternalUrl(value) {
   if (parsed.hostname === 'platform.deepseek.com' && parsed.pathname.startsWith('/api_keys')) return true;
   if (parsed.hostname === 'platform.minimaxi.com') return true;
   if (parsed.hostname === 'platform.minimax.io') return true;
+  if (parsed.hostname === 'app.factory.ai' && parsed.pathname.startsWith('/settings/api-keys')) return true;
   if (parsed.hostname === 'z.ai' || parsed.hostname === 'www.z.ai') return true;
   if (parsed.hostname === 'bigmodel.cn' || parsed.hostname === 'www.bigmodel.cn') return true;
   if (parsed.hostname === 'www.volcengine.com' || parsed.hostname === 'console.volcengine.com') return true;
@@ -6667,6 +6695,7 @@ app.whenReady().then(() => {
     if (patch.minimaxApiKey !== undefined) normalizedPatch.minimaxApiKey = normalizeMinimaxApiKey(patch.minimaxApiKey);
     if (patch.copilotApiToken !== undefined) normalizedPatch.copilotApiToken = normalizeCopilotApiToken(patch.copilotApiToken);
     if (patch.copilotEnterpriseHost !== undefined) normalizedPatch.copilotEnterpriseHost = normalizeCopilotEnterpriseHost(patch.copilotEnterpriseHost);
+    if (patch.factoryApiKey !== undefined) normalizedPatch.factoryApiKey = normalizeFactoryApiKey(patch.factoryApiKey);
     if (patch.zaiApiKey !== undefined) normalizedPatch.zaiApiKey = normalizeZaiApiKey(patch.zaiApiKey);
     if (patch.zaiApiRegion !== undefined) normalizedPatch.zaiApiRegion = normalizeZaiApiRegion(patch.zaiApiRegion);
     if (patch.zaiTeamApiKey !== undefined) normalizedPatch.zaiTeamApiKey = normalizeZaiTeamApiKey(patch.zaiTeamApiKey);
@@ -6805,6 +6834,7 @@ app.whenReady().then(() => {
       minimaxApiKey: patch.minimaxApiKey !== undefined ? normalizeMinimaxApiKey(patch.minimaxApiKey) : (settings.minimaxApiKey || ''),
       copilotApiToken: patch.copilotApiToken !== undefined ? normalizeCopilotApiToken(patch.copilotApiToken) : (settings.copilotApiToken || ''),
       copilotEnterpriseHost: patch.copilotEnterpriseHost !== undefined ? normalizeCopilotEnterpriseHost(patch.copilotEnterpriseHost) : (settings.copilotEnterpriseHost || ''),
+      factoryApiKey: patch.factoryApiKey !== undefined ? normalizeFactoryApiKey(patch.factoryApiKey) : (settings.factoryApiKey || ''),
       zaiApiKey: patch.zaiApiKey !== undefined ? normalizeZaiApiKey(patch.zaiApiKey) : (settings.zaiApiKey || ''),
       zaiApiRegion: patch.zaiApiRegion !== undefined ? normalizeZaiApiRegion(patch.zaiApiRegion) : normalizeZaiApiRegion(settings.zaiApiRegion || 'global'),
       zaiTeamApiKey: patch.zaiTeamApiKey !== undefined ? normalizeZaiTeamApiKey(patch.zaiTeamApiKey) : (settings.zaiTeamApiKey || ''),
@@ -7315,6 +7345,7 @@ app.whenReady().then(() => {
     rememberOllamaValidation(cookie, provider);
     return { ok: provider.status === 'ok', status: provider.status };
   });
+  ipcMain.handle('factory:validateApiKey', (_event, raw) => validateFactoryApiKey(raw));
   ipcMain.handle('opencode:saveCookie', async (_event, raw) => {
     const cookie = opencodeWeb.sanitizeCookieHeader(raw);
     if (!cookie) {
