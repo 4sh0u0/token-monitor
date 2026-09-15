@@ -10148,6 +10148,11 @@ function syncSettingsForm() {
   renderSettingsAppUpdateRow();
   renderCodexAccounts();
   renderCustomPricing();
+  const modelAliasGrouping = state.settings?.modelAliasGrouping || 'off';
+  for (const input of document.querySelectorAll('input[name="modelAliasGrouping"]')) {
+    input.checked = input.value === modelAliasGrouping;
+  }
+  modelAliasForm?.syncSettings();
   renderCursorStatus();
 }
 
@@ -17130,6 +17135,27 @@ function setCursorCheckboxesEnabled(enabled) {
 }
 
 let openCustomPricingForm = null;
+let modelAliasForm = null;
+
+function setupModelAliasesUI() {
+  const toggle = document.getElementById('modelAliasesSettingsToggle');
+  if (!toggle) return;
+  toggle.addEventListener('click', () => setAccountGroupExpanded('modelAliases', !state.modelAliasesExpanded, 'modelAliasesExpanded'));
+  setAccountGroupExpanded('modelAliases', false, 'modelAliasesExpanded');
+  modelAliasForm = window.TokenMonitorModelAliasForm.createModelAliasForm({
+    document, t,
+    getAliases: () => state.settings?.modelAliases || {},
+    getGrouping: () => state.settings?.modelAliasGrouping || 'off',
+    saveAliases: (modelAliases) => saveSettings({ modelAliases })
+  });
+  for (const input of document.querySelectorAll('input[name="modelAliasGrouping"]')) {
+    input.addEventListener('change', async () => {
+      if (!input.checked) return;
+      await saveSettings({ modelAliasGrouping: input.value });
+      modelAliasForm?.syncSettings();
+    });
+  }
+}
 
 function customPricingMeta(ov) {
   const parts = [];
@@ -18938,4 +18964,5 @@ initSettingsAnimationWrappers();
 setupSettingsSections();
 setupCursorAccountUI();
 setupCustomPricingUI();
+setupModelAliasesUI();
 init();
