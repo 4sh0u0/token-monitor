@@ -3998,8 +3998,8 @@ function macWidgetConfiguration() {
   }
   const snapshotPath = resolveMacWidgetSnapshotPath({
     appGroup,
-    home: app.getPath('home'),
-    snapshotFileName
+    snapshotFileName,
+    logger: (message) => console.warn(message)
   });
   if (!snapshotPath) {
     cachedMacWidgetConfiguration = null;
