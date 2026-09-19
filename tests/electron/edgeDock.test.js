@@ -1,7 +1,16 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
+
+// This suite reaches into the renderer for the dock's own row/paint rules.
+const rendererDir = path.join(__dirname, '..', '..', 'src', 'electron', 'renderer');
+
+function readRendererFile(name) {
+  return fs.readFileSync(path.join(rendererDir, name), 'utf8');
+}
 
 const {
   EDGE_DOCK_METRICS,
@@ -34,6 +43,246 @@ const {
 
 const workArea = { x: 0, y: 25, width: 1440, height: 875 };
 const displayBounds = { x: 0, y: 0, width: 1440, height: 900 };
+
+test('every renderer stylesheet is brace-balanced', () => {
+  // A splice that leaves an orphaned rule tail unbalances the file, and a stray
+  // closing brace makes every later rule parse as part of a bogus block. That is
+  // what silently stripped the Codex card's account-row rules and pushed the plan
+  // label onto its own line: nothing failed, one brace was just off.
+  for (const name of ['styles.css', path.join('edgeDock', 'dock.css')]) {
+    const css = readRendererFile(name);
+    let depth = 0;
+    let firstUnbalanced = 0;
+    let line = 1;
+    for (const char of css) {
+      if (char === '\n') line += 1;
+      if (char === '{') depth += 1;
+      if (char === '}') {
+        depth -= 1;
+        if (depth < 0 && !firstUnbalanced) firstUnbalanced = line;
+      }
+    }
+    assert.equal(firstUnbalanced, 0, `${name} closes a block that was never opened (line ${firstUnbalanced})`);
+    assert.equal(depth, 0, `${name} ends with ${depth} unclosed block(s)`);
+  }
+});
+
+test('the Sessions list uses a plain dot, not the dock card glyph stack', () => {
+  // This row already leads with the client's own icon, so a spinner or check
+  // drawn at its corner reads as part of that logo. The card has no such icon,
+  // which is why the richer states live there and the old dot idiom stays here.
+  const app = readRendererFile('app.js');
+  const styles = readRendererFile('styles.css');
+  assert.match(app, /rowLiveMarkup = '<span class="row-live-dot"><\/span>'/);
+  assert.doesNotMatch(app, /sessionStateMarkup\(\{/);
+  assert.doesNotMatch(styles, /row-live-spin|row-live-check|row-live-idle/);
+  assert.match(styles, /\.row-live-dot\s*\{[\s\S]*?background: var\(--success\)/);
+  // The dot is drawn only while the agent works, so a quiet row shows nothing.
+  assert.match(app, /dot\.classList\.toggle\('is-active', active\)/);
+  assert.match(app, /const active = activityState === 'running'/);
+});
+
+test('both surfaces decide the context readout with one shared gate', () => {
+  // The dock card was showing a gauge for a session the Sessions list had
+  // already dropped it from, because the two gated on different states.
+  const sessionLive = require('../../src/shared/sessionLive');
+  const now = Date.parse('2026-09-18T12:00:00.000Z');
+  const fresh = new Date(now - 30_000).toISOString();
+  const old = new Date(now - sessionLive.RUNNING_WINDOW_MS - 1).toISOString();
+  const withContext = (extra) => ({ contextTokens: 150_000, contextWindow: 200_000, ...extra });
+  // Working: shown.
+  assert.equal(sessionLive.sessionContextForRow(withContext({ lastUsedAt: fresh }), now).percentUsed, 75);
+  // Turn just ended: still shown. The reading outlives the run, so the gauge
+  // does not blink away the moment an answer lands.
+  assert.ok(sessionLive.sessionContextForRow(withContext({ lastUsedAt: fresh, turnEnded: true }), now));
+  // Gone quiet: dropped. Nothing about it is current any more.
+  assert.equal(sessionLive.sessionContextForRow(withContext({ lastUsedAt: old }), now), undefined);
+  assert.equal(sessionLive.sessionContextForRow(withContext({ lastUsedAt: old, turnEnded: true }), now), undefined);
+  // Both renderers call it rather than gating on the running boolean.
+  const rows = readRendererFile('sessionRows.js');
+  const presentation = readRendererFile(path.join('edgeDock', 'presentation.js'));
+  assert.match(rows, /context: sessionContextForRow\(session, now\)/);
+  assert.match(presentation, /context: sessionLive\.sessionContextForRow\(session\)/);
+});
+test('the dock state mark uses the repo loader asset and a stroked check', () => {
+  const markup = require('../../src/shared/sessionLive').sessionStateMarkup({
+    spin: 'edge-dock-session-spin',
+    check: 'edge-dock-session-check',
+    idle: 'edge-dock-session-idle'
+  });
+  // The spin element is an empty hook for the CSS mask; drawing spokes inline
+  // again would be a second loader that can drift from icons/actions/spinner.svg.
+  assert.match(markup, /<span class="edge-dock-session-spin"><\/span>/);
+  assert.doesNotMatch(markup, /<line /);
+  // The check is stroked, not filled: a filled ring scaled down to 10px leaves
+  // its edges about half a pixel apart, which reads as roughness.
+  assert.match(markup, /<svg class="edge-dock-session-check"[^>]*fill="none"[^>]*stroke="currentColor"/);
+  assert.doesNotMatch(markup, /fill="currentColor"/);
+  assert.match(markup, /<span class="edge-dock-session-idle"><\/span>/);
+});
+test('the dock keeps the token total, adds headroom, and dots running rows instead of recolouring them', () => {
+  const dock = readRendererFile(path.join('edgeDock', 'dock.js'));
+  const css = readRendererFile(path.join('edgeDock', 'dock.css'));
+  const app = readRendererFile('app.js');
+  // The token total must survive: headroom is additional, not a replacement for
+  // the figure the row already carried.
+  assert.match(dock, /el\('span', 'edge-dock-session-tokens', formatTokens\(session\.totalTokens\)\)/);
+  // ...and both live on the same row, with the context reading appended to the
+  // meta line rather than taking the token column.
+  const sessions = dock.slice(dock.indexOf('function sessionsNode('), dock.indexOf('function providerCard('));
+  assert.match(sessions, /edge-dock-session-meta/);
+  assert.match(sessions, /if \(context\) meta\.append\(context\)/);
+  // Running is a dot beside the name, not a recoloured title.
+  assert.match(sessions, /nameNode\.append\(stateMark\(session, key, state\)\)/);
+  assert.match(sessions, /nameNode\.append\(document\.createTextNode\(name\)\)/);
+  assert.doesNotMatch(css, /\.edge-dock-session\.is-running \.edge-dock-session-name\s*\{[^}]*color/);
+  // Three states: a spinner while working, a check once the transcript said the
+  // turn finished, and a faint dot for a session that has gone quiet.
+  assert.match(css, /\.edge-dock-session-spin\s*\{[\s\S]*?color: var\(--success\)/);
+  assert.match(css, /\.edge-dock-session-check\s*\{[\s\S]*?color: var\(--muted\)/);
+  assert.match(css, /\.edge-dock-session-idle::before/);
+  assert.match(css, /edge-dock-session-dot\[data-state="running"\] \.edge-dock-session-spin/);
+  assert.match(css, /edge-dock-session-dot\[data-state="ended"\] \.edge-dock-session-check/);
+  assert.match(css, /edge-dock-session-dot\[data-state="idle"\] \.edge-dock-session-idle/);
+  // The spinner is the repo's own loader asset applied as a mask, not a second
+  // loader drawn by hand. It carries NO CSS rotation: that file animates its own
+  // spokes, and rotating the masked copy as well would spin it twice, with the
+  // glyph's 45-degree symmetry aliasing a rigid rotation to ~8x the rate.
+  assert.match(css, /\.edge-dock-session-spin\s*\{[\s\S]*?mask: url\("\.\.\/icons\/actions\/spinner\.svg"\)/);
+  assert.doesNotMatch(css, /animation:\s*edge-dock-session-spin/);
+  assert.doesNotMatch(css, /@keyframes edge-dock-session-spin/);
+  // The asset itself has to keep the SMIL that mask relies on.
+  assert.match(readRendererFile(path.join('icons', 'actions', 'spinner.svg')), /<animate attributeName="opacity"/);
+  // The slot is reserved on EVERY row and only painted while running, so the
+  // titles of running and idle rows start at the same x.
+  assert.match(sessions, /const state = stateByKey\.get\(key\) \|\| 'idle'/);
+  // The flare is one-shot, so an idle card animates nothing.
+  // The flare rides along with the spin rather than replacing it, and adds no
+  // `infinite` of its own: a flare always means a write.
+  assert.match(css, /\.edge-dock-session-dot\.pulse \.edge-dock-session-spin \{/);
+  // The context reading carries a bar plus the number, and the tone rule is
+  // keyed on headroom so a healthy reading stays neutral.
+  assert.match(css, /edge-dock-session-context-meter/);
+  assert.match(css, /edge-dock-session-context\[data-tone="low"\]/);
+  // `calls` stays English on purpose, matching the Limits view's fixed wording:
+  // it is a billing unit, and every Chinese candidate reads as a different
+  // measure (closer to "invocations") than to billable calls.
+  assert.match(readRendererFile('sessionRows.js'), /formatNumber\(count\)\} \$\{count === 1 \? 'call' : 'calls'\}/);
+  assert.doesNotMatch(app, /callsLabel/);
+  const i18n = readRendererFile('i18n.js');
+  assert.doesNotMatch(i18n, /'session\.calls':/);
+  assert.doesNotMatch(i18n, /'session\.callsOne':/);
+});
+
+test('running sessions are never truncated by the recent cap, and the count matches the rows', () => {
+  const nowIso = new Date().toISOString();
+  const oldIso = new Date(Date.now() - 90 * 60_000).toISOString();
+  const session = (id, lastUsedAt, extra = {}) => ({ client: 'codex', sessionId: id, lastUsedAt, totalTokens: 10, models: { 'gpt-5': 10 }, ...extra });
+  const stats = {
+    periods: {
+      month: { sessions: {
+        'codex:run1': session('run1', nowIso, { contextTokens: 281_012, contextWindow: 950_000, title: 'live one' }),
+        'codex:run2': session('run2', nowIso),
+        'codex:run3': session('run3', nowIso),
+        'codex:run4': session('run4', nowIso),
+        'codex:quiet1': session('quiet1', oldIso),
+        'codex:quiet2': session('quiet2', oldIso)
+      } },
+      today: { sessions: {} }
+    },
+    limits: { providers: [provider('codex')] }
+  };
+  const [codex] = buildEdgeDockCells(stats, {});
+  // Four running sessions exceed the recent cap of three, so all four appear and
+  // the list scrolls: the cap must never hide live work. No quiet row fits in
+  // the budget they consume.
+  assert.deepEqual(codex.sessions.map((entry) => entry.sessionId), ['run1', 'run2', 'run3', 'run4']);
+  assert.equal(codex.sessions.filter((entry) => entry.running).length, 4);
+  // Context rides the row for a session whose transcript stated a window, and
+  // is absent (not zero) for one that has gone quiet.
+  assert.deepEqual(codex.sessions[0].context, { contextTokens: 281_012, contextWindow: 950_000, percentLeft: 70, percentUsed: 30, tone: '' });
+  // Nothing running is a real answer, not a missing one.
+  const [quietOnly] = buildEdgeDockCells({
+    periods: { month: { sessions: { 'codex:q': session('q', oldIso) } }, today: { sessions: {} } },
+    limits: { providers: [provider('codex')] }
+  }, {});
+  assert.equal(quietOnly.sessions.filter((entry) => entry.running).length, 0);
+  // A quiet row has no reading to carry, which is a distinct fact from having
+  // one that rounds to nothing.
+  assert.equal(quietOnly.sessions[0].context, null);
+});
+
+test('the session cap is a total budget, so one going live does not add a row', () => {
+  // The card showed three idle rows and then four the moment one of them started
+  // running, because the running rows were added on top of a full quiet list.
+  // The cap bounds the whole list; running rows are kept preferentially and the
+  // tail fills only what they leave.
+  const nowIso = new Date().toISOString();
+  const oldIso = new Date(Date.now() - 90 * 60_000).toISOString();
+  const session = (id, lastUsedAt) => ({ client: 'codex', sessionId: id, lastUsedAt, totalTokens: 10, models: { 'gpt-5': 10 } });
+  const build = (sessions) => buildEdgeDockCells({
+    periods: { month: { sessions }, today: { sessions: {} } },
+    limits: { providers: [provider('codex')] }
+  }, {})[0];
+
+  // Three quiet sessions: three rows, as before.
+  const quiet = build({
+    'codex:q1': session('q1', oldIso),
+    'codex:q2': session('q2', oldIso),
+    'codex:q3': session('q3', oldIso),
+    'codex:q4': session('q4', oldIso)
+  });
+  assert.deepEqual(quiet.sessions.map((entry) => entry.sessionId), ['q1', 'q2', 'q3']);
+
+  // The same list with one of them running still totals three, not four: the
+  // session that started was already one of the three.
+  const oneLive = build({
+    'codex:q1': session('q1', nowIso),
+    'codex:q2': session('q2', oldIso),
+    'codex:q3': session('q3', oldIso),
+    'codex:q4': session('q4', oldIso)
+  });
+  assert.equal(oneLive.sessions.length, 3, 'one live session must not grow the list');
+  assert.deepEqual(oneLive.sessions.map((entry) => entry.sessionId), ['q1', 'q2', 'q3']);
+  assert.equal(oneLive.sessions.filter((entry) => entry.running).length, 1);
+  assert.equal(oneLive.sessions.filter((entry) => !entry.running).length, 2);
+
+  // Two live: one quiet row is left to fill the remaining slot.
+  const twoLive = build({
+    'codex:q1': session('q1', nowIso),
+    'codex:q2': session('q2', nowIso),
+    'codex:q3': session('q3', oldIso),
+    'codex:q4': session('q4', oldIso)
+  });
+  assert.deepEqual(twoLive.sessions.map((entry) => entry.sessionId), ['q1', 'q2', 'q3']);
+  assert.equal(twoLive.sessions.filter((entry) => entry.running).length, 2);
+
+  // Exactly the cap running: no quiet row fits.
+  const threeLive = build({
+    'codex:q1': session('q1', nowIso),
+    'codex:q2': session('q2', nowIso),
+    'codex:q3': session('q3', nowIso),
+    'codex:q4': session('q4', oldIso)
+  });
+  assert.deepEqual(threeLive.sessions.map((entry) => entry.sessionId), ['q1', 'q2', 'q3']);
+  assert.equal(threeLive.sessions.filter((entry) => !entry.running).length, 0);
+
+  // Fewer sessions than the cap are all shown.
+  const small = build({ 'codex:q1': session('q1', oldIso), 'codex:q2': session('q2', nowIso) });
+  assert.equal(small.sessions.length, 2);
+});
+test('an archived session never counts as running on a dock card', () => {
+  const nowIso = new Date().toISOString();
+  const stats = {
+    periods: {
+      month: { sessions: { 'codex:a': { client: 'codex', sessionId: 'a', lastUsedAt: nowIso, totalTokens: 10, models: { 'gpt-5': 10 }, archived: true } } },
+      today: { sessions: {} }
+    },
+    limits: { providers: [provider('codex')] }
+  };
+  const [codex] = buildEdgeDockCells(stats, {});
+  assert.equal(codex.sessions[0].running, false);
+});
 
 test('edge dock is opt-in and limited to macOS and Windows', () => {
   assert.equal(canUseEdgeDock({}, 'darwin'), false);

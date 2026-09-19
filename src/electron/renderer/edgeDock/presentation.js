@@ -11,11 +11,12 @@
     node ? require('../../../shared/limitBalanceDisplay') : root?.TokenMonitorLimitBalanceDisplay,
     node ? require('../../../shared/limitProviders') : root?.TokenMonitorLimitProviders,
     node ? require('./items') : root?.TokenMonitorEdgeDockItems,
-    node ? require('../accountIdentity') : root?.TokenMonitorAccountIdentity
+    node ? require('../accountIdentity') : root?.TokenMonitorAccountIdentity,
+    node ? require('../../../shared/sessionLive') : root?.TokenMonitorSessionLive
   );
   if (node) module.exports = api;
   if (root) root.TokenMonitorEdgeDockPresentation = api;
-})(typeof window !== 'undefined' ? window : null, function createEdgeDockPresentation(trayText, balanceDisplay, limitProviders, dockItems, accountIdentity) {
+})(typeof window !== 'undefined' ? window : null, function createEdgeDockPresentation(trayText, balanceDisplay, limitProviders, dockItems, accountIdentity, sessionLive) {
   // Every account is listed; the card scrolls when they outgrow the screen.
   const MAX_BUBBLE_ACCOUNTS = 50;
   const MAX_BUBBLE_WINDOWS = 6;
@@ -172,9 +173,13 @@
 
   const RECENT_SESSION_COUNT = 3;
 
-  // The provider's most recently active sessions this month, newest first.
-  // Month detail includes today's sessions; today's collection is the fallback
-  // for payloads that only carry today.
+  // The sessions a provider card lists. Month detail includes today's sessions;
+  // today's collection is the fallback for payloads that only carry today.
+  //
+  // Running is decided here rather than at the renderer, so the count and the
+  // rows are one derivation and cannot disagree. `now` is passed in so the
+  // caller can pin a clock in tests; the renderer recomputes from the same
+  // shared predicate when it repaints between pushes.
   function recentSessionsFor(stats, provider) {
     const byKey = new Map();
     for (const periodKey of ['month', 'today']) {
@@ -187,19 +192,49 @@
         byKey.set(key, { session, lastUsedMs });
       }
     }
-    return [...byKey.values()]
-      .sort((a, b) => b.lastUsedMs - a.lastUsedMs)
-      .slice(0, RECENT_SESSION_COUNT)
-      .map(({ session }) => {
+    // The canonical `client:sessionId` key identifies a record, not the bare
+    // sessionId: two clients can carry the same id, and collapsing them onto one
+    // key made their states overwrite each other while the rows stayed distinct.
+    const ordered = [...byKey.entries()]
+      .map(([key, value]) => ({ key, ...value }))
+      .sort((a, b) => b.lastUsedMs - a.lastUsedMs);
+    // One derivation for the run/quiet split and for the field the rows carry,
+    // from the same shared function the card repaints with.
+    const stateByKey = new Map(ordered.map(({ key, session }) => [key, sessionLive.sessionActivityState(session)]));
+    const running = ordered.filter(({ key }) => stateByKey.get(key) === 'running');
+    // The cap is a budget for the whole list, not a second allowance stacked on
+    // top of the running rows. Adding the running ones to a full quiet tail made
+    // the card grow by one the moment a session went live - three idle rows plus
+    // the running one, when the session that started was already one of the
+    // three. Running rows are kept preferentially (dropping one would leave the
+    // card's "N running" count with no matching row), and the tail fills whatever
+    // budget they leave; if more than the cap is running, all of them show and the
+    // list scrolls rather than hiding live work.
+    const quiet = ordered
+      .filter(({ key }) => stateByKey.get(key) !== 'running')
+      .slice(0, Math.max(0, RECENT_SESSION_COUNT - running.length));
+    return [...running, ...quiet]
+      .map(({ key, session }) => {
         const models = Object.entries(session.models || {}).sort((a, b) => (finite(b[1]) || 0) - (finite(a[1]) || 0));
         return {
           title: String(session.title || ''),
           projectLabel: String(session.projectLabel || ''),
+          // Carried so the renderer keys its state map and its flare cache on
+          // the same identity this projection used, instead of re-deriving one
+          // from sessionId and colliding two clients.
+          key,
           sessionId: String(session.sessionId || ''),
           model: models[0]?.[0] || '',
           totalTokens: finite(session.totalTokens) || 0,
           costUsd: finite(session.costUsd) || 0,
-          lastUsedAt: session.lastUsedAt || session.startedAt || null
+          lastUsedAt: session.lastUsedAt || session.startedAt || null,
+          // Carried onto the projected row, not just used here: the dock renderer
+          // re-derives the state at paint time and needs the boundary to do it.
+          turnEnded: session.turnEnded === true,
+          running: stateByKey.get(key) === 'running',
+          // The same gate the Sessions list uses, so one surface cannot show a
+          // gauge for a session the other has already dropped it from.
+          context: sessionLive.sessionContextForRow(session) || null
         };
       });
   }
@@ -276,6 +311,7 @@
         currency: balanceDisplay.creditsCurrency(headline.record, headlineWindow)
       }
       : null;
+    const sessions = options.showSessions === false ? [] : recentSessionsFor(options.stats, id);
     return {
       id,
       kind: 'provider',
@@ -287,7 +323,7 @@
       accountCount: accounts.length,
       accounts: projected.slice(0, MAX_BUBBLE_ACCOUNTS).map((account) => account.summary),
       usage: options.showUsage === false ? null : providerUsage(options.stats, id),
-      sessions: options.showSessions === false ? [] : recentSessionsFor(options.stats, id),
+      sessions,
       forecast: id === 'codex' ? options.codexResetForecast || null : null
     };
   }

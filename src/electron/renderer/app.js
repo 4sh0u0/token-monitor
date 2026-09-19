@@ -352,6 +352,7 @@ state.sessionPage = 0;
 state.sessionPagerSignature = '';
 let directBreakdownOverride = null;
 state.projectSettingsExpanded = false;
+state.sessionSettingsExpanded = false;
 state.homeActivitySettingsExpanded = false;
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, windowsBackdrop: 'acrylic', reduceMotion: 'system', showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, showLiveTokenRate: false, liveTokenRateScope: 'all', compactTokenUnits: 'western', settingsInTitlebar: false };
@@ -2057,7 +2058,10 @@ function rowTemplate(rowData) {
   if (platform) row.dataset.platform = platform;
   if (client) row.dataset.client = client;
   if (kind) row.dataset.kind = kind;
-  row.innerHTML = '<div class="row-head"><div class="row-name"><span class="row-mark"></span><div class="row-label"><span class="row-title"></span><span class="row-subtitle"></span><span class="row-activity"></span><span class="row-detail"></span></div></div><div class="row-metrics"><div class="row-value"></div><div class="row-cost"></div></div></div><div class="row-body"><div class="bar"><div class="bar-fill"></div></div><div class="row-accordion"><div class="row-accordion-inner"></div></div></div>';
+  // `.row-live` is absolutely positioned over the mark's corner and `.row-context`
+  // is the third metrics line; both stay empty and hidden on every row that is
+  // not a live session, so the shared template keeps building one shape.
+  row.innerHTML = `<div class="row-head"><div class="row-name"><span class="row-mark"></span><span class="row-live" aria-hidden="true">${rowLiveMarkup}</span><div class="row-label"><span class="row-title"></span><span class="row-subtitle"></span><span class="row-activity"></span><span class="row-detail"></span></div></div><div class="row-metrics"><div class="row-value"></div><div class="row-cost"></div><div class="row-context hidden"><span class="row-context-meter"><span class="row-context-fill"></span></span><span class="row-context-value"></span></div></div></div><div class="row-body"><div class="bar"><div class="bar-fill"></div></div><div class="row-accordion"><div class="row-accordion-inner"></div></div></div>`;
   row.querySelector('.row-title').textContent = name;
   row.querySelector('.row-subtitle').textContent = subtitle || '';
   row.querySelector('.row-activity').textContent = activity || '';
@@ -2309,10 +2313,80 @@ function setActiveToolDetailMode(mode) {
   renderToolDetailFooter();
 }
 
-function updateRow(row, { name, subtitle, activity, detail, value, cost, barValue, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, unclassifiedTokens, modelRows, tokenDataUnavailable, sessionDetailAvailable, reviewGroup }) {
+// The live-session pair: a dot on the tool mark for "this is being written to
+// right now", and a fuel gauge for how much of its context window is left. The
+// dot is drawn only while the agent is working and the gauge only while the
+// session is recent, so a list of several hundred past sessions is untouched.
+function updateRowContext(row, context) {
+  const gauge = row.querySelector('.row-context');
+  if (!gauge) return;
+  const percentLeft = context ? Number(context.percentLeft) : NaN;
+  if (!Number.isFinite(percentLeft)) {
+    gauge.classList.add('hidden');
+    gauge.removeAttribute('title');
+    return;
+  }
+  gauge.classList.remove('hidden');
+  // Headroom is what decides the colour whichever way the number is written:
+  // a gauge reading "93% used" is the same emergency as one reading "7% left".
+  gauge.dataset.tone = String(context.tone || '');
+  // The session gauge has its own Remaining/Used preference rather than
+  // following AI Tool Limits: that setting describes provider quota meters,
+  // where the number a plan is sold on is what is left, while a context
+  // window is a budget being spent and the clients themselves show used.
+  // Default is used, matching Codex and Claude Code's own readouts.
+  const showUsed = state.settings?.sessionContextMetric !== 'remaining';
+  const percent = showUsed ? Number(context.percentUsed) : percentLeft;
+  gauge.title = t(showUsed ? 'session.contextUsed' : 'session.contextLeft', { percent }) || `${percent}%`;
+  gauge.querySelector('.row-context-value').textContent = `${percent}%`;
+  gauge.querySelector('.row-context-fill').style.setProperty('--bar-scale', String(percent / 100));
+}
+
+// Flare the row's live dot once when that session's transcript actually moved,
+// reusing the titlebar dot's one-shot pattern (remove, reflow, re-add) rather
+// than running a perpetual pulse: a session that is open but idle should look
+// different from one that is generating right now, and an `infinite` animation
+// in an always-open widget never lets the compositor idle. The reduced-motion
+// rules already neutralise every animation, so this needs no guard of its own.
+// A session row already leads with the client's own icon, so its state mark is a
+// small dot at the icon's corner rather than the dock card's glyph stack: a
+// spinner or a check drawn over a vendor logo reads as part of the logo and
+// muddies it, and the card has no such icon to compete with.
+//
+// The old idiom is kept - a green dot means "active right now" - with the dot
+// simply not drawn once the transcript says the turn is over. No spinner, no
+// check, no idle placeholder: a quiet row shows nothing, exactly as before.
+const rowLiveMarkup = '<span class="row-live-dot"></span>';
+
+function updateRowLive(row, activityState, activityAt) {
+  const dot = row.querySelector('.row-live');
+  if (!dot) return;
+  // Only one thing is drawn here, and only while the agent is working: the dot
+  // is absent for every other state, which is what a session list full of past
+  // sessions should look like. The turn-end boundary is still read, so the dot
+  // clears the moment the transcript says the answer is finished rather than
+  // holding green until the recency window expires.
+  const active = activityState === 'running';
+  dot.classList.toggle('is-active', active);
+  dot.title = active ? (t('session.running') || 'Running') : '';
+  const previous = Number(row.dataset.activityAt || 0);
+  const next = Number(activityAt) || 0;
+  if (next > 0) row.dataset.activityAt = String(next);
+  // Never on a first render: a list that flashes every dot as it arrives says
+  // nothing about which session just moved.
+  if (!active || !previous || next <= previous) return;
+  dot.classList.remove('pulse');
+  void dot.offsetWidth;
+  dot.classList.add('pulse');
+}
+
+function updateRow(row, { name, subtitle, activity, detail, value, cost, barValue, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, unclassifiedTokens, modelRows, tokenDataUnavailable, sessionDetailAvailable, reviewGroup, running, activityState, context, sortTime }) {
   const width = rowWidth(barValue, max);
   const isExpanded = row.classList.contains('expanded');
-  row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}`;
+  // `running` still drives the row class for layout, but the mark's own state
+  // comes from `activityState`, which is what reads the transcript's turn-end
+  // boundary rather than only the recency window.
+  row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}${running ? ' running' : ''}`;
   row.title = local ? 'This device' : '';
   
   if (cacheReadTokens !== undefined || outputTokens !== undefined || unclassifiedTokens !== undefined) {
@@ -2367,6 +2441,12 @@ function updateRow(row, { name, subtitle, activity, detail, value, cost, barValu
   valueEl.dataset.motionValue = String(Number(value) || 0);
   row.dataset.motionValue = String(Number(value) || 0);
   row.querySelector('.row-cost').textContent = tokenDataUnavailable === true ? '' : formatCost(cost || 0);
+  // The row builder already applied the shared gate (recent enough to have a
+  // reading), so this draws whatever arrived rather than re-deciding from
+  // `running` - that second gate is exactly what made the dock card and this
+  // list disagree about whether a session still had a gauge.
+  updateRowContext(row, context);
+  updateRowLive(row, activityState || (running === true ? 'running' : 'idle'), sortTime);
   const fill = row.querySelector('.bar-fill');
   fill.style.background = barBackground || color;
   applyBarScale(fill, width / 100);
@@ -2549,7 +2629,11 @@ function renderRows(rows, { incompleteHint = '' } = {}) {
     currency: currentCurrency(),
     currencyRatesEffective: state.settings?.currencyRatesEffective || null,
     locale: currentLocale(),
-    showToolIcons: toolIconsEnabled(state.settings?.showToolIcons)
+    showToolIcons: toolIconsEnabled(state.settings?.showToolIcons),
+    // The context gauge carries its own Remaining/Used preference, so flipping
+    // either it or the limits meters has to invalidate these rows.
+    showLimitUsed: state.settings?.showLimitUsed === true,
+    sessionContextMetric: state.settings?.sessionContextMetric === 'remaining' ? 'remaining' : 'used'
   };
   const nextFingerprints = new Map(visibleRows.map((row) => [
     row.key,
@@ -10199,7 +10283,7 @@ function applyPreferenceOrder(kind, order) {
     if (!row) continue;
     list.appendChild(row);
     const companionId = kind === 'view'
-      ? ({ home: 'homeSettingsContainer', trends: 'trendSettingsContainer', project: 'projectSettingsContainer', status: 'serviceProvidersContainer' })[id]
+      ? ({ home: 'homeSettingsContainer', trends: 'trendSettingsContainer', project: 'projectSettingsContainer', session: 'sessionSettingsContainer', status: 'serviceProvidersContainer' })[id]
       : kind === 'homeModule'
         ? ({ limits: 'homeLimitProviderContainer', trends: 'homeActivitySettingsContainer' })[id]
         : '';
@@ -10235,6 +10319,7 @@ const VIEW_PREFERENCE_SUBGROUPS = {
   home: ['homeSettingsExpanded', 'homeSettingsContainer'],
   trends: ['trendSettingsExpanded', 'trendSettingsContainer'],
   project: ['projectSettingsExpanded', 'projectSettingsContainer'],
+  session: ['sessionSettingsExpanded', 'sessionSettingsContainer'],
   status: ['serviceProvidersExpanded', 'serviceProvidersContainer']
 };
 
@@ -10494,6 +10579,30 @@ function renderViewPreferences() {
       const inner = document.createElement('div');
       inner.className = 'accordion-animation-inner';
       inner.appendChild(renderProjectSettingsList());
+      listContainer.appendChild(inner);
+      els.viewDisplayList.appendChild(listContainer);
+    }
+    if (id === 'session') {
+      row.classList.add('has-subgroup');
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = `view-subgroup-toggle${state.sessionSettingsExpanded ? ' is-expanded' : ''}`;
+      toggle.title = t('settings.views.configureSession', { name: label });
+      toggle.setAttribute('aria-label', toggle.title);
+      toggle.setAttribute('aria-expanded', String(Boolean(state.sessionSettingsExpanded)));
+      const toggleIcon = document.createElement('span');
+      toggleIcon.className = 'view-subgroup-icon';
+      toggleIcon.setAttribute('aria-hidden', 'true');
+      toggle.append(toggleIcon);
+      toggle.addEventListener('click', () => togglePreferenceSubgroup(VIEW_PREFERENCE_SUBGROUPS, '.view-preference-row', id));
+      actions.insertBefore(toggle, visibility);
+
+      const listContainer = document.createElement('div');
+      listContainer.id = 'sessionSettingsContainer';
+      listContainer.className = `accordion-animated-container${state.sessionSettingsExpanded ? '' : ' hidden'}`;
+      const inner = document.createElement('div');
+      inner.className = 'accordion-animation-inner';
+      inner.appendChild(renderSessionSettingsList());
       listContainer.appendChild(inner);
       els.viewDisplayList.appendChild(listContainer);
     }
@@ -10897,6 +11006,56 @@ async function setProjectsEnabled(enabled) {
   const hidden = hiddenViewSet();
   hidden.delete('project');
   await saveSettings({ projectsEnabled: true, hiddenViews: Array.from(hidden).join(',') });
+}
+
+// Sessions has its own settings subgroup rather than borrowing AI Tool
+// Limits': the context gauge reads a session's working budget, while the
+// limits meters read a provider quota, and the two genuinely disagree about
+// which end of the scale is the good news.
+function renderSessionSettingsList() {
+  const wrap = document.createElement('div');
+  wrap.id = 'sessionSettingsList';
+  wrap.className = 'settings-nested-list trend-settings-list';
+  // A plain `.settings-item` row, matching the Model ranking control in Main —
+  // the same title-left/control-right shape. It deliberately does NOT reuse
+  // `.home-activity-settings`: that carries its own indent rule for the Home
+  // modules list, and this row already sits inside `.settings-nested-list`,
+  // which draws that rule, so borrowing it painted a second line.
+  const row = document.createElement('div');
+  row.className = 'settings-item';
+  const label = document.createElement('span');
+  label.id = 'sessionContextMetricLabel';
+  label.className = 'settings-item-text';
+  const title = document.createElement('span');
+  title.className = 'settings-item-title';
+  title.textContent = t('settings.session.contextMetric');
+  label.append(title);
+  const options = document.createElement('div');
+  options.className = 'inline-options';
+  options.setAttribute('role', 'radiogroup');
+  options.setAttribute('aria-labelledby', label.id);
+  const current = state.settings?.sessionContextMetric === 'remaining' ? 'remaining' : 'used';
+  for (const metric of ['used', 'remaining']) {
+    const option = document.createElement('label');
+    option.className = 'inline-option';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'sessionContextMetric';
+    input.value = metric;
+    input.checked = current === metric;
+    input.addEventListener('change', () => {
+      // saveSettings repaints through the same path the limits meters use; the
+      // preference rides in renderContext, so the session rows re-fingerprint.
+      if (input.checked) void saveSettings({ sessionContextMetric: metric });
+    });
+    const text = document.createElement('span');
+    text.textContent = t(`settings.session.contextMetric.${metric}`);
+    option.append(input, text);
+    options.append(option);
+  }
+  row.append(label, options);
+  wrap.append(row);
+  return wrap;
 }
 
 function renderServiceProviderList() {
