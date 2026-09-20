@@ -1269,8 +1269,38 @@ test('provider cards list the newest sessions of their own clients this month', 
   assert.equal(codex.sessions[0].title, 'Fix dock');
   assert.equal(codex.sessions[1].projectLabel, 'token-monitor');
   assert.equal(codex.sessions[1].model, 'gpt-5');
+  // The rows are the rail's activity reading as well as this card's list, so hiding
+  // the list is a choice the cell carries rather than one it applies: the rows stay.
   const [hidden] = buildEdgeDockCells(stats, { items: [{ type: 'limit', provider: 'codex', showSessions: false }] });
-  assert.deepEqual(hidden.sessions, []);
+  assert.equal(hidden.showSessions, false);
+  assert.deepEqual(hidden.sessions.map((entry) => entry.sessionId), ['t', 'b', 'd']);
+});
+
+// The card's list and the rail's breathing mark read the same rows, so a switch
+// labelled "Show recent sessions in card" is a choice about the card. Emptying the
+// cell instead made it an off switch for the mark - a reading the label never
+// mentions, and one the card was never asked about.
+test('hiding a card\'s session list leaves the rail its running mark', () => {
+  const live = { client: 'codex', sessionId: 'live', lastUsedAt: new Date().toISOString(), totalTokens: 10, models: { 'gpt-5': 10 } };
+  const stats = {
+    periods: {
+      month: { sessions: { 'codex:live': live } },
+      today: { sessions: { 'codex:live': live } }
+    },
+    limits: { providers: [provider('codex')] }
+  };
+  const [cell] = buildEdgeDockCells(stats, { items: [{ type: 'limit', provider: 'codex', showSessions: false }] });
+
+  assert.equal(cell.showSessions, false);
+  // The mark is what the rail paints from, and these rows are also what arms the
+  // rail's own repaint clock (dock.js's `cellReadsSessions`), so both have to
+  // survive the card's list being switched off.
+  assert.equal(edgeDockPresentation.runningSessionSummary(cell.sessions).count, 1);
+  // And the switch lands on the card alone: the rows stay on the cell, and the
+  // list is simply not drawn.
+  const dock = readRendererFile(path.join('edgeDock', 'dock.js'));
+  const card = dock.slice(dock.indexOf('function providerCard('), dock.indexOf('function appendLiveRate('));
+  assert.match(card, /const sessions = cell\.showSessions === false \? null : sessionsNode\(cell\.sessions\);/);
 });
 
 test('the live Codex account is marked from this device only', () => {
@@ -1851,4 +1881,119 @@ test('display percent honours used mode while severity stays keyed on what is le
   assert.equal(remainingSeverity(20), 'low');
   assert.equal(remainingSeverity(5), 'critical');
   assert.equal(remainingSeverity(null), 'unknown');
+});
+
+// The rail's entrance slides the whole surface, so it has to move the root - and a
+// rule written as `.edge-dock-root *` does not match the element it hangs off. That
+// left the one animation in this sheet that reduced motion would not have stopped,
+// which is invisible until someone turns the setting on and watches the rail.
+test('the rail entrance moves the whole surface and stops under reduced motion', () => {
+  const css = readRendererFile(path.join('edgeDock', 'dock.css')).replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const reveal = css.slice(css.indexOf('@keyframes edge-dock-rail-in'), css.indexOf('@keyframes edge-dock-card-in'));
+  assert.ok(reveal, 'the rail entrance should be keyed');
+  // A transform, so it runs on the compositor and carries the drawn silhouette
+  // with the cells inside it rather than sliding them within a fixed frame.
+  assert.match(reveal, /from \{ transform: translateX\(/);
+  assert.match(reveal, /to \{ transform: none; \}/);
+  assert.match(reveal, /\.edge-dock-root\.is-revealing \{ animation: edge-dock-rail-in /);
+  // It starts from the side the edge is on: a left-edge dock sliding the right way
+  // would read as leaving rather than arriving.
+  assert.match(css, /\.edge-dock-root\[data-side="left"\] \{ --edge-dock-rail-shift: -14px; \}/);
+
+  const blanket = css.slice(css.indexOf('html[data-reduce-motion="on"] .edge-dock-root,'));
+  const selectors = blanket.slice(0, blanket.indexOf('{'));
+  assert.match(selectors, /html\[data-reduce-motion="on"\] \.edge-dock-root,/);
+  assert.match(selectors, /html\[data-reduce-motion="on"\] \.edge-dock-root \*,/);
+  assert.match(selectors, /html\.edge-dock-reduced-motion \.edge-dock-root,/);
+  assert.match(selectors, /html\.edge-dock-reduced-motion \.edge-dock-root \*[,\s]/);
+
+  // And the page plays it on the transition alone, so the push that re-renders this
+  // surface every few seconds does not replay the slide. The transition is the count
+  // moving, not the rail being up: the retract takes the window away without a
+  // payload, so a page keying on the state would never see the rail leave and would
+  // read the next reveal as no change at all - one entrance per page load.
+  const dock = readRendererFile(path.join('edgeDock', 'dock.js'));
+  assert.match(dock, /if \(railReveal !== null && reveal !== railReveal\) playRailReveal\(\);/);
+});
+
+// The halo the running mark breathes is bounded on both sides, and both bounds are
+// invisible in a diff because every number involved is deliberate. It fades out too
+// early and it is already at zero where the glyph ends, showing only through the
+// counters of the letterform; it reaches too far and it stops reading as light around
+// the mark and becomes a second, larger circle behind the ring. The numbers were
+// re-tuned once by eye against the real stylesheet; these bounds are what has to hold
+// whatever they are re-tuned to.
+test('the running halo lights the mark without becoming the ring', () => {
+  const css = readRendererFile(path.join('edgeDock', 'dock.css')).replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const ring = Number(css.match(/\n\.edge-dock-ring \{[^}]*?width: ([\d.]+)px/)[1]);
+  const mark = Number(css.match(/\n\.edge-dock-mark \{[^}]*?width: ([\d.]+)px/)[1]);
+  const arcWidth = Number(css.match(/\n\.edge-dock-ring-fill \{[^}]*?stroke-width: ([\d.]+)/)[1]);
+  const dock = readRendererFile(path.join('edgeDock', 'dock.js'));
+  const arcRadius = Number(dock.match(/const RING_RADIUS = ([\d.]+);/)[1]);
+  const glow = css.slice(css.indexOf('.edge-dock-ring-glow {'), css.indexOf('.edge-dock-cell[data-running="yes"]'));
+  const size = Number(glow.match(/width: ([\d.]+)%/)[1]) / 100;
+  // Both gradient forms are legal here: a held stop (`colour 30%, transparent 100%`) and
+  // the plain falloff this uses (`colour, transparent 72%`), which holds nothing at all.
+  const stops = glow.match(/(?:([\d.]+)%, )?transparent ([\d.]+)%/);
+  assert.ok(stops, 'the halo should be a falloff this can read');
+  const hold = Number(stops[1] ?? 0) / 100;
+  const zero = Number(stops[2]) / 100;
+
+  const radius = (size * ring) / 2;
+  // It has to reach past the mark, or there is nothing beside the glyph to see.
+  assert.ok(radius * zero > mark / 2, `the halo is spent at ${radius * zero}px, inside the mark's ${mark / 2}px`);
+  // Anything that is held at full colour has to be held *under* the glyph, so what shows
+  // beside the letterform is always falloff rather than the flat edge of a disc.
+  assert.ok(hold * radius < mark / 2, `colour is held to ${hold * radius}px, past the mark's ${mark / 2}px`);
+  // And it has to be spent inside the arc, or the halo laps under the ring and the
+  // arc stops being the ring's outer edge - the arc is the quota reading, so a glow
+  // that reaches it reads as a fatter, brighter version of the same circle. The bound
+  // is the midpoint between the two landmarks this sits between: a halo that reaches
+  // past it has crossed from light around the glyph into a disc behind the ring.
+  const arcInner = arcRadius - arcWidth / 2;
+  assert.ok(
+    radius * zero < (mark / 2 + arcInner) / 2,
+    `the halo reaches ${radius * zero}px, into the ring's half of the space at ${(mark / 2 + arcInner) / 2}px`
+  );
+});
+
+// The breath is the dock's longest-running animation and the rail rebuilds every cell
+// on every stats push, so the element it is declared on is new each time. A phase that
+// lived on that element restarted at 0% with each push - and the pushes come closest
+// together while a session is working, which is exactly when the mark is worth
+// something, so it could stutter or never reach the top of the swing at all. It is
+// anchored to the clock instead, which means the two numbers that anchor it have to
+// agree: the modulo has to be the animation's own period.
+test('the running halo resumes its phase rather than restarting on every repaint', () => {
+  const css = readRendererFile(path.join('edgeDock', 'dock.css'));
+  const dock = readRendererFile(path.join('edgeDock', 'dock.js'));
+  const period = Number(css.match(/animation: edge-dock-mark-breathe (\d+)ms/)[1]);
+  assert.equal(Number(dock.match(/const BREATH_MS = (\d+);/)[1]), period, 'the phase anchor has to be the animation\'s period');
+  // A negative delay is what starts a fresh node partway through the cycle - the
+  // point of the whole thing, since a delay of zero is the restart this avoids.
+  assert.match(dock, /glow\.style\.animationDelay = `-\$\{Date\.now\(\) % BREATH_MS\}ms`;/);
+  // And it is set where the glow is made, so no node can reach the document without it.
+  const ring = dock.slice(dock.indexOf('function ringNode('), dock.indexOf('function providerCellNode('));
+  assert.match(ring, /glow\.style\.animationDelay/);
+});
+
+// The handle's exit is a move now rather than a blink. The window's fade is the main
+// process's and outlasts it, so the retreat leads the fade - shorter and front-loaded
+// - or the glass dims past the movement before it has travelled, the same cancellation
+// the rail's entrance is curved to avoid. The return keeps the window's own 150ms, so
+// the retreat lives on the withdrawn state and one transition carries it both ways.
+test('the handle retreats into the edge while the window can still show it', () => {
+  const css = readRendererFile(path.join('edgeDock', 'dock.css')).replace(/\/\*[\s\S]*?\*\//g, ' ');
+  assert.match(css, /\.edge-dock-root\[data-side="right"\] \{ --edge-dock-grip-retreat: 4px; \}/);
+  assert.match(css, /\.edge-dock-root\[data-side="left"\] \{ --edge-dock-grip-retreat: -4px; \}/);
+  assert.match(
+    css,
+    /\.is-handle-hidden \.edge-dock-grip \{\s*opacity: 0;\s*transform: translateX\(var\(--edge-dock-grip-retreat\)\) scaleY\(0\.2\);\s*transition: opacity 110ms ease-out, transform 110ms ease-out;/
+  );
+  assert.match(css, /transition: opacity 150ms ease, transform 150ms cubic-bezier\(0\.33, 1, 0\.68, 1\);/);
+
+  // Held as a state rather than replayed, so it needs no animation-name bookkeeping
+  // and a page that loads with the rail already open starts in the withdrawn pose.
+  const dock = readRendererFile(path.join('edgeDock', 'dock.js'));
+  assert.match(dock, /root\.classList\.toggle\('is-handle-hidden', payload\.peeking !== true\);/);
 });

@@ -46,6 +46,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const RING_RADIUS = 19;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const DRAG_THRESHOLD_PX = 4;
+// The period of `edge-dock-mark-breathe` in dock.css, which the running halo's phase
+// is taken modulo (see ringNode). A test holds the two numbers together.
+const BREATH_MS = 2600;
 
 const root = document.getElementById('edgeDockRoot');
 const query = new URLSearchParams(window.location.search);
@@ -412,6 +415,11 @@ function renderPeek(payload) {
   root.dataset.side = payload.side;
   root.title = t('settings.display.edgeDock');
   if (!contentLayer.firstChild) contentLayer.append(el('span', 'edge-dock-grip'));
+  // The handle's exit is a move, not a blink, so the withdrawn pose is held as a
+  // class and one transition carries it both ways (see the grip's rules). The class
+  // goes on in the same frame the grip is built, which is what keeps a page that
+  // loads with the rail already open from animating into a pose it starts in.
+  root.classList.toggle('is-handle-hidden', payload.peeking !== true);
 }
 
 if (surface === 'peek') root.addEventListener('click', () => bridge.click(null));
@@ -444,13 +452,40 @@ function ringNode(remainingPercent, color, mark) {
   fill.setAttribute('stroke-dashoffset', String(RING_CIRCUMFERENCE * (1 - remaining / 100)));
   if (remainingPercent === null) fill.style.opacity = '0';
   svg.append(track, fill);
-  ring.append(svg, mark);
+  // The halo the running state breathes (see dock.css). It is always emitted and
+  // transparent until the cell is marked running, so what decides whether it shows is
+  // the cell's state alone. What it cannot carry is its own phase: renderRail rebuilds
+  // every cell from the payload on every push, so a fresh node restarts the breath at
+  // 0% each time - and the pushes are closest together exactly while a session is
+  // working, which is when this mark is worth anything. Anchoring the phase to the
+  // clock instead puts it somewhere a rebuild cannot reach, and the swap between the
+  // two nodes is invisible because they are at the same point of the same cycle.
+  const glow = el('span', 'edge-dock-ring-glow');
+  glow.style.animationDelay = `-${Date.now() % BREATH_MS}ms`;
+  ring.append(svg, glow, mark);
   return ring;
 }
 
 function providerCellNode(cell) {
   const node = el('div', 'edge-dock-cell');
   node.dataset.status = cell.status;
+  // Work in flight for this provider's tools, asked of the rows at paint time for
+  // the same reason the sessions cell asks: running expires on a clock, so a count
+  // frozen into the payload would keep the mark breathing after the work stopped.
+  // The glow rides the mark rather than the ring's arc on purpose. A running
+  // session is not proof that this quota is what is draining - the tokens may be
+  // billed to an API key or another endpoint entirely, which is the same reason
+  // local usage is not an adaptive-polling trigger - so it is a fact about the
+  // tool, not about the arc. Keeping it off the arc also keeps the signal's
+  // strength independent of how much quota is left (an arc-confined glow is
+  // faintest at 5%, which is exactly when it matters most), leaves the focused
+  // ring's own glow unambiguous, and stays readable on a stale cell, where the
+  // dimmed arc means "this number is not to be trusted" while the tool really is
+  // working. It is read from the cell's rows whatever the card draws of them: whether
+  // a tool is working is not the card's list, so hiding that list is not an off switch
+  // for this. An item that genuinely has no session rows never breathes.
+  const running = runningSessionSummary(cell.sessions).count;
+  if (running > 0) node.dataset.running = 'yes';
   const color = providerColor(cell.provider);
   const value = el('span', 'edge-dock-value');
   if (cell.credits && cell.credits.amount !== null && cell.credits.amount !== undefined) {
@@ -460,7 +495,11 @@ function providerCellNode(cell) {
   }
   value.dataset.severity = displaySeverity(cell.remainingPercent);
   node.append(ringNode(cell.remainingPercent, color, markNode(cell.provider)), value);
-  node.setAttribute('aria-label', `${providerLabel(cell.provider)} ${value.textContent}`);
+  // The halo is decorative and carries no text, so the state it announces is
+  // spoken here instead, from the same reading it is drawn from.
+  const spoken = [providerLabel(cell.provider), value.textContent];
+  if (running > 0) spoken.push(t('edgeDock.runningCount', { count: running }));
+  node.setAttribute('aria-label', spoken.join(' '));
   return node;
 }
 
@@ -609,10 +648,38 @@ function statCellNode(cell) {
 }
 
 let railNode = null;
+// `null` until a payload has said: the entrance is keyed to a reveal this page has
+// not seen, so a page that loads with the rail already up shows it instead of
+// replaying the slide.
+let railReveal = null;
+
+// The motion itself is CSS (`edge-dock-rail-in`); this only decides when it
+// plays. The root wraps both the silhouette and the cells, so sliding it moves
+// the rail as one unit, and the window — which is the screen edge — is what
+// clips the part that starts off-screen.
+function playRailReveal() {
+  if (document.documentElement.classList.contains('edge-dock-reduced-motion')) return;
+  // The class is dropped on animationend; clearing it first and flushing the
+  // style is what makes a second reveal replay the animation rather than re-add
+  // a class whose animation has already finished.
+  root.classList.remove('is-revealing');
+  void root.offsetWidth;
+  root.classList.add('is-revealing');
+}
+
+root.addEventListener('animationend', (event) => {
+  if (event.animationName === 'edge-dock-rail-in') root.classList.remove('is-revealing');
+});
 
 function renderRail(payload) {
   root.dataset.side = payload.side;
   root.classList.toggle('is-always', payload.always === true);
+  // Stats arrive every few seconds and each one re-renders this surface, so the
+  // slide belongs to the reveal rather than to every payload that follows it: the
+  // count moves only on a real reveal, and this plays when it has moved on.
+  const reveal = payload.reveal;
+  if (railReveal !== null && reveal !== railReveal) playRailReveal();
+  railReveal = reveal;
   if (!railNode) {
     railNode = el('div', 'edge-dock-rail');
     contentLayer.append(railNode);
@@ -887,7 +954,9 @@ function providerCard(cell) {
   }
   card.append(accounts);
 
-  const sessions = sessionsNode(cell.sessions);
+  // The rows are the cell's activity reading as well as this card's list, so the
+  // switch decides what is drawn here rather than whether the cell has them.
+  const sessions = cell.showSessions === false ? null : sessionsNode(cell.sessions);
   if (sessions) card.append(sessions);
 
   if (cell.usage) {
@@ -1137,9 +1206,17 @@ bridge.onRender(render);
 // tool marks it was pushed with, and a card opened later would disagree with the
 // cell that opened it. Every surface re-derives from the payload it already holds,
 // so this costs no IPC and asks the main process for nothing.
+// A cell whose reading moves with the sessions clock. Asked by "does it carry
+// rows" rather than by metric: the sessions item is not the only cell that reads
+// them any more - a provider cell breathes its mark while that tool is working,
+// and that has to stop on the same clock the count does.
+function cellReadsSessions(cell) {
+  return Array.isArray(cell?.sessions) && cell.sessions.length > 0;
+}
+
 function surfacesShowingSessions() {
-  if (surface === 'rail') return (state.payload?.cells || []).some((cell) => cell.metric === presentation.SESSIONS_METRIC);
-  if (surface === 'bubble') return state.payload?.cell?.metric === presentation.SESSIONS_METRIC;
+  if (surface === 'rail') return (state.payload?.cells || []).some(cellReadsSessions);
+  if (surface === 'bubble') return cellReadsSessions(state.payload?.cell);
   return false;
 }
 
@@ -1165,7 +1242,7 @@ function sessionsExpiryDelayMs() {
   let soonest = 0;
   const now = Date.now();
   for (const cell of cells) {
-    if (cell?.metric !== presentation.SESSIONS_METRIC) continue;
+    if (!cellReadsSessions(cell)) continue;
     // Asked of the rows rather than read off the cell. `runningExpiresAt` describes the
     // payload as it was projected, and a repaint does not re-project: once the soonest
     // expiry passes, that field is in the past for good, so a later row's expiry would
