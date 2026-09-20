@@ -34,6 +34,8 @@ const { bubbleCommands, railCommands, toPolygons, toSvgPath } = require('../../s
 const { rasterizeMask, shapeRectsFromPolygons } = require('../../src/electron/edgeDock/mask');
 const { DEFAULT_LIMIT_COUNT, normalizeEdgeDockItems, reorderEdgeDockItems } = require('../../src/electron/renderer/edgeDock/items');
 const verticalDragSort = require('../../src/electron/renderer/verticalDragSort');
+const { matchProviderAccount } = require('../../src/shared/subscriptionDisplay');
+const accountIdentity = require('../../src/electron/renderer/accountIdentity');
 const {
   buildEdgeDockCells,
   displayPercent,
@@ -65,6 +67,36 @@ test('every renderer stylesheet is brace-balanced', () => {
     assert.equal(firstUnbalanced, 0, `${name} closes a block that was never opened (line ${firstUnbalanced})`);
     assert.equal(depth, 0, `${name} ends with ${depth} unclosed block(s)`);
   }
+});
+
+test('the card edge spends none of the quota row separator the page needs', () => {
+  const css = readRendererFile(path.join('edgeDock', 'dock.css'));
+  const rule = css.match(/\.edge-dock-accounts > \.limit-row:last-child\s*\{([^}]*)\}/);
+  assert.ok(rule, 'the last row in a card must reset what the shared row brings');
+  // A `.limit-row` ends with a rule and 13px under it, which is the *inter-card*
+  // separator on the page: the panel goes on below the row, so the rule marks
+  // where the next card starts and the padding is the room it gets. The card ends
+  // at the row, so both are spent on nothing — the rule becomes a line drawn under
+  // the last thing the card says, and the padding pushed the section below it to
+  // 23px against the card's own 10px gap (319px against the pre-refactor card's
+  // 307px, for the same account and nothing else changed).
+  assert.match(rule[1], /border-bottom: 0;/);
+  assert.match(rule[1], /padding-bottom: 0;/);
+});
+
+test('the card takes the forecast separator from the page instead of redrawing it', () => {
+  // The rule above the reset forecast belongs to the Limits view — styles.css
+  // draws it for both of the shapes the forecast is appended to — and the card
+  // is built on that same row in a document that loads that stylesheet, so the
+  // card needs no rule of its own. A second copy is only a thing to drift: the
+  // page's rule used to be scoped to `.limit-row-group`, and the card's own copy
+  // existed to cover the single-account shape that scoping left out.
+  const css = readRendererFile(path.join('edgeDock', 'dock.css')).replace(/\/\*[\s\S]*?\*\//g, ' ');
+  assert.doesNotMatch(css, /\.codex-reset-forecast::before/);
+  assert.match(
+    readRendererFile(path.join('edgeDock', 'index.html')),
+    /<link rel="stylesheet" href="\.\.\/styles\.css" \/>/
+  );
 });
 
 test('the Sessions list uses a plain dot, not the dock card glyph stack', () => {
@@ -137,8 +169,12 @@ test('the dock keeps the token total, adds headroom, and dots running rows inste
   assert.match(sessions, /nameNode\.append\(document\.createTextNode\(name\)\)/);
   assert.doesNotMatch(css, /\.edge-dock-session\.is-running \.edge-dock-session-name\s*\{[^}]*color/);
   // Three states: a spinner while working, a check once the transcript said the
-  // turn finished, and a faint dot for a session that has gone quiet.
-  assert.match(css, /\.edge-dock-session-spin\s*\{[\s\S]*?color: var\(--success\)/);
+  // turn finished, and a faint dot for a session that has gone quiet. The
+  // running glyph is monochrome like the other two — its spokes animate, so the
+  // state is already being said — but it wears the card's primary ink rather
+  // than `--muted`, so the live row is not weighed the same as the finished one.
+  assert.match(css, /\.edge-dock-session-spin \{\n {2}background: currentColor;\n {2}color: var\(--text\);/);
+  assert.doesNotMatch(css, /\.edge-dock-session-spin \{[^}]*--success/);
   assert.match(css, /\.edge-dock-session-check\s*\{[\s\S]*?color: var\(--muted\)/);
   assert.match(css, /\.edge-dock-session-idle::before/);
   assert.match(css, /edge-dock-session-dot\[data-state="running"\] \.edge-dock-session-spin/);
@@ -160,6 +196,15 @@ test('the dock keeps the token total, adds headroom, and dots running rows inste
   // The flare rides along with the spin rather than replacing it, and adds no
   // `infinite` of its own: a flare always means a write.
   assert.match(css, /\.edge-dock-session-dot\.pulse \.edge-dock-session-spin \{/);
+  // Its glow is neutral too, so the flare cannot be the loudest green thing in a
+  // card whose running state no longer uses green at all.
+  assert.match(css, /@keyframes edge-dock-session-pulse \{[\s\S]*?rgba\(var\(--overlay-rgb\), 0\.62\)/);
+  assert.doesNotMatch(css, /@keyframes edge-dock-session-pulse \{[^}]*--success-rgb/);
+  // Reduced motion swaps the spinner for a still dot, and it is the card's ink
+  // rather than a hue too: a solid dot beside the quiet rows' faint one is the
+  // reading, so the dock spends no colour on the running state anywhere.
+  assert.match(css, /data-state="running"\] \.edge-dock-session-idle::before,\n[\s\S]*?background: var\(--text\)/);
+  assert.doesNotMatch(css, /edge-dock-session-(spin|idle)[^;]*--success/);
   // The context reading carries a bar plus the number, and the tone rule is
   // keyed on headroom so a healthy reading stays neutral.
   assert.match(css, /edge-dock-session-context-meter/);
@@ -738,6 +783,320 @@ test('hidden accounts are left out of the headline and the card', () => {
   const [codex] = buildEdgeDockCells(stats, { items });
   assert.equal(codex.remainingPercent, 70);
   assert.deepEqual(codex.accounts.map((account) => account.accountKey), ['sha256:b']);
+  // Hidden is about what the card draws. The subscription matcher is handed both
+  // accounts, or a record bound to the one off screen would fall through
+  // matchProviderAccount()'s sole-account fallback onto the one on it.
+  assert.deepEqual(codex.subscriptionAccounts.map((account) => account.accountKey), ['sha256:a', 'sha256:b']);
+});
+
+test('an account the rail drops for reporting nothing still binds its subscription', () => {
+  // The rail only lists accounts that report something, but a subscription is
+  // bound to the account: a failing one with no last-known windows is still the
+  // account the user recorded, and a matcher that cannot see it reads the one
+  // account left as "no ambiguity" and puts its record on that row instead.
+  const stats = {
+    limits: {
+      providers: [
+        provider('codex', { accountKey: 'sha256:a', windows: [{ kind: 'session', remainingPercent: 5 }] }),
+        provider('codex', { accountKey: 'sha256:b', status: 'error', windows: [] })
+      ]
+    }
+  };
+  const [codex] = buildEdgeDockCells(stats, {
+    items: [{ type: 'limit', provider: 'codex', showUsage: true }]
+  });
+  assert.deepEqual(codex.accounts.map((account) => account.accountKey), ['sha256:a']);
+  assert.deepEqual(codex.subscriptionAccounts.map((account) => account.accountKey), ['sha256:a', 'sha256:b']);
+});
+
+test('a provider with nothing to report still carries its accounts to the matcher', () => {
+  const stats = {
+    limits: { providers: [provider('codex', { accountKey: 'sha256:a', status: 'error', windows: [] })] }
+  };
+  const [codex] = buildEdgeDockCells(stats, {
+    items: [{ type: 'limit', provider: 'codex', showUsage: true }]
+  });
+  assert.equal(codex.accounts.length, 0);
+  assert.deepEqual(codex.subscriptionAccounts.map((account) => account.accountKey), ['sha256:a']);
+});
+
+// The rail's provider list is the *aggregate*, and the aggregate drops an
+// account the moment the same provider has a fresh one (limits/core.js collapses
+// by provider name, and one login hashes differently per platform). A record
+// bound to a dropped account is one the matcher cannot see, so it falls through
+// matchProviderAccount()'s sole-account fallback onto the account left on
+// screen — which is why the page reads the local device's own records beside the
+// aggregate, and why the card has to as well.
+test('the matcher sees the local accounts the aggregate collapsed away', () => {
+  const local = provider('codex', { accountKey: 'sha256:local', status: 'unauthorized', windows: [] });
+  const remote = provider('codex', { accountKey: 'sha256:remote', windows: [{ kind: 'session', remainingPercent: 60 }] });
+  const stats = {
+    devices: [
+      { deviceId: 'this-mac', limits: { providers: [local] } },
+      { deviceId: 'other-mac', limits: { providers: [remote] } }
+    ],
+    // What the aggregate holds: the stale local row is gone.
+    limits: { providers: [remote] }
+  };
+  const [codex] = buildEdgeDockCells(stats, {
+    localDeviceId: 'this-mac',
+    items: [{ type: 'limit', provider: 'codex', showUsage: true }]
+  });
+
+  assert.deepEqual(
+    codex.subscriptionAccounts.map((account) => account.accountKey),
+    ['sha256:local', 'sha256:remote'],
+    'both accounts reach the matcher, local first'
+  );
+  // The aggregate is still what the card draws: a collapsed account is not a row.
+  assert.deepEqual(codex.accounts.map((account) => account.accountKey), ['sha256:remote']);
+});
+
+test('the same account in both lists is one candidate, not two', () => {
+  const account = provider('codex', { accountKey: 'sha256:a', windows: [{ kind: 'session', remainingPercent: 60 }] });
+  const stats = {
+    devices: [{ deviceId: 'this-mac', limits: { providers: [account] } }],
+    limits: { providers: [account] }
+  };
+  const [codex] = buildEdgeDockCells(stats, {
+    localDeviceId: 'this-mac',
+    items: [{ type: 'limit', provider: 'codex', showUsage: true }]
+  });
+  assert.deepEqual(codex.subscriptionAccounts.map((account) => account.accountKey), ['sha256:a']);
+});
+
+test('one account is one candidate however each copy of it reads', () => {
+  // The two copies are two records: this device's own and the aggregate's. A key
+  // that has rotated leaves the address behind, and the display name is not what
+  // makes an account one — a candidate list that counted these twice is what the
+  // matcher's sole-account fallback and its name rung are read against.
+  const local = provider('codex', { accountKey: 'sha256:a', accountName: 'work', windows: [] });
+  const aggregate = provider('codex', {
+    accountKey: 'sha256:a',
+    accountName: 'Work',
+    windows: [{ kind: 'session', remainingPercent: 60 }]
+  });
+  const stats = {
+    devices: [{ deviceId: 'this-mac', limits: { providers: [local] } }],
+    limits: { providers: [aggregate] }
+  };
+  const [codex] = buildEdgeDockCells(stats, {
+    localDeviceId: 'this-mac',
+    items: [{ type: 'limit', provider: 'codex', showUsage: true }]
+  });
+  assert.deepEqual(codex.subscriptionAccounts.map((account) => account.accountName), ['work']);
+  // The aggregate is still what the card draws.
+  assert.deepEqual(codex.accounts.map((account) => account.accountName), ['Work']);
+
+  // Two keys are two accounts even on one address, which is the shape the hub
+  // keeps apart on purpose: one address holds several Codex workspaces, and
+  // aggregateLimits pins that (limits.test.js). An address read as sameness
+  // dropped the second workspace out of the matcher universe, so a subscription
+  // bound to it resolved onto the first.
+  const personal = provider('codex', {
+    accountKey: 'sha256:personal',
+    accountEmail: 'member@example.com',
+    accountName: 'Personal',
+    windows: [{ kind: 'session', remainingPercent: 60 }]
+  });
+  const team = provider('codex', {
+    accountKey: 'sha256:team',
+    accountEmail: 'member@example.com',
+    accountName: 'Team',
+    windows: [{ kind: 'session', remainingPercent: 60 }]
+  });
+  const [workspaces] = buildEdgeDockCells(
+    {
+      devices: [{ deviceId: 'this-mac', limits: { providers: [personal] } }],
+      limits: { providers: [personal, team] }
+    },
+    { localDeviceId: 'this-mac', items: [{ type: 'limit', provider: 'codex', showUsage: true }] }
+  );
+  assert.deepEqual(
+    workspaces.subscriptionAccounts.map((account) => account.accountName),
+    ['Personal', 'Team'],
+    'two workspaces on one address stay two candidates'
+  );
+});
+
+test('an account nobody is signed into does not stand in for the ones that are', () => {
+  // The collector reports a provider with no credential as a bare
+  // `notConfigured` row (aggregateLimits emits the same shape), and the dock
+  // reads this device's own records. That record names nothing, so it cannot be
+  // an answer about an account that names something — letting it be one emptied
+  // the matcher universe of the accounts the hub does have.
+  const signedOut = { provider: 'codex', status: 'notConfigured', updatedAt: '2026-07-10T02:55:17.000Z', windows: [] };
+  const a = provider('codex', {
+    accountKey: 'sha256:a',
+    accountEmail: 'a@example.com',
+    windows: [{ kind: 'session', remainingPercent: 60 }]
+  });
+  const b = provider('codex', {
+    accountKey: 'sha256:b',
+    accountEmail: 'b@example.com',
+    windows: [{ kind: 'session', remainingPercent: 60 }]
+  });
+  const [codex] = buildEdgeDockCells(
+    {
+      devices: [{ deviceId: 'this-mac', limits: { providers: [signedOut] } }],
+      limits: { providers: [a, b] }
+    },
+    { localDeviceId: 'this-mac', items: [{ type: 'limit', provider: 'codex', showUsage: true }] }
+  );
+  assert.ok(
+    codex.subscriptionAccounts.some((account) => account.accountKey === 'sha256:a'),
+    'the signed-out row must not drop the accounts the hub reports'
+  );
+  assert.ok(codex.subscriptionAccounts.some((account) => account.accountKey === 'sha256:b'));
+  // And a binding to one of them lands on that one, rather than on whatever the
+  // universe happened to collapse to.
+  const bound = matchProviderAccount({ id: 's', provider: 'codex', binding: { accountKey: 'sha256:b' } }, codex.subscriptionAccounts);
+  assert.equal(bound?.accountKey, 'sha256:b');
+});
+
+test('a copy with no key is a copy, and never the account a binding lands on', () => {
+  // One address holds two Codex workspaces, which aggregateLimits keeps apart by
+  // key (limits.test.js). A device can also report that address with no key at
+  // all — that is what mapCodexRateLimitsToProvider() emits when the payload
+  // carries an email and no account key (limitCollector.codex.test.js), and what
+  // an older record posts. Read pair by pair the copy is the same account as
+  // *both* workspaces, so whichever order the two lists arrived in decided which
+  // of them survived; the losing order kept only the copy, a binding to the
+  // second workspace landed on it through the sole-account fallback, and the row
+  // lookup then answered yes for either workspace — one record drawing on two.
+  const workspaces = [
+    provider('codex', {
+      accountKey: 'sha256:personal',
+      accountEmail: 'member@example.com',
+      accountName: 'Personal',
+      windows: [{ kind: 'session', remainingPercent: 60 }]
+    }),
+    provider('codex', {
+      accountKey: 'sha256:team',
+      accountEmail: 'member@example.com',
+      accountName: 'Team',
+      windows: [{ kind: 'session', remainingPercent: 60 }]
+    })
+  ];
+  const copy = provider('codex', {
+    accountEmail: 'member@example.com',
+    windows: [{ kind: 'session', remainingPercent: 60 }]
+  });
+  const binding = { id: 's', provider: 'codex', binding: { accountKey: 'sha256:team' } };
+
+  const orders = [
+    ['the copy is this device\'s own record', [copy], workspaces],
+    ['the copy is the aggregate\'s', [], [copy, ...workspaces]],
+    ['the copy sits between them', [], [workspaces[0], copy, workspaces[1]]]
+  ];
+  for (const [label, local, aggregate] of orders) {
+    const [codex] = buildEdgeDockCells(
+      {
+        devices: [{ deviceId: 'this-mac', limits: { providers: local } }],
+        limits: { providers: aggregate }
+      },
+      { localDeviceId: 'this-mac', items: [{ type: 'limit', provider: 'codex', showUsage: true }] }
+    );
+    assert.deepEqual(
+      codex.subscriptionAccounts.map((account) => account.accountKey).sort(),
+      ['sha256:personal', 'sha256:team'],
+      `${label}: both workspaces stay candidates`
+    );
+    const resolved = matchProviderAccount(binding, codex.subscriptionAccounts);
+    assert.equal(resolved?.accountKey, 'sha256:team', `${label}: the binding lands on the workspace it names`);
+    // What the rows are then drawn from: a subscription may only answer for the
+    // account it resolved to.
+    const drawnOn = codex.subscriptionAccounts
+      .filter((account) => accountIdentity.sameAccount(resolved, account))
+      .map((account) => account.accountKey);
+    assert.deepEqual(drawnOn, ['sha256:team'], `${label}: the record draws on one workspace`);
+  }
+
+  // With one workspace on that address the copy is a second copy of it, and the
+  // keyed record is the one that survives — it is the one a binding matches by key.
+  const [single] = buildEdgeDockCells(
+    {
+      devices: [{ deviceId: 'this-mac', limits: { providers: [copy] } }],
+      limits: { providers: [workspaces[0]] }
+    },
+    { localDeviceId: 'this-mac', items: [{ type: 'limit', provider: 'codex', showUsage: true }] }
+  );
+  assert.deepEqual(single.subscriptionAccounts.map((account) => account.accountKey), ['sha256:personal']);
+});
+
+test('one account keeps every key its copies were named by', () => {
+  // One account, two copies that name it differently. This device holds an
+  // opencode API key and no cookie, so its own row is keyed by the key's own
+  // hash (providers/opencode/limits.js); the Hub's collapse of the same account
+  // — merged from the machine that does hold the cookie — keeps the workspace id
+  // as the canonical key and the key's hash beside it as an alias (limits/core.js,
+  // and the comment where the producer publishes that alias). Deduping one
+  // account down to one record must not be what decides which of the two keys
+  // survives: a subscription bound on the cookie machine names the canonical id,
+  // and a survivor left holding only this device's key stops resolving it.
+  const keyOnly = provider('opencode', {
+    accountKey: 'sha256:keyonly',
+    accountName: 'Work',
+    windows: [{ kind: 'session', remainingPercent: 60 }]
+  });
+  const collapsed = provider('opencode', {
+    accountKey: 'sha256:workspace',
+    webAccountKey: 'sha256:workspace',
+    accountKeyAliases: ['sha256:keyonly'],
+    accountName: 'Work',
+    windows: [{ kind: 'session', remainingPercent: 60 }]
+  });
+  // A second account, so the matcher's sole-account fallback cannot be what
+  // answers: the key rung has to be the one that lands.
+  const other = provider('opencode', {
+    accountKey: 'sha256:other',
+    accountName: 'Personal',
+    windows: [{ kind: 'session', remainingPercent: 60 }]
+  });
+  const binding = { id: 's', provider: 'opencode', binding: { accountKey: 'sha256:workspace' } };
+
+  const [opencode] = buildEdgeDockCells(
+    {
+      devices: [{ deviceId: 'this-mac', limits: { providers: [keyOnly] } }],
+      limits: { providers: [collapsed, other] }
+    },
+    { localDeviceId: 'this-mac', items: [{ type: 'limit', provider: 'opencode', showUsage: true }] }
+  );
+  // One record per account, this device's copy first.
+  assert.deepEqual(
+    opencode.subscriptionAccounts.map((account) => account.accountKey),
+    ['sha256:keyonly', 'sha256:other']
+  );
+  const resolved = matchProviderAccount(binding, opencode.subscriptionAccounts);
+  assert.equal(resolved?.accountKey, 'sha256:keyonly', 'the canonical key still resolves');
+  // And it resolves to one account: the row lookup asks the pairwise rule about
+  // whatever the binding landed on, so the survivor has to answer for both
+  // copies of the account it stands for, and for no other account.
+  const drawnOn = opencode.subscriptionAccounts
+    .filter((account) => accountIdentity.sameAccount(resolved, account))
+    .map((account) => account.accountKey);
+  assert.deepEqual(drawnOn, ['sha256:keyonly']);
+  assert.equal(accountIdentity.sameAccount(resolved, other), false);
+});
+
+test('two accounts that are only addresses stay two candidates', () => {
+  // Neither carries a key or a name, so an identity built out of those two fields
+  // read both as the same account: one of them never reached the matcher, and a
+  // record bound to it resolved to the other one instead.
+  const local = provider('codex', { accountKey: '', accountEmail: 'a@example.com', status: 'unauthorized', windows: [] });
+  const remote = provider('codex', { accountKey: '', accountEmail: 'b@example.com' });
+  const stats = {
+    devices: [{ deviceId: 'this-mac', limits: { providers: [local] } }],
+    limits: { providers: [remote] }
+  };
+  const [codex] = buildEdgeDockCells(stats, {
+    localDeviceId: 'this-mac',
+    items: [{ type: 'limit', provider: 'codex', showUsage: true }]
+  });
+  assert.deepEqual(codex.subscriptionAccounts.map((account) => account.accountEmail), [
+    'a@example.com',
+    'b@example.com'
+  ]);
 });
 
 test('item settings normalize to null for automatic and drop unknown entries', () => {
@@ -787,28 +1146,30 @@ test('derived periods read History totals and stay unknown until they arrive', (
   assert.deepEqual(ready.clients.map((client) => client.client), ['claude']);
 });
 
-test('provider windows keep the collector order so model groups stay together', () => {
+// The card's quota rows are built by the Limits view's own builder, which reads
+// the collector record. A projection here is what made the card a second,
+// less-informed implementation of those rows — every field it forgot to copy
+// was a row the card could not draw — so the record rides across untouched and
+// the window-level decisions (ordering, Codex's additional-limit preference)
+// stay in the one builder that makes them.
+test('the card carries the collector record the shared Limits view renders from', () => {
   const windows = [
     { kind: 'session', label: 'Gemini 5-hour', remainingPercent: 90 },
     { kind: 'weekly', label: 'Gemini weekly', remainingPercent: 80 },
     { kind: 'session', label: 'Claude/GPT 5-hour', remainingPercent: 70 },
     { kind: 'weekly', label: 'Claude/GPT weekly', remainingPercent: 60 }
   ];
-  const [cell] = buildEdgeDockCells({ limits: { providers: [provider('antigravity', { windows })] } }, {});
-  assert.deepEqual(cell.accounts[0].windows.map((window) => window.label), windows.map((window) => window.label));
-});
+  const record = provider('antigravity', { windows });
+  const [cell] = buildEdgeDockCells({ limits: { providers: [record] } }, {});
+  assert.deepEqual(cell.accounts[0].record, record);
 
-test('Codex additional quota windows follow the shared display setting', () => {
-  const windows = [
+  const codexWindows = [
     { kind: 'session', label: 'Session', remainingPercent: 70 },
     { kind: 'daily', label: 'GPT-5.3-Codex-Spark', remainingPercent: 40, additional: true }
   ];
-  const stats = { limits: { providers: [provider('codex', { windows })] } };
-  const [shown] = buildEdgeDockCells(stats, { showCodexAdditionalLimits: true });
-  assert.deepEqual(shown.accounts[0].windows.map((window) => window.label), ['Session', 'GPT-5.3-Codex-Spark']);
-
-  const [hidden] = buildEdgeDockCells(stats, { showCodexAdditionalLimits: false });
-  assert.deepEqual(hidden.accounts[0].windows.map((window) => window.label), ['Session']);
+  const codexRecord = provider('codex', { windows: codexWindows });
+  const [codex] = buildEdgeDockCells({ limits: { providers: [codexRecord] } }, {});
+  assert.deepEqual(codex.accounts[0].record.windows, codexWindows);
 });
 
 test('live rate readout reports the selected mode and idle state', () => {

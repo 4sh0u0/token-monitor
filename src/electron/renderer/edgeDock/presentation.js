@@ -19,7 +19,6 @@
 })(typeof window !== 'undefined' ? window : null, function createEdgeDockPresentation(trayText, balanceDisplay, limitProviders, dockItems, accountIdentity, sessionLive) {
   // Every account is listed; the card scrolls when they outgrow the screen.
   const MAX_BUBBLE_ACCOUNTS = 50;
-  const MAX_BUBBLE_WINDOWS = 6;
 
   function normalizedId(value) {
     return String(value || '').trim().toLowerCase();
@@ -40,18 +39,6 @@
   function clampPercent(value) {
     const number = finite(value);
     return number === null ? null : Math.max(0, Math.min(100, number));
-  }
-
-  // Remaining percentage for any window, credits included. Credits windows have
-  // no wire percentage; the balance helper derives the display-only meter.
-  function windowRemaining(window, provider) {
-    if (balanceDisplay.isCreditsWindow(window)) {
-      return clampPercent(balanceDisplay.creditsMeterPercent(provider, window));
-    }
-    const remaining = clampPercent(window?.remainingPercent);
-    if (remaining !== null) return remaining;
-    const used = clampPercent(window?.usedPercent);
-    return used === null ? null : 100 - used;
   }
 
   function providerOrder(providers, options = {}) {
@@ -76,51 +63,7 @@
     return ordered;
   }
 
-  function bubbleWindows(provider, options = {}) {
-    return (Array.isArray(provider?.windows) ? provider.windows : [])
-      // Kept in the provider's own order: collectors already sequence windows
-      // meaningfully (Antigravity lists each model group's 5-hour then weekly),
-      // and re-sorting by kind interleaved those groups.
-      .filter((window) => window && !(
-        options.showCodexAdditionalLimits === false
-        && normalizedId(provider.provider) === 'codex'
-        && window.additional === true
-      ))
-      .slice(0, MAX_BUBBLE_WINDOWS)
-      .map((window) => {
-        const credits = balanceDisplay.isCreditsWindow(window);
-        return {
-          label: String(window.label || ''),
-          kind: String(window.kind || ''),
-          remainingPercent: window.showMeter === false ? null : windowRemaining(window, provider),
-          credits: credits
-            ? {
-              amount: balanceDisplay.creditsAmount(provider, window),
-              currency: balanceDisplay.creditsCurrency(provider, window)
-            }
-            : null,
-          resetsAt: window.resetsAt || null,
-          resetDescription: window.resetDescription || '',
-          boundaryKind: window.boundaryKind || ''
-        };
-      });
-  }
-
-  // Codex banks full-limit resets; the Limits view lists how many are held and
-  // when each expires, and so does the dock.
-  function resetCreditsFor(provider) {
-    const credits = provider?.resetCredits;
-    const count = Math.floor(finite(credits?.availableCount) || 0);
-    if (count <= 0) return null;
-    const expirations = (Array.isArray(credits.expirations) ? credits.expirations : [credits.nextExpiresAt])
-      .map((value) => Date.parse(value || ''))
-      .filter(Number.isFinite)
-      .sort((a, b) => a - b)
-      .map((ms) => new Date(ms).toISOString());
-    return { count, expirations };
-  }
-
-  function accountSummary(provider, options = {}) {
+  function accountSummary(provider) {
     const selection = trayText.compactLimitSelection(provider);
     return {
       status: provider?.status === 'ok' && !provider?.stale ? 'ok' : (provider?.stale ? 'stale' : 'error'),
@@ -129,10 +72,14 @@
       accountName: String(provider?.accountName || ''),
       accountEmail: String(provider?.accountEmail || ''),
       updatedAt: provider?.updatedAt || provider?.checkedAt || null,
+      stale: provider?.stale === true,
       primaryRemaining: selection ? selection.primaryPercent : null,
       primaryWindow: selection ? selection.primaryWindow : null,
-      windows: bubbleWindows(provider, options),
-      resetCredits: resetCreditsFor(provider)
+      // The card renders its quota rows from the shared Limits view, which
+      // reads the collector record itself. Projecting the windows here is what
+      // made the card a second, less-informed implementation of the same rows:
+      // it could only show what this function had remembered to copy.
+      record: provider || null
     };
   }
 
@@ -249,7 +196,7 @@
     const hidden = new Set(options.hiddenAccounts || []);
     const accounts = records
       .filter((record) => !record?.accountKey || !hidden.has(record.accountKey))
-      .map((record) => ({ record, summary: accountSummary(record, options) }));
+      .map((record) => ({ record, summary: accountSummary(record) }));
     // Accounts keep the collector's order, as the Limits view lists them. The
     // live Codex account is taken from this device's records alone, so a synced
     // device's login is never marked as the one in use here.
@@ -322,7 +269,30 @@
       credits: headlineCredits,
       accountCount: accounts.length,
       accounts: projected.slice(0, MAX_BUBBLE_ACCOUNTS).map((account) => account.summary),
+      // Every account the provider has, hidden and non-reporting ones included.
+      // Hiding an account is a choice about what this card draws, and so is the
+      // rail's own "only accounts that report something" rule, while a
+      // subscription binds to the account itself — and matchProviderAccount()
+      // falls back to "the provider has exactly one account, so there is no
+      // ambiguity", so a universe narrowed to the drawn rows puts an account's
+      // record on whichever row is left.
+      subscriptionAccounts: options.subscriptionAccounts || records,
       usage: options.showUsage === false ? null : providerUsage(options.stats, id),
+      // The month's cost per client, for the subscription card on this card's
+      // plan cell. It is the same map the Limits page reads — the card cannot
+      // compute it from `usage` above, which sums every client that maps to the
+      // provider while the page charges one client id — and it rides the cell
+      // because it moves with every stats push.
+      monthClientCosts: options.stats?.periods?.month?.clientCosts || {},
+      // What a row needs to name the device its reading came from: which device
+      // this is, and whether syncing is on at all. Both are the main process's
+      // to know and neither is in a collector record, so they ride the cell the
+      // way the subscription universe and the month's cost do — the dock window
+      // holds no settings and no device list of its own.
+      provenanceContext: {
+        localDeviceId: String(options.localDeviceId || ''),
+        syncActive: options.syncActive === true
+      },
       sessions,
       forecast: id === 'codex' ? options.codexResetForecast || null : null
     };
@@ -373,16 +343,45 @@
     };
   }
 
-  function groupedProviders(stats) {
+  // Two answers, because the rail and the subscription matcher want different
+  // ones. `byId` is what the cell draws, so it is gated on `hasReportableData`.
+  // `allById` is every account the provider has, gate ignored, because a
+  // subscription binds to the account rather than to the row.
+  //
+  // The matcher's universe is wider than the rail's in two directions, and only
+  // the first is a gate. `stats.limits.providers` is the *aggregate*, which drops
+  // a stale account the moment the same provider has a fresh one (limits/core.js
+  // collapses by provider name, and the same login hashes differently per
+  // platform). An account the aggregate no longer names is one the matcher
+  // cannot see, so a record bound to it falls through matchProviderAccount()'s
+  // sole-account fallback onto whichever account is left — which is why the page
+  // reads the local device's own records beside the aggregate, and why this does
+  // too. Display does not: an account the aggregate collapsed away is not a row.
+  function groupedProviders(stats, options = {}) {
     const providers = Array.isArray(stats?.limits?.providers) ? stats.limits.providers : [];
     const byId = new Map();
+    const allById = new Map();
+    const local = accountIdentity.localDeviceLimitsProviders(stats, options.localDeviceId);
+    // Local first, so this device wins a tie on an account both lists name. The
+    // two lists are deduped by the matcher's own identity rule rather than by a
+    // value built out of the record, because the two copies of one account are
+    // two records and disagree about anything the rule does not read — and over
+    // the whole list rather than pair by pair, since which records are distinct
+    // accounts is a property of the list (accountIdentity.dedupeAccounts).
+    const seen = accountIdentity.dedupeAccounts([...(local || []), ...providers]);
+    for (const provider of seen) {
+      const id = normalizedId(provider?.provider);
+      if (!id) continue;
+      if (!allById.has(id)) allById.set(id, []);
+      allById.get(id).push(provider);
+    }
     for (const provider of providers) {
       const id = normalizedId(provider?.provider);
       if (!id || !hasReportableData(provider)) continue;
       if (!byId.has(id)) byId.set(id, []);
       byId.get(id).push(provider);
     }
-    return { providers: providers.filter(hasReportableData), byId };
+    return { providers: providers.filter(hasReportableData), byId, allById };
   }
 
   // Limit providers that currently report something, in the user's limits order.
@@ -392,7 +391,7 @@
   }
 
   function buildEdgeDockCells(stats, options = {}) {
-    const { byId } = groupedProviders(stats);
+    const { byId, allById } = groupedProviders(stats, options);
     const items = Array.isArray(options.items)
       ? options.items
       : dockItems.defaultEdgeDockItems(connectedLimitProviders(stats, options));
@@ -406,12 +405,13 @@
         // every time an account refreshes or signs out.
         cells.push(providerCell(item.provider, byId.get(item.provider) || [], {
           ...item,
+          subscriptionAccounts: allById.get(item.provider) || [],
           stats,
           localDeviceId: options.localDeviceId,
+          syncActive: options.syncActive,
           codexManagedAccounts: options.codexManagedAccounts,
           activeCodexAccountId: options.activeCodexAccountId,
-          codexResetForecast: options.codexResetForecast,
-          showCodexAdditionalLimits: options.showCodexAdditionalLimits
+          codexResetForecast: options.codexResetForecast
         }));
       }
     }

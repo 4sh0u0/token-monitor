@@ -16,6 +16,13 @@ const balanceDisplay = window.TokenMonitorLimitBalanceDisplay;
 const accountIdentityApi = window.TokenMonitorAccountIdentity;
 const glassRenderingApi = window.TokenMonitorGlassRendering;
 const limitPresentationApi = window.TokenMonitorLimitProviderPresentation;
+const limitWindowLabels = window.TokenMonitorLimitWindowLabels;
+const limitWindowTextApi = window.TokenMonitorLimitWindowText;
+const limitResetMotionApi = window.TokenMonitorLimitResetMotion;
+const limitWindowsViewApi = window.TokenMonitorLimitWindowsView;
+const subscriptionDisplayApi = window.TokenMonitorSubscriptionDisplay;
+const subscriptionTextApi = window.TokenMonitorSubscriptionText;
+const { limitFillPercent, limitModeSuffix } = window.TokenMonitorLimitDisplayMode;
 const codexAccountControlApi = window.TokenMonitorCodexAccountControl;
 const { clientColors } = window.TokenMonitorUsageCharts;
 const { LIMIT_PROVIDER_LABELS } = window.TokenMonitorLimitProviders;
@@ -167,10 +174,18 @@ function readableColor(color) {
   return contrast < 1.8 ? 'var(--text)' : color;
 }
 
+// The provider's own colour, as the Limits view resolves it.
+function limitProviderColor(id) {
+  if (id === 'factory') return clientColors.droid;
+  if (id === 'mimo') return clientColors.xiaomi;
+  return clientColors[id] || clientColors.default;
+}
+
+// The same colour corrected for contrast against the current glass tint. Only
+// the rail uses it: a near-black brand mark vanishes as a ring, while a meter
+// on the card is a filled bar the page paints in the raw brand colour.
 function providerColor(id) {
-  if (id === 'factory') return readableColor(clientColors.droid);
-  if (id === 'mimo') return readableColor(clientColors.xiaomi);
-  return readableColor(clientColors[id] || clientColors.default);
+  return readableColor(limitProviderColor(id));
 }
 
 function providerLabel(id) {
@@ -232,67 +247,138 @@ function percentText(remainingPercent) {
   return shown === null ? '--' : `${Math.round(shown)}%`;
 }
 
-// Limit figures use the Limits view's fixed English wording ("43% left",
-// "Reset 4h 26m", "Updated just now"): provider window labels such as
-// "Monthly" or "Gemini 5-hour" arrive in English, and translating only the
-// words around them produced a mixed card that read worse than either.
-function windowValueText(window) {
-  if (window.credits && window.credits.amount !== null && window.credits.amount !== undefined) {
-    return balanceDisplay.formatCompactMoney(window.credits.amount, window.credits.currency);
-  }
-  const showUsed = appearance().showLimitUsed === true;
-  const shown = presentation.displayPercent(window.remainingPercent, showUsed);
-  if (shown === null) return '--';
-  return `${Math.round(shown)}% ${showUsed ? 'used' : 'left'}`;
+// The Codex account the card can switch to, resolved from the cell projection
+// rather than from settings: the dock renderer has none. The shared row asks
+// about the collector record, so the projection is looked up by it.
+const accountSummaries = new WeakMap();
+let cardForecast = null;
+
+const codexAccounts = {
+  matchesActive: (provider) => accountSummaries.get(provider)?.active === true,
+  switchTarget: (provider) => {
+    const id = String(accountSummaries.get(provider)?.switchAccountId || '');
+    return id ? { id } : null;
+  },
+  canSwitchSystemAccount: () => typeof bridge.switchCodexAccount === 'function'
+};
+
+// The card's quota rows are the Limits page's quota rows: the same builder,
+// the same DOM, the same CSS (this page loads ../styles.css for exactly that).
+// It used to be a second implementation that had been told less — no spend
+// line under a balance, no denominator under a money pool, no info tooltips at
+// all — and every provider that needed special treatment had to be taught twice.
+//
+// Everything the builder reads from a page is handed to it here. The dock has
+// no renderer state of its own beyond the last pushed payload, so the settings
+// accessor is the appearance projection and the formatting is this page's.
+function optionalFiniteNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
-const WINDOW_KIND_LABELS = { session: 'Session', daily: 'Daily', weekly: 'Weekly', billing: 'Monthly' };
-
-function windowLabel(window) {
-  return window.label || WINDOW_KIND_LABELS[window.kind] || 'Limit';
+function colorWithAlpha(color, alpha) {
+  const rgb = parseColor(color);
+  return rgb ? `rgba(${rgb.join(', ')}, ${alpha})` : `rgba(183, 234, 212, ${alpha})`;
 }
 
-function boundaryText(window) {
-  const at = Date.parse(window.resetsAt || '');
-  if (!Number.isFinite(at)) return window.resetDescription || '';
-  const remaining = at - Date.now();
-  const mixed = window.boundaryKind === 'mixed';
-  const prefix = window.boundaryKind === 'expiry' ? 'Expires' : mixed ? 'Changes in' : 'Reset';
-  if (remaining <= 0) return mixed ? 'Changes now' : `${prefix} now`;
-  return `${prefix} ${presentation.formatResetDuration(remaining)}`;
+// The widget animates a meter from zero when a view is entered; the dock card
+// is built in a hidden staging layer and measured before it is shown, so it
+// only sets the value.
+function applyBarScale(fill, scale) {
+  fill.style.setProperty('--bar-scale', String(Math.max(0, Math.min(1, Number(scale) || 0))));
 }
 
-function updatedText(value) {
-  const at = Date.parse(value || '');
-  if (!Number.isFinite(at)) return '';
-  const diffMs = Math.max(0, Date.now() - at);
-  if (diffMs < 45_000) return 'Updated just now';
-  const minutes = Math.round(diffMs / 60000);
-  if (minutes < 60) return `Updated ${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `Updated ${hours}h ago`;
-  return `Updated ${Math.round(hours / 24)}d ago`;
+// A tooltip the pointer is inside has to survive the countdown repaint, the
+// same hold the Limits page keeps. Without it the 30-second tick replaces the
+// card out from under an open tooltip and it vanishes mid-read.
+const limitTooltip = {
+  opened: false,
+  active: false,
+  pending: false
+};
+
+function limitTooltipShouldHoldRender() {
+  if (!limitTooltip.active) return false;
+  return Boolean(contentLayer.querySelector('.limit-detail-tooltip-wrap:hover, .limit-detail-tooltip-wrap:focus-within'));
 }
 
-function accountTitle(account) {
-  const name = account.accountName || '';
-  if (name) return name;
-  const email = account.accountEmail || '';
-  if (!email) return '';
-  return appearance().maskLimitAccountEmails === true ? accountIdentityApi.maskEmailAddress(email) : email;
-}
-
-// The Limits view and dock both call the same renderer control. This wrapper
-// only maps the dock card's projected account shape into that shared contract.
-function accountControl(account, titleNode, options = {}) {
-  const accountId = String(account.switchAccountId || '');
-  return codexAccountControl.render({
-    titleNode,
-    active: options.showActive !== false && account.active === true,
-    switchAccount: accountId ? { id: accountId } : null,
-    accountLabel: accountTitle(account)
-  });
-}
+const limitWindowsView = limitWindowsViewApi.createLimitWindowsView({
+  document,
+  t,
+  settings: appearance,
+  currentLocale: () => state.locale,
+  presentation: limitPresentationApi,
+  // Which device a row's reading came from — "· imac-m1" beside the provider's
+  // own source label. The card has no settings and no device list, so both
+  // facts ride the cell it is rendering, the same way its account set does.
+  provenanceContext: () => state.payload?.cell?.provenanceContext || {},
+  motion: limitResetMotionApi,
+  tooltip: {
+    hasOpened: () => limitTooltip.opened,
+    markOpened() {
+      limitTooltip.opened = true;
+      limitTooltip.active = true;
+    },
+    release() {
+      requestAnimationFrame(() => {
+        if (limitTooltipShouldHoldRender()) return;
+        limitTooltip.active = false;
+        if (!limitTooltip.pending) return;
+        limitTooltip.pending = false;
+        if (state.payload?.cell) renderBubble(state.payload);
+      });
+    }
+  },
+  formatCompact: formatTokens,
+  formatMoney: balanceDisplay.formatMoney,
+  formatCompactMoney: balanceDisplay.formatCompactMoney,
+  formatPercent: (value) => (Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '--'),
+  formatDuration: presentation.formatResetDuration,
+  formatLimitBoundary: limitPresentationApi.limitBoundaryText,
+  limitFillPercent,
+  limitModeSuffix,
+  optionalFiniteNumber,
+  colorWithAlpha,
+  applyBarScale,
+  creditsAmount: balanceDisplay.creditsAmount,
+  creditsMeterPercent: balanceDisplay.creditsMeterPercent,
+  isCreditsWindow: balanceDisplay.isCreditsWindow,
+  spendWindow: balanceDisplay.spendWindow,
+  limitWindowLabel: limitWindowLabels.limitWindowLabel,
+  limitWindowText: limitWindowTextApi.limitWindowText,
+  accountIdentity: accountIdentityApi,
+  accountControl: codexAccountControl,
+  codexAccounts,
+  // Probed off the stylesheet the dock borrows, so the card can never disagree
+  // with the page about which providers have a mark.
+  hasMark: hasMask,
+  formatAgo: relativeAgo,
+  // The renderer names the intent; the main process owns the URL.
+  openExternal: () => bridge.openResetForecastSource?.(),
+  // The subscription records the widget holds, pushed with the appearance. The
+  // card's plan cell decorates itself from them exactly as the page's does —
+  // same rows, same wording — so a recorded subscription shows the same hover
+  // card here as it does there. What is not pushed is nothing: an empty list
+  // renders a plain plan label on both surfaces.
+  subscriptionApi: subscriptionDisplayApi,
+  subscriptionText: subscriptionTextApi,
+  currencyApi,
+  formatCost,
+  subscriptions: () => appearance().subscriptions,
+  // The row being decorated is one of this card's own accounts, and a record
+  // binds through the same list the page matches against — every account the
+  // provider has, never the rows this card happens to draw, or
+  // matchProviderAccount()'s sole-account fallback would bind a record to
+  // whichever row asked. The composer can hide an account from the card without
+  // it leaving the provider, so the cell carries that list beside its rows.
+  subscriptionAccounts: () => state.payload?.cell?.subscriptionAccounts || [],
+  // What this month's tokens would have cost, which the subscription card
+  // compares the plan's price against. It rides the cell because it changes with
+  // every stats push, while the appearance is only re-pushed on a settings edit.
+  monthClientCosts: () => state.payload?.cell?.monthClientCosts,
+  resetForecast: () => ({ busy: false, forecast: cardForecast })
+});
 
 // ---- Silhouette -------------------------------------------------------------
 
@@ -503,95 +589,6 @@ function indexFromTarget(target) {
 
 // ---- Detail card ------------------------------------------------------------
 
-// Meters match the widget's Limits view: a 6px bar on a tint of the provider's
-// own colour, the fill following the used/remaining display mode, and weekly
-// or longer windows a shade lighter than the session window above them.
-function meterNode(window, color) {
-  const meter = el('div', 'edge-dock-meter');
-  const rgb = parseColor(color);
-  if (rgb) meter.style.background = `rgba(${rgb.join(', ')}, 0.16)`;
-  const fill = el('div', 'edge-dock-meter-fill');
-  fill.style.background = color;
-  fill.style.opacity = window.kind === 'session' ? '0.95' : '0.78';
-  const shown = presentation.displayPercent(window.remainingPercent, appearance().showLimitUsed === true);
-  fill.style.transform = `scaleX(${Math.max(0, Math.min(100, shown ?? 0)) / 100})`;
-  meter.append(fill);
-  return meter;
-}
-
-function windowNode(window, color, labelOverride = '') {
-  const node = el('div', 'edge-dock-window');
-  const head = el('div', 'edge-dock-window-head');
-  const value = el('span', 'edge-dock-window-value', windowValueText(window));
-  value.dataset.severity = displaySeverity(window.remainingPercent);
-  head.append(el('span', 'edge-dock-window-label', labelOverride || windowLabel(window)), value);
-  node.append(head);
-  if (window.remainingPercent !== null && window.remainingPercent !== undefined) node.append(meterNode(window, color));
-  const boundary = boundaryText(window);
-  if (boundary) node.append(el('span', 'edge-dock-window-reset', boundary));
-  return node;
-}
-
-// Windows labelled "<group> 5-hour" / "<group> weekly" (Antigravity's model
-// pools) are shown under one group heading, the same hierarchy as the Limits
-// view. Anything that does not fully parse keeps the flat list.
-function windowGroups(windows) {
-  const parsed = windows.map((window) => ({
-    window,
-    label: limitPresentationApi?.antigravityQuotaWindow?.(window) || null
-  }));
-  if (parsed.length < 2 || parsed.some((entry) => !entry.label)) return null;
-  const groups = new Map();
-  for (const entry of parsed) {
-    const key = entry.label.groupLabel;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(entry);
-  }
-  return groups.size > 1 ? [...groups] : null;
-}
-
-// A metered short window (session/daily/weekly) sits in a half-width column
-// beside its neighbour, as in the Limits view; balances, monthly pools and an
-// unpaired window take the full width.
-function pairable(window) {
-  return ['session', 'daily', 'weekly'].includes(window.kind)
-    && !window.credits
-    && window.remainingPercent !== null && window.remainingPercent !== undefined;
-}
-
-function windowGrid(entries, color) {
-  const grid = el('div', 'edge-dock-windows');
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index];
-    const next = entries[index + 1];
-    const node = windowNode(entry.window, color, entry.label);
-    if (next && pairable(entry.window) && pairable(next.window)) {
-      grid.append(node, windowNode(next.window, color, next.label));
-      index += 1;
-    } else {
-      node.classList.add('is-wide');
-      grid.append(node);
-    }
-  }
-  return grid;
-}
-
-function appendWindows(block, windows, color) {
-  const groups = windowGroups(windows);
-  if (!groups) {
-    block.append(windowGrid(windows.map((window) => ({ window, label: '' })), color));
-    return;
-  }
-  for (const [label, entries] of groups) {
-    const group = el('div', 'edge-dock-window-group');
-    group.append(
-      el('div', 'edge-dock-window-group-title', label),
-      windowGrid(entries.map((entry) => ({ window: entry.window, label: entry.label.windowLabel })), color)
-    );
-    block.append(group);
-  }
-}
-
 function usageTile(label, usage) {
   const tile = el('div', 'edge-dock-usage-tile');
   tile.append(
@@ -600,70 +597,6 @@ function usageTile(label, usage) {
   );
   if (usage) tile.append(el('span', 'edge-dock-usage-cost', formatCost(usage.costUsd)));
   return tile;
-}
-
-// Banked Codex resets, as the Limits view lists them: how many, and how long
-// until each expires.
-function resetCreditsNode(credits) {
-  if (!credits?.count) return null;
-  const row = el('div', 'edge-dock-detail-row');
-  row.append(el('span', '', `${credits.count} reset${credits.count === 1 ? '' : 's'}`));
-  const now = Date.now();
-  const times = credits.expirations.slice(0, 3).map((value) => {
-    const remaining = Date.parse(value) - now;
-    return remaining <= 0 ? 'now' : presentation.formatResetDuration(remaining);
-  });
-  if (credits.expirations.length > 3) times.push(`+${credits.expirations.length - 3}`);
-  if (times.length) row.append(el('span', 'edge-dock-detail-value', times.join(' · ')));
-  return row;
-}
-
-function forecastDate(value) {
-  const ms = Date.parse(value || '');
-  if (!Number.isFinite(ms)) return '';
-  const date = new Date(ms);
-  const dayDelta = Math.round((new Date(date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86_400_000);
-  const time = new Intl.DateTimeFormat(state.locale, { hour: 'numeric', minute: '2-digit' }).format(date);
-  if (Math.abs(dayDelta) <= 1) {
-    return `${new Intl.RelativeTimeFormat(state.locale, { numeric: 'auto' }).format(dayDelta, 'day')} ${time}`;
-  }
-  return new Intl.DateTimeFormat(state.locale, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
-}
-
-// The Codex reset forecast, when the Limits view's opt-in is on: the same
-// states and wording as there, condensed to one row and a detail line.
-function forecastNode(forecast) {
-  if (!forecast || forecast.status === 'disabled') return null;
-  const node = el('div', 'edge-dock-forecast');
-  const row = el('div', 'edge-dock-detail-row');
-  row.append(el('span', 'edge-dock-forecast-title', t('limits.codexResetForecast.title')));
-  let value;
-  let detail = '';
-  const expired = forecast.status === 'active' && Date.parse(forecast.expiresAt || '') <= Date.now();
-  if (forecast.status === 'scheduled') {
-    value = t('limits.codexResetForecast.scheduled');
-    const when = forecastDate(forecast.scheduledFor);
-    detail = when ? t('limits.codexResetForecast.expected', { date: when }) : t('limits.codexResetForecast.schedulePending');
-  } else if (forecast.status === 'active' && !expired) {
-    value = Number.isFinite(forecast.chancePercent)
-      ? t('limits.codexResetForecast.chance', {
-        percent: new Intl.NumberFormat(state.locale, { maximumFractionDigits: 2 }).format(forecast.chancePercent)
-      })
-      : t('limits.codexResetForecast.signal');
-    const when = forecastDate(forecast.predictedAt);
-    detail = when ? t('limits.codexResetForecast.expected', { date: when }) : '';
-  } else if (forecast.status === 'inactive' || expired) {
-    value = t('limits.codexResetForecast.noSignal');
-  } else {
-    value = forecast.error && forecast.errorKind !== 'invalid-response'
-      ? t('limits.codexResetForecast.connectionFailed')
-      : t('limits.codexResetForecast.unavailable');
-  }
-  if (forecast.stale) detail = [detail, t('limits.codexResetForecast.stale')].filter(Boolean).join(' · ');
-  row.append(el('span', 'edge-dock-detail-value', value));
-  node.append(row);
-  if (detail) node.append(el('div', 'edge-dock-forecast-detail', detail));
-  return node;
 }
 
 function relativeAgo(value) {
@@ -812,59 +745,33 @@ function sessionsNode(sessions) {
 
 function providerCard(cell) {
   const card = el('section', 'edge-dock-card');
-  const color = providerColor(cell.provider);
-  const single = cell.accounts.length === 1 ? cell.accounts[0] : null;
-  // The refresh time sits under the name it belongs to, as in the Limits view:
-  // under the provider for a single account, under each account otherwise.
-  // Name row (mark, name, plan), then the refresh time on its own line starting
-  // at the mark's edge, as in the Limits view.
-  const head = el('header', 'edge-dock-card-head');
-  const nameRow = el('div', 'edge-dock-card-name-row');
-  nameRow.append(markNode(cell.provider));
-  // With one account the email moves to the header, and so does the switch
-  // affordance; with several, each row carries its own (below).
-  const headTitle = el('span', 'limit-name-title edge-dock-card-title', providerLabel(cell.provider));
-  const headControl = single ? accountControl(single, headTitle, { showActive: false }) : headTitle;
-  nameRow.append(headControl);
-  if (single?.planLabel) nameRow.append(el('span', 'edge-dock-pill', single.planLabel));
-  head.append(nameRow);
-  const singleUpdated = single ? updatedText(single.updatedAt) : '';
-  if (singleUpdated) head.append(el('span', 'edge-dock-card-subtitle', singleUpdated));
-  card.append(head);
-
-  const accounts = el('div', 'edge-dock-accounts');
-  card.append(accounts);
+  const color = limitProviderColor(cell.provider);
+  const label = providerLabel(cell.provider);
+  const records = [];
   for (const account of cell.accounts) {
-    const block = el('div', 'edge-dock-account');
-    if (!single) {
-      const name = el('div', 'edge-dock-account-name');
-      const names = el('div', 'edge-dock-card-titles');
-      const title = accountTitle(account) || account.planLabel || providerLabel(cell.provider);
-      const titleNode = el('span', 'limit-name-title edge-dock-account-title', title);
-      // The row is one of three things, exactly as in the Limits view: the
-      // account in use here (check badge plus a "Local" hint), a row that can be
-      // switched to (hover reveals Switch), or a plain title.
-      names.append(accountControl(account, titleNode));
-      const updated = updatedText(account.updatedAt);
-      if (updated) names.append(el('span', 'edge-dock-card-subtitle', updated));
-      name.append(names);
-      if (account.planLabel && accountTitle(account)) name.append(el('span', 'edge-dock-pill', account.planLabel));
-      block.append(name);
-    }
-    if (account.status === 'stale') block.append(el('div', 'edge-dock-note is-warning', t('edgeDock.stale')));
-    const windows = account.windows || [];
-    if (windows.length) {
-      appendWindows(block, windows, color);
-    } else if (account.status !== 'ok') {
-      block.append(el('div', 'edge-dock-note', t('edgeDock.unavailable')));
-    }
-    const credits = resetCreditsNode(account.resetCredits);
-    if (credits) block.append(credits);
-    accounts.append(block);
+    if (!account.record) continue;
+    accountSummaries.set(account.record, account);
+    records.push(account.record);
   }
-  if (!cell.accounts.length) accounts.append(el('div', 'edge-dock-note', t('edgeDock.unavailable')));
-  const forecast = forecastNode(cell.forecast);
-  if (forecast) accounts.append(forecast);
+  cardForecast = cell.forecast || null;
+
+  // The card is the Limits page's provider row: one row for a single account,
+  // the page's group header and account list for several. Everything the card
+  // used to build by hand — the mark, the plan pill, the "Updated · OAuth" meta
+  // line, the account count, the switch affordance, the meters, the spend and
+  // balance lines, the reset forecast and its tooltip — is that row, and the
+  // per-provider choices the page makes are the view's own policy now, so this
+  // caller passes the provider and nothing else.
+  const accounts = el('div', 'edge-dock-accounts');
+  if (records.length > 1) {
+    accounts.append(limitWindowsView.renderLimitProviderGroup(cell.provider, label, records, color));
+  } else if (records.length === 1) {
+    accounts.append(limitWindowsView.renderLimitProviderSolo(cell.provider, label, records[0], color));
+  } else {
+    accounts.append(el('div', 'edge-dock-note', t('edgeDock.unavailable')));
+  }
+  card.append(accounts);
+
   const sessions = sessionsNode(cell.sessions);
   if (sessions) card.append(sessions);
 
@@ -948,13 +855,13 @@ function statCard(cell) {
   for (const client of cell.clients) {
     const color = readableColor(clientColors[client.client] || clientColors.default);
     const row = el('div', 'edge-dock-client');
-    const meter = el('div', 'edge-dock-meter');
-    const rgb = parseColor(color);
-    if (rgb) meter.style.background = `rgba(${rgb.join(', ')}, 0.16)`;
-    const fill = el('div', 'edge-dock-meter-fill');
+    // The same bar as the quota meters above it, built by the same helper.
+    const meter = el('div', 'limit-meter');
+    meter.style.background = colorWithAlpha(color, 0.16);
+    const fill = el('div', 'limit-meter-fill');
     fill.style.background = color;
     fill.style.opacity = '0.95';
-    fill.style.transform = `scaleX(${Math.max(0.02, client.tokens / top)})`;
+    applyBarScale(fill, Math.max(0.02, client.tokens / top));
     meter.append(fill);
     row.append(
       markNode(client.client, color),
@@ -1017,7 +924,16 @@ function render(payload) {
   updateShape(payload);
   if (surface === 'peek') renderPeek(payload);
   else if (surface === 'rail') renderRail(payload);
-  else if (!codexAccountControl.deferRender(contentLayer)) renderBubble(payload);
+  else if (!deferBubbleRender()) renderBubble(payload);
+}
+
+// A repaint replaces the whole card, so it waits for whatever the pointer is
+// currently inside: an account control mid-gesture, or an open detail tooltip.
+function deferBubbleRender() {
+  if (codexAccountControl.deferRender(contentLayer)) return true;
+  if (!limitTooltipShouldHoldRender()) return false;
+  limitTooltip.pending = true;
+  return true;
 }
 
 bridge.onRender(render);
@@ -1026,7 +942,7 @@ setInterval(() => {
   if (
     surface === 'bubble'
     && state.payload?.cell
-    && !codexAccountControl.deferRender(contentLayer)
+    && !deferBubbleRender()
   ) renderBubble(state.payload);
 }, 30_000);
 bridge.ready();
