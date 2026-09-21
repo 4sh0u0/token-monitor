@@ -87,6 +87,7 @@ const {
 } = require('../shared/providers/antigravity/selfSync');
 const { deviceRecordFromAnchor } = require('../shared/anchorSeed');
 const { sendWhenRendererReady } = require('./deferredWindowSend');
+const { actionWindowForEvent, handoffWindow, showWindow } = require('./windowLifecycle');
 const { applyInitialLimitProviderSeed } = require('./initialLimitProviderSeed');
 const { createDeviceRuntime } = require('../shared/deviceRuntime');
 const { createDiagnosticJournal } = require('../shared/diagnosticJournal');
@@ -6640,13 +6641,8 @@ function isAllowedExternalUrl(value) {
 }
 
 function revealWindow(target = mainWindow, options = {}) {
-  if (!target || target.isDestroyed() || target.isVisible()) return;
   const inactive = options.inactive === true || (target === mainWindow && floatingBubbleState.collapsed);
-  if (inactive && typeof target.showInactive === 'function') {
-    target.showInactive();
-    return;
-  }
-  target.show();
+  showWindow(target, inactive);
 }
 
 function loadWindowFile(target, options = {}) {
@@ -6877,11 +6873,8 @@ function replaceMainWindow(bounds, options = {}) {
     inactive: options.inactive === true
   });
   const next = mainWindow;
-  next.once('show', () => {
-    if (old && !old.isDestroyed()) old.destroy();
-    if ((options.focus === true || (options.focus !== false && wasFocused)) && !next.isDestroyed()) {
-      next.focus();
-    }
+  handoffWindow(old, next, {
+    focus: options.focus === true || (options.focus !== false && wasFocused)
   });
 }
 
@@ -8762,13 +8755,19 @@ app.whenReady().then(() => {
     }
     return { ok: true };
   });
-  ipcMain.on('window:minimize', () => {
-    if (settings?.trayMode) hidePopover();
-    else mainWindow?.minimize();
+  ipcMain.on('window:minimize', (event) => {
+    if (settings?.trayMode) {
+      hidePopover();
+      return;
+    }
+    actionWindowForEvent(BrowserWindow, event, mainWindow)?.minimize();
   });
-  ipcMain.on('window:close', () => {
-    if (settings?.trayMode) hidePopover();
-    else mainWindow?.close();
+  ipcMain.on('window:close', (event) => {
+    if (settings?.trayMode) {
+      hidePopover();
+      return;
+    }
+    actionWindowForEvent(BrowserWindow, event, mainWindow)?.close();
   });
   ipcMain.handle('dashboard:open', () => { createDashboardWindow(); return true; });
   ipcMain.handle('dashboard:getHistory', (_event, options) => getDashboardHistory(options));
