@@ -368,6 +368,7 @@ const tokenRateApi = require('./renderer/tokenRatePresentation');
 const { toPolygons } = require('./renderer/edgeDock/shapes');
 const { rasterizeMask } = require('./edgeDock/mask');
 const { applyVibrancyMask } = require('./edgeDock/macVibrancyMask');
+const { performMacHaptic } = require('./edgeDock/macHaptics');
 const { primaryButtonDown } = require('./edgeDock/pointerButtons');
 const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
 const {
@@ -532,6 +533,7 @@ function defaultSettings() {
     floatingBubbleBounds: null,
     edgeDockEnabled: false,
     edgeDockMode: 'autoHide',
+    edgeDockHaptic: true,
     edgeDockWarnColors: false,
     edgeDockSide: 'right',
     edgeDockOffset: null,
@@ -2658,6 +2660,7 @@ function readSettings() {
     merged.edgeDockOffset = normalizeEdgeDockOffset(merged.edgeDockOffset);
     merged.edgeDockDisplayId = normalizeEdgeDockDisplayId(merged.edgeDockDisplayId);
     merged.edgeDockMode = merged.edgeDockMode === 'always' ? 'always' : 'autoHide';
+    merged.edgeDockHaptic = parseBoolean(merged.edgeDockHaptic, true);
     merged.edgeDockWarnColors = parseBoolean(merged.edgeDockWarnColors, false);
     merged.edgeDockItems = normalizeEdgeDockItems(merged.edgeDockItems);
     merged.trayCustomLayout = normalizeTrayLayout(merged.trayCustomLayout);
@@ -5433,6 +5436,7 @@ function ensureEdgeDockController() {
       return applyVibrancyMask(win, png, width, height);
     },
     primaryButtonDown: () => primaryButtonDown(process.platform),
+    performHaptic: (pattern, performanceTime) => performMacHaptic({ pattern, performanceTime }),
     // The dock card's Switch button runs the same swap the Limits view does,
     // then repaints from the refreshed records. It is the dock's only write.
     onSwitchCodexAccount: (accountId) => switchCodexAccountFromEdgeDock(accountId),
@@ -7274,6 +7278,7 @@ app.whenReady().then(() => {
       edgeDockOffset: normalizeEdgeDockOffset(patch.edgeDockOffset ?? settings.edgeDockOffset),
       edgeDockDisplayId: normalizeEdgeDockDisplayId(patch.edgeDockDisplayId ?? settings.edgeDockDisplayId),
       edgeDockMode: (patch.edgeDockMode ?? settings.edgeDockMode) === 'always' ? 'always' : 'autoHide',
+      edgeDockHaptic: parseBoolean(patch.edgeDockHaptic ?? settings.edgeDockHaptic, true),
       edgeDockWarnColors: parseBoolean(patch.edgeDockWarnColors ?? settings.edgeDockWarnColors, false),
       // `null` is a real value here (back to the automatic default), so the
       // patch is checked for presence rather than coalesced.
