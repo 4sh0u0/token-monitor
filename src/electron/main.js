@@ -87,6 +87,7 @@ const {
 } = require('../shared/providers/antigravity/selfSync');
 const { deviceRecordFromAnchor } = require('../shared/anchorSeed');
 const { sendWhenRendererReady } = require('./deferredWindowSend');
+const { actionWindowForEvent, handoffWindow, showWindow } = require('./windowLifecycle');
 const { applyInitialLimitProviderSeed } = require('./initialLimitProviderSeed');
 const { createDeviceRuntime } = require('../shared/deviceRuntime');
 const { createDiagnosticJournal } = require('../shared/diagnosticJournal');
@@ -350,7 +351,9 @@ const {
   floatingBubbleSide,
   floatingBubbleWindowChrome,
   normalizeInitialRendererViewState,
-  moveFloatingBubbleBounds
+  moveFloatingBubbleBounds,
+  applyWindowSizeLimits,
+  restoreFloatingBubbleWindow
 } = require('./floatingBubble');
 const { applyWindowsChrome } = require('./windowsChrome');
 const { canUseEdgeDock, createEdgeDockController, edgeDockSupported } = require('./edgeDock/controller');
@@ -366,6 +369,7 @@ const tokenRateApi = require('./renderer/tokenRatePresentation');
 const { toPolygons } = require('./renderer/edgeDock/shapes');
 const { rasterizeMask } = require('./edgeDock/mask');
 const { applyVibrancyMask } = require('./edgeDock/macVibrancyMask');
+const { performMacHaptic } = require('./edgeDock/macHaptics');
 const { primaryButtonDown } = require('./edgeDock/pointerButtons');
 const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
 const {
@@ -530,6 +534,7 @@ function defaultSettings() {
     floatingBubbleBounds: null,
     edgeDockEnabled: false,
     edgeDockMode: 'autoHide',
+    edgeDockHaptic: true,
     edgeDockWarnColors: false,
     edgeDockSide: 'right',
     edgeDockOffset: null,
@@ -2200,13 +2205,7 @@ function stopFloatingBubbleAutoCollapseTimer() {
 }
 
 function restoreWindowSizeLimits() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (typeof mainWindow.setMinimumSize === 'function') {
-    mainWindow.setMinimumSize(WINDOW_LIMITS.minWidth, WINDOW_LIMITS.minHeight);
-  }
-  if (typeof mainWindow.setMaximumSize === 'function') {
-    mainWindow.setMaximumSize(WINDOW_LIMITS.maxWidth, WINDOW_LIMITS.maxHeight);
-  }
+  applyWindowSizeLimits(mainWindow, WINDOW_LIMITS);
 }
 
 function applyCollapsedFloatingBubbleLimits(bounds) {
@@ -2339,8 +2338,10 @@ function expandFloatingBubble(options = {}) {
       sendFloatingBubbleState();
       return true;
     }
-    restoreWindowSizeLimits();
-    mainWindow.setBounds(target);
+    // Unlock, re-limit and resize in one helper rather than inline: the order
+    // is what fixes the collapsed window refusing to grow again on Linux, and
+    // an inline `restoreWindowSizeLimits(); setBounds()` reads like it works.
+    restoreFloatingBubbleWindow(mainWindow, target, WINDOW_LIMITS);
     persistWindowBounds(target);
     setTimeout(() => { floatingBubbleState.suppressNextCollapse = false; }, 300);
   }
@@ -2660,6 +2661,7 @@ function readSettings() {
     merged.edgeDockOffset = normalizeEdgeDockOffset(merged.edgeDockOffset);
     merged.edgeDockDisplayId = normalizeEdgeDockDisplayId(merged.edgeDockDisplayId);
     merged.edgeDockMode = merged.edgeDockMode === 'always' ? 'always' : 'autoHide';
+    merged.edgeDockHaptic = parseBoolean(merged.edgeDockHaptic, true);
     merged.edgeDockWarnColors = parseBoolean(merged.edgeDockWarnColors, false);
     merged.edgeDockItems = normalizeEdgeDockItems(merged.edgeDockItems);
     merged.trayCustomLayout = normalizeTrayLayout(merged.trayCustomLayout);
@@ -5435,6 +5437,7 @@ function ensureEdgeDockController() {
       return applyVibrancyMask(win, png, width, height);
     },
     primaryButtonDown: () => primaryButtonDown(process.platform),
+    performHaptic: (pattern, performanceTime) => performMacHaptic({ pattern, performanceTime }),
     // The dock card's Switch button runs the same swap the Limits view does,
     // then repaints from the refreshed records. It is the dock's only write.
     onSwitchCodexAccount: (accountId) => switchCodexAccountFromEdgeDock(accountId),
@@ -6638,13 +6641,8 @@ function isAllowedExternalUrl(value) {
 }
 
 function revealWindow(target = mainWindow, options = {}) {
-  if (!target || target.isDestroyed() || target.isVisible()) return;
   const inactive = options.inactive === true || (target === mainWindow && floatingBubbleState.collapsed);
-  if (inactive && typeof target.showInactive === 'function') {
-    target.showInactive();
-    return;
-  }
-  target.show();
+  showWindow(target, inactive);
 }
 
 function loadWindowFile(target, options = {}) {
@@ -6875,11 +6873,8 @@ function replaceMainWindow(bounds, options = {}) {
     inactive: options.inactive === true
   });
   const next = mainWindow;
-  next.once('show', () => {
-    if (old && !old.isDestroyed()) old.destroy();
-    if ((options.focus === true || (options.focus !== false && wasFocused)) && !next.isDestroyed()) {
-      next.focus();
-    }
+  handoffWindow(old, next, {
+    focus: options.focus === true || (options.focus !== false && wasFocused)
   });
 }
 
@@ -7276,6 +7271,7 @@ app.whenReady().then(() => {
       edgeDockOffset: normalizeEdgeDockOffset(patch.edgeDockOffset ?? settings.edgeDockOffset),
       edgeDockDisplayId: normalizeEdgeDockDisplayId(patch.edgeDockDisplayId ?? settings.edgeDockDisplayId),
       edgeDockMode: (patch.edgeDockMode ?? settings.edgeDockMode) === 'always' ? 'always' : 'autoHide',
+      edgeDockHaptic: parseBoolean(patch.edgeDockHaptic ?? settings.edgeDockHaptic, true),
       edgeDockWarnColors: parseBoolean(patch.edgeDockWarnColors ?? settings.edgeDockWarnColors, false),
       // `null` is a real value here (back to the automatic default), so the
       // patch is checked for presence rather than coalesced.
@@ -8759,13 +8755,19 @@ app.whenReady().then(() => {
     }
     return { ok: true };
   });
-  ipcMain.on('window:minimize', () => {
-    if (settings?.trayMode) hidePopover();
-    else mainWindow?.minimize();
+  ipcMain.on('window:minimize', (event) => {
+    if (settings?.trayMode) {
+      hidePopover();
+      return;
+    }
+    actionWindowForEvent(BrowserWindow, event, mainWindow)?.minimize();
   });
-  ipcMain.on('window:close', () => {
-    if (settings?.trayMode) hidePopover();
-    else mainWindow?.close();
+  ipcMain.on('window:close', (event) => {
+    if (settings?.trayMode) {
+      hidePopover();
+      return;
+    }
+    actionWindowForEvent(BrowserWindow, event, mainWindow)?.close();
   });
   ipcMain.handle('dashboard:open', () => { createDashboardWindow(); return true; });
   ipcMain.handle('dashboard:getHistory', (_event, options) => getDashboardHistory(options));
