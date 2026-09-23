@@ -26,7 +26,8 @@ const KNOWN_CLIENTS = CLIENT_IDS.join(',');
 const LEGACY_CLIENT_ID_ALIASES = Object.freeze({
   kilocode: 'kilo',
   'devin-cli': 'devin',
-  'devin-desktop': 'devin'
+  'devin-desktop': 'devin',
+  micode: 'mimo'
 });
 
 function normalizeTrackedClientId(value) {
@@ -55,6 +56,7 @@ module.exports = {
   DEFAULT_CLIENTS,
   PARSE_LOCAL_CLIENTS,
   KNOWN_CLIENTS,
+  LEGACY_CLIENT_ID_ALIASES,
   clientsCsvForSetting,
   normalizeClientsCsv,
   normalizeTrackedClientId
