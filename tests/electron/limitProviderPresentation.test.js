@@ -1563,6 +1563,13 @@ test('Claude reset grants wrap their label and clears as full-width lines', () =
       endsAt: localIso(2026, 9, 1, 12),
       clears: ['seven_day_opus'],
       useRequiresLimit: true
+    },
+    {
+      label: 'Fable-only promo',
+      resetsLeft: 1,
+      endsAt: localIso(2026, 9, 5, 12),
+      clears: ['seven_day_overage_included'],
+      usableNow: true
     }
   ], now);
 
@@ -1571,11 +1578,16 @@ test('Claude reset grants wrap their label and clears as full-width lines', () =
   assert.deepEqual(rows, [
     { full: 'Launch promo reset', caption: true, separated: false },
     ['Expires', '8/20, 5:00 PM · 23d 17h'],
-    ['Clears', 'Session · Weekly · Fable weekly'],
+    ['Clears', 'Session · Weekly'],
     { full: 'Second promo', caption: true, separated: true },
     ['Expires', '9/1, 12:00 PM · 35d 12h'],
     ['Clears', 'Opus weekly'],
-    ['Usable', 'at a limit only']
+    ['Usable', 'at a limit only'],
+    { full: 'Fable-only promo', caption: true, separated: true },
+    ['Expires', '9/5, 12:00 PM · 39d 12h'],
+    // The Fable bucket still lists when it is the only weekly coverage —
+    // it folds away only next to the general weekly clear.
+    ['Clears', 'Fable weekly']
   ]);
 
   assert.match(renderProviderWindows, /claudeResetCreditsNode\(provider\.resetCredits\)/);
