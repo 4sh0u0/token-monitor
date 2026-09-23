@@ -1859,6 +1859,7 @@ function clientSourceRoots(clientsCsv, options = {}) {
   const copilotRoots = [
     ['copilot-otel', copilotOtelRoot],
     ['copilot-data', path.join(home, '.copilot'), path.join(home, '.copilot', 'data.db')],
+    ['copilot-session-store', path.join(home, '.copilot'), path.join(home, '.copilot', 'session-store.db')],
     ...[...new Set(copilotWorkspaceRoots)].map((dir) => ['vscode-workspace-storage', dir])
   ];
   // The parent is the watch root because the exporter file may not exist yet;
@@ -1891,13 +1892,13 @@ function clientSourceRoots(clientsCsv, options = {}) {
     ['kilocode-tasks', path.join(home, '.vscode-server', 'data', 'User', 'globalStorage', 'kilocode.kilo-code', 'tasks')]
   );
   add('commandcode', ['commandcode-projects', path.join(home, '.commandcode', 'projects')]);
-  // MiMo Code: tokscale 4.8.0 unions the XDG data dir with orca's hook-sandbox
+  // MiMo: tokscale 4.8.0 unions the XDG data dir with orca's hook-sandbox
   // copy (scanner.rs `discover_micode_dbs_in_dirs`), and that copy can hold
   // sessions the XDG one is missing. Watch both so an orca-driven install still
   // refreshes in seconds; the orca root only exists on macOS in practice and a
   // missing dir is dropped by watchClientRootsForClients.
   add(
-    'micode',
+    'mimo',
     ['mimocode-data', path.join(xdgHome, 'mimocode')],
     ['mimocode-orca-data', path.join(home, 'Library', 'Application Support', 'orca', 'mimocode-hooks', 'shared', 'data')]
   );
@@ -2236,7 +2237,7 @@ const OPENCLAW_CODEX_HOME_DIRS = new Set(['sessions', 'archived_sessions']);
 // signals that must remain watched so a transaction committed before a
 // checkpoint refreshes the usage view.
 const OPENCODE_DB_WATCH_PATTERN = /^opencode(?:-[A-Za-z0-9._-]+)?\.db(?:-(?:wal|shm))?$/;
-// MiMo Code keeps a multi-gigabyte log/ tree alongside its SQLite state files.
+// MiMo keeps a multi-gigabyte log/ tree alongside its SQLite state files.
 // A plain recursive watch of ~/.local/share/mimocode storms the watcher (every
 // SQLite WAL/SHM transaction is a chokidar event, the log dir holds thousands
 // of rotated files). Tokscale discovers mimocode.db and
@@ -2245,13 +2246,19 @@ const OPENCODE_DB_WATCH_PATTERN = /^opencode(?:-[A-Za-z0-9._-]+)?\.db(?:-(?:wal|
 // Keep the home dir watched but ignore everything except that direct db family.
 // The home root itself stays watched so a freshly created database or sidecar
 // still surfaces on the next top-level readdir.
-const MICODE_DB_WATCH_PATTERN = /^mimocode(?:-[A-Za-z0-9._-]+)?\.db(?:-(?:wal|shm))?$/;
+const MIMO_DB_WATCH_PATTERN = /^mimocode(?:-[A-Za-z0-9._-]+)?\.db(?:-(?:wal|shm))?$/;
 // Kiro CLI and Zed expose one SQLite database at a known path. Keep their
 // parent dirs watched so the database can appear after startup, but do not
 // recurse through the application data trees around them.
 const KIRO_DB_WATCH_PATTERN = /^data\.sqlite3(?:-(?:wal|shm))?$/;
 const ZED_DB_WATCH_PATTERN = /^threads\.db(?:-(?:wal|shm))?$/;
-const COPILOT_DB_WATCH_PATTERN = /^data\.db(?:-(?:wal|shm))?$/;
+// Copilot is two exact databases directly under ~/.copilot, not one: `data.db`
+// (desktop) and `session-store.db` (CLI, tokscale's copilot_session_store
+// parser). Both are `path.is_file()` reads upstream, so the directory stays the
+// watch root and each file rides along with its WAL/SHM sidecars. Leaving
+// session-store.db out of this pattern prunes it from the watcher, so CLI usage
+// would only appear on the next full tick instead of within the refresh window.
+const COPILOT_DB_WATCH_PATTERN = /^(?:data|session-store)\.db(?:-(?:wal|shm))?$/;
 const ZCODE_DB_WATCH_PATTERN = /^db\.sqlite(?:-(?:wal|shm))?$/;
 const UNSLOTH_DB_WATCH_PATTERN = /^studio\.db(?:-(?:wal|shm))?$/;
 // Bounded to sessions.db directly under each *default* Devin CLI root; the WAL
@@ -2469,7 +2476,7 @@ function watchPolicyEntries(clientsCsv, options = {}) {
 
   // Tokscale reads only direct children of each MiMo root, so log/* and every
   // other recursive subtree is pruned before chokidar descends into it.
-  bound('micode', candidates.micode || [], directChildOnly((name) => MICODE_DB_WATCH_PATTERN.test(name)));
+  bound('mimo', candidates.mimo || [], directChildOnly((name) => MIMO_DB_WATCH_PATTERN.test(name)));
   bound('unsloth', candidates.unsloth || [], directChildOnly((name) => UNSLOTH_DB_WATCH_PATTERN.test(name)));
   bound('devin', withBasename('devin', 'cli'), directChildOnly((name) => DEVIN_CLI_DB_WATCH_PATTERN.test(name)));
   // The dual-source Grok scanner derives exactly logs/unified.jsonl from each
@@ -2969,7 +2976,7 @@ function watcherOptions(usePolling, ignored) {
 //
 // Only the sidecar is dropped. The real data signal lives in the database and
 // its -wal, so a genuine change still produces an event; a client whose scan was
-// measured NOT to rewrite its sidecar (micode) is deliberately absent here, and
+// measured NOT to rewrite its sidecar (mimo) is deliberately absent here, and
 // adding a client to this list asserts a measurement rather than a hunch.
 const SELF_WATCHED_SQLITE_SIDECAR_CLIENTS = Object.freeze(['qodercn', 'zcode']);
 
@@ -3619,6 +3626,8 @@ function startCollector(options) {
       debounceTimer = null;
       // Re-arm instead of queueing onto the in-flight tick: the coalesce path
       // would re-run immediately on completion, stacking scans back-to-back.
+      // There is deliberately no cooldown on top of the debounce: the product
+      // promises 3–5 s updates, and a cooldown would break that promise.
       if (tickInFlight) { scheduleTick(reason); return; }
       // A raw source event means that client's synced cache may now be stale, so
       // its sync drops to the short floor instead of waiting out the idle
