@@ -12,15 +12,59 @@ function readRendererFile(name) {
   return fs.readFileSync(path.join(rendererDir, name), 'utf8');
 }
 
-test('detail cards keep exact token counts while the narrow rail stays compact', () => {
+test('detail cards keep an exact headline while the rail and list rows stay compact', () => {
   const dock = readRendererFile(path.join('edgeDock', 'dock.js'));
   const formatCardTokens = Function(`return (${dock.match(/function formatCardTokens\(value\) \{[^}]+\}/)[0]})`)();
   assert.equal(formatCardTokens(216_935_653), '216,935,653');
   assert.equal(formatCardTokens(162_821_017), '162,821,017');
+  // The breakdown rows read like the widget's home list: one-decimal compact
+  // tokens with trailing zeros stripped, not the rail's two-decimal tray style.
+  const breakdownSource = dock.slice(
+    dock.indexOf('function formatBreakdownTokens('),
+    dock.indexOf('function compactCardTotal(')
+  ).trim();
+  const formatBreakdownTokens = Function('appearance', 'state', 'compactTokenApi', 'return (' + breakdownSource + ')')(
+    () => ({ compactTokenUnits: 'western' }), { locale: 'en' }, require('../../src/shared/compactTokens')
+  );
+  assert.equal(formatBreakdownTokens(216_935_653), '216.9M');
+  assert.equal(formatBreakdownTokens(1_234_567_890), '1.2B');
+  assert.equal(formatBreakdownTokens(512), '512');
   assert.match(dock, /edge-dock-stat-value', formatTokens\(cell\.totalTokens\)/);
   assert.match(dock, /edge-dock-total-row'[\s\S]*?formatCardTokens\(cell\.totalTokens\)/);
-  assert.match(dock, /edge-dock-client-tokens', formatCardTokens\(entry\.tokens\)/);
-  assert.match(dock, /edge-dock-session-tokens', formatCardTokens\(session\.totalTokens\)/);
+  assert.match(dock, /edge-dock-client-tokens', formatBreakdownTokens\(entry\.tokens\)/);
+  // Session rows and the period tiles read compact like the breakdown rows —
+  // the exact-count rule from #784 covers the headline only.
+  assert.match(dock, /edge-dock-session-tokens', formatBreakdownTokens\(session\.totalTokens\)/);
+  assert.match(dock, /edge-dock-usage-tokens', usage \? formatBreakdownTokens\(usage\.tokens\) : '—'/);
+});
+
+test('rail money compacts through the shared helper so it follows the token units', () => {
+  const dock = readRendererFile(path.join('edgeDock', 'dock.js'));
+  assert.match(dock, /const compactMoneyApi = window\.TokenMonitorCompactMoney;/);
+  const source = dock.slice(
+    dock.indexOf('function formatRailCost('),
+    dock.indexOf('function statShortLabel(')
+  ).trim();
+  const build = () => Function(
+    'appearance', 'state', 'currencyApi', 'compactMoneyApi', 'return (' + source + ')'
+  );
+  const currency = require('../../src/shared/currency');
+  const compactMoney = require('../../src/shared/compactMoney');
+  const localized = build()(
+    () => ({ currency: 'HKD', compactTokenUnits: 'localized' }),
+    { locale: 'zh-TW' },
+    currency,
+    compactMoney
+  );
+  assert.equal(localized(15_846), 'HK$12.4萬');
+  const western = build()(
+    () => ({ currency: 'HKD', compactTokenUnits: 'western' }),
+    { locale: 'zh-TW' },
+    currency,
+    compactMoney
+  );
+  assert.equal(western(15_846), 'HK$123.6K');
+  assert.equal(western(72.697), 'HK$567'); // sub-10k keeps the fixed-digit path
 });
 
 test('the detail total follows the main app compact toggle and unit threshold', () => {
@@ -218,7 +262,7 @@ test('the dock keeps the token total, adds headroom, and dots running rows inste
   const app = readRendererFile('app.js');
   // The token total must survive: headroom is additional, not a replacement for
   // the figure the row already carried.
-  assert.match(dock, /el\('span', 'edge-dock-session-tokens', formatCardTokens\(session\.totalTokens\)\)/);
+  assert.match(dock, /el\('span', 'edge-dock-session-tokens', formatBreakdownTokens\(session\.totalTokens\)\)/);
   // ...and both live on the same row, with the context reading appended to the
   // meta line rather than taking the token column.
   const sessions = dock.slice(dock.indexOf('function sessionsNode('), dock.indexOf('function providerCard('));
