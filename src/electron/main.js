@@ -4714,13 +4714,13 @@ async function startStatsStream(options = {}) {
   }
 }
 
-function showPopover() {
+function showPopover(clickPoint = null) {
   if (!mainWindow || mainWindow.isDestroyed() || !tray) return;
   applyMacActivationPolicy();
   applyMacSpaceBehavior(true);
   applyWindowSettings();
   const current = mainWindow.getBounds();
-  const target = popoverBounds(tray, current.width, current.height);
+  const target = popoverBounds(tray, current.width, current.height, { clickPoint });
   mainWindow.setBounds(target);
   suppressNextBlurHide = true;
   mainWindow.show();
@@ -4735,10 +4735,10 @@ function hidePopover() {
   if (mainWindow.isVisible()) mainWindow.hide();
 }
 
-function togglePopover() {
+function togglePopover(clickPoint = null) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isVisible() && mainWindow.isFocused()) hidePopover();
-  else showPopover();
+  else showPopover(clickPoint);
 }
 
 function focusExistingWindow() {
@@ -5596,9 +5596,9 @@ function handleWindowToggleShortcut() {
   else focusExistingWindow();
 }
 
-function handleTrayToggle() {
+function handleTrayToggle(_tray, clickPoint = null) {
   const action = trayToggleAction(settings);
-  if (action === 'togglePopover') togglePopover();
+  if (action === 'togglePopover') togglePopover(clickPoint);
   else if (action === 'focusWindow') focusExistingWindow();
 }
 
