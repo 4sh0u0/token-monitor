@@ -101,7 +101,6 @@ const { normalizeModelAliases, normalizeModelAliasGrouping, projectModelAliasSta
 const { createHub } = require('../hub/server');
 const { probeHubBuild } = require('./hubBuildStatus');
 const {
-  fetchClaudeLimits,
   normalizeLimitsRefreshMode,
   normalizeLimitsRefreshMs,
   parseBoolean,
@@ -110,7 +109,6 @@ const {
 } = require('../shared/limits/collector');
 const { createCursorUsageEventIndex } = require('../shared/providers/cursor/usageEvents');
 const { limitProviderUrlAllowed } = require('../shared/limits/accounts');
-const { limitProviderEntry } = require('../shared/limits/registry');
 const {
   accountFieldProjection,
   accountStatusProjection,
@@ -123,7 +121,7 @@ const {
   redactThirdPartyProfilesForRenderer,
   rendererOmittedAccountKeys
 } = require('./limits/accountSettings');
-const { fetchOllamaLimits, rememberOllamaValidation } = require('../shared/providers/ollama/limits');
+const { createCredentialCommands } = require('./limits/credentialCommands');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/providers/copilot/deviceFlow');
 const {
   codexAuthIdentity,
@@ -470,7 +468,6 @@ let initialLimitProvidersPending = false;
 // settings are written through saveSettings() after the window exists, so the flag
 // carries the decision from the read to that first save.
 let seededClientSplitsPending = false;
-let claudeWebCookieMutationRevision = 0;
 let persistedSettingsSnapshot = null;
 let credentialStore = null;
 let credentialStorageErrorShown = false;
@@ -808,23 +805,24 @@ function persistClaudeWebCookieRenewal({ previousCookie, cookie } = {}) {
   return true;
 }
 
-// Probe only explicitly validated account forms. The id is untrusted IPC input;
-// the registry supplies both the credential field and its fetcher.
-async function validateLimitCredential(providerId, raw, deps = {}) {
-  const entry = limitProviderEntry(providerId);
-  if (!entry?.form?.validation) return { ok: false, status: 'notConfigured' };
-  const { field } = entry.form;
-  const credential = (deps.normalizeCredential || ((value) => normalizeAccountField(field, value)))(raw);
-  if (!credential) return { ok: false, status: 'notConfigured' };
-  try {
-    const provider = await (deps.fetchLimits || entry.fetchLimits)(
-      { [field]: credential },
-      deps.providerDeps || electronProviderDeps()
-    );
-    return { ok: provider?.status === 'ok', status: provider?.status || 'unavailable' };
-  } catch (error) {
-    return { ok: false, status: error?.status || 'unavailable' };
-  }
+// A save-time probe gets the collector's transports but none of its write-backs:
+// a credential that has not been saved yet must not renew itself into
+// settings, so a rotation is reported into `renewed` and stored with the rest
+// of the draft. A fresh runtime state keeps the probe from reading or seeding
+// the collector's caches; `probe` tells fetchers with persistent bookkeeping
+// (the DeepSeek balance history) to skip it, and `bypassValidationCache` stops
+// Ollama answering from a cached check of a different save.
+function credentialProbeDeps(renewed = {}) {
+  return electronProviderDeps({
+    claudeWebFetch: electronClaudeWebFetch,
+    onClaudeWebCookieRenewed: ({ cookie }) => {
+      renewed.claudeWebCookie = cookie;
+      return true;
+    },
+    providerRuntimeState: new Map(),
+    bypassValidationCache: true,
+    probe: true
+  });
 }
 
 function electronLimitsDeps() {
@@ -6789,8 +6787,16 @@ app.whenReady().then(() => {
       return { ok: false, error: error.message };
     }
   });
-  ipcMain.handle('settings:update', (_event, patch) => {
-    if (patch?.claudeWebCookie !== undefined) claudeWebCookieMutationRevision += 1;
+  const credentialCommands = createCredentialCommands({
+    getSettings: () => settings,
+    applySettingsPatch,
+    probeDeps: credentialProbeDeps
+  });
+  ipcMain.handle('settings:update', (_event, patch) => applySettingsPatch(patch));
+  // The settings:update body, named so a credential save persists through the
+  // exact same normalization, runtime reconfigure and limit invalidation.
+  function applySettingsPatch(patch) {
+    credentialCommands.noteSettingsPatch(patch);
     const previousSettingsState = settings;
     const previousRuntimeSettings = JSON.parse(JSON.stringify(settings));
     const previousNativeMaterial = nativeBlurEnabled();
@@ -7089,7 +7095,7 @@ app.whenReady().then(() => {
     }
     pushSettingsToRenderer();
     return settingsForRenderer();
-  });
+  }
   ipcMain.handle('appearance:preview', (_event, patch) => {
     applyNativeMaterial({ ...settings, ...patch });
     if (patch && patch.zoomFactor !== undefined && mainWindow && !mainWindow.isDestroyed()) {
@@ -7400,73 +7406,8 @@ app.whenReady().then(() => {
       return { ok: false, error: err.message };
     }
   });
-  ipcMain.handle('claude:saveCookie', async (_event, raw) => {
-    const requestRevision = ++claudeWebCookieMutationRevision;
-    let cookie;
-    try {
-      cookie = normalizeAccountField('claudeWebCookie', raw);
-    } catch (error) {
-      return {
-        ok: false,
-        status: 'invalid',
-        errorCode: error?.code || 'INVALID_CLAUDE_WEB_SESSION_KEY'
-      };
-    }
-    if (!cookie) {
-      return {
-        ok: false,
-        status: 'notConfigured',
-        errorCode: 'INVALID_CLAUDE_WEB_SESSION_KEY'
-      };
-    }
-    try {
-      let cookieToPersist = cookie;
-      const provider = await fetchClaudeLimits(
-        { claudeWebCookie: cookie },
-        {
-          claudeWebFetch: electronClaudeWebFetch,
-          providerRuntimeState: new Map(),
-          onClaudeWebCookieRenewed: ({ cookie: renewedCookie }) => {
-            cookieToPersist = renewedCookie;
-          }
-        }
-      );
-      if (provider?.status !== 'ok') {
-        return {
-          ok: false,
-          status: provider?.status || 'error'
-        };
-      }
-      if (claudeWebCookieMutationRevision !== requestRevision) {
-        return {
-          ok: false,
-          status: 'superseded',
-          superseded: true
-        };
-      }
-      settings.claudeWebCookie = cookieToPersist;
-      saveSettings({ throwOnError: true });
-      void queueLimitInvalidation({ provider: 'claude' }, 'login', { clear: true });
-      return {
-        ok: true,
-        status: 'ok'
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        status: error?.status || 'error',
-        errorCode: error?.code || ''
-      };
-    }
-  });
-  ipcMain.handle('ollama:validateCookie', async (_event, raw) => {
-    const cookie = normalizeAccountField('ollamaCookie', raw);
-    if (!cookie) return { ok: false, status: 'notConfigured' };
-    const provider = await fetchOllamaLimits({ ollamaCookie: cookie }, electronProviderDeps({ bypassValidationCache: true }));
-    rememberOllamaValidation(cookie, provider);
-    return { ok: provider.status === 'ok', status: provider.status };
-  });
-  ipcMain.handle('limits:validateCredential', (_event, providerId, raw) => validateLimitCredential(providerId, raw));
+  ipcMain.handle('limits:saveCredential', (_event, providerId, values) => credentialCommands.saveCredential(providerId, values));
+  ipcMain.handle('limits:clearCredential', (_event, providerId) => credentialCommands.clearCredential(providerId));
   ipcMain.handle('opencode:saveCookie', async (_event, raw) => {
     const cookie = opencodeWeb.sanitizeCookieHeader(raw);
     if (!cookie) {
