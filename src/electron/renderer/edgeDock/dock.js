@@ -38,6 +38,7 @@ const { CLIENT_LABELS } = window.TokenMonitorClientCatalog;
 // payload on a timer, so whether a session is still running has to be answered
 // at paint time rather than frozen at push time.
 const sessionLive = window.TokenMonitorSessionLive;
+const sessionRowsApi = window.TokenMonitorSessionRows;
 const SESSION_STATE_GLYPHS = sessionLive.sessionStateMarkup({
   spin: 'edge-dock-session-spin',
   check: 'edge-dock-session-check',
@@ -208,8 +209,9 @@ function clientLabel(id) {
   return CLIENT_LABELS[id] || LIMIT_PROVIDER_LABELS[id] || id;
 }
 
-// Whether styles.css defines a mask for `.row-icon-<id>`. Probed rather than
-// listed so the dock can never drift from the icon table it borrows.
+// Whether `.row-icon-<id>` has a mask — a vendor mark installed by
+// rowIconMasks.js, or one of the few styles.css keeps (token-monitor). Probed
+// rather than listed so the dock can never drift from the rules it borrows.
 function hasMask(id) {
   if (maskSupport.has(id)) return maskSupport.get(id);
   const probe = el('span', `row-icon-${id}`);
@@ -363,6 +365,10 @@ const limitWindowsView = limitWindowsViewApi.createLimitWindowsView({
     }
   },
   formatCompact: formatTokens,
+  compactTokenThreshold: () => compactTokenApi.compactTokenUnitThreshold(
+    compactTokenApi.effectiveCompactTokenUnits(appearance().compactTokenUnits, state.locale),
+    state.locale
+  ),
   formatMoney: balanceDisplay.formatMoney,
   formatCompactMoney: (value, currency) => balanceDisplay.formatCompactMoney(
     value, currency, appearance().compactTokenUnits, state.locale
@@ -944,7 +950,11 @@ function sessionsContainer(sessions, options = {}) {
     // The meta line carries model, age, and (when the transcript stated one)
     // the context reading, so nothing the row showed before is displaced.
     const meta = el('span', 'edge-dock-session-meta');
-    meta.append(document.createTextNode([session.model, relativeAgo(session.lastUsedAt)].filter(Boolean).join(' · ')));
+    // The model label is composed by the Sessions list's own helper, so a
+    // multi-model session reads "N models" here exactly as it does there —
+    // projecting only the top model showed a different name than the list's
+    // for the same session.
+    meta.append(document.createTextNode([sessionRowsApi.sessionModelLabel(session), relativeAgo(session.lastUsedAt)].filter(Boolean).join(' · ')));
     const context = contextNode(session);
     if (context) meta.append(context);
     row.append(
