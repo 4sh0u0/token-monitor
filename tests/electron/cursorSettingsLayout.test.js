@@ -202,7 +202,7 @@ test('Cursor account header uses the shared linked-account summary', () => {
 
 test('Cursor settings use the shared multi-account rows and inline add flow', () => {
   const html = readRendererFile('index.html');
-  const details = html.match(/<div id="cursorSettingsDetails"[\s\S]*?<div id="cursorErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
+  const details = html.match(/<div id="cursorSettingsDetails"[\s\S]*?<div id="cursorErrorMessage" class="settings-note error hidden" role="alert"><\/div>/)?.[0] || '';
   assert.match(details, /id="cursorAddAccountButton" class="opencode-add-summary"[^>]*aria-expanded="false"[^>]*aria-controls="cursorManualDetails"/);
   assert.match(details, /<svg class="add-icon"/);
   assert.doesNotMatch(details, /cursorRefreshButton|>Refresh<|>重新整理</);
@@ -271,7 +271,7 @@ test('Cursor account discovery runs automatically without a separate refresh act
 
 test('OpenCode account panel provides multi-profile management', () => {
   const html = readRendererFile('index.html');
-  const details = html.match(/<div id="opencodeSettingsDetails"[\s\S]*?<div id="opencodeErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
+  const details = html.match(/<div id="opencodeSettingsDetails"[\s\S]*?<div id="opencodeErrorMessage" class="settings-note error hidden" role="alert"><\/div>/)?.[0] || '';
   assert.match(details, /<div id="opencodeProfileList" class="opencode-profile-list"><\/div>/);
   assert.match(details, /<div id="opencodeAddForm" class="opencode-add-form">/);
   assert.match(details, /<button id="opencodeAddToggle" class="opencode-add-summary" type="button" aria-expanded="false" aria-controls="opencodeAddDetails">/);
@@ -298,7 +298,7 @@ test('OpenCode account panel provides multi-profile management', () => {
   // DevTools instructions.
   assert.match(details, /<div id="opencodeCookieFields" class="opencode-credential-fields hidden">/);
   assert.match(details, /<div class="settings-actions">\s*<button id="opencodeCookieSubmit" data-i18n="settings\.opencode\.saveProfile">/);
-  assert.match(details, /<div id="opencodeErrorMessage" class="settings-note error hidden"><\/div>/);
+  assert.match(details, /<div id="opencodeErrorMessage" class="settings-note error hidden" role="alert"><\/div>/);
 
   const app = readRendererFile('app.js');
   assert.match(app, /function renderOpenCodeProfiles\(\)/);
@@ -320,7 +320,7 @@ test('OpenCode account panel provides multi-profile management', () => {
   assert.match(setupBody, /window\.tokenMonitor\.opencode\.saveProfile\(\s*name,\s*cookie,\s*opencodeCredentialKind,\s*\{ merge \}\s*\)/);
   assert.match(setupBody, /await submit\(false\);/);
   assert.match(setupBody, /if \(result\.nameTaken && addMergeOffer\)/);
-  assert.match(setupBody, /confirmOpenCodeMerge = \(\) => submit\(true\);/);
+  assert.match(setupBody, /confirmOpenCodeMerge = \(\) => accountProfileSaves\.run\('opencode', addMergeButton, \(\) => submit\(true\)\);/);
   // `submit` closes over the name and credential captured when Save was pressed,
   // so any edit afterwards has to withdraw the offer: the backend still demands
   // `merge`, but the click it receives would otherwise be consent to a proposal
@@ -846,11 +846,11 @@ test('API key account entries share styling and Copilot uses the folded token en
 
 test('Copilot account panel provides GitHub sign-in plus manual token fallback', () => {
   const html = readRendererFile('index.html');
-  const details = html.match(/<div id="copilotSettingsDetails"[\s\S]*?<div id="copilotErrorMessage" class="settings-note error hidden"><\/div>/)?.[0] || '';
+  const details = html.match(/<div id="copilotSettingsDetails"[\s\S]*?<div id="copilotErrorMessage" class="settings-note error hidden" role="alert"><\/div>/)?.[0] || '';
   assert.match(details, /<button id="copilotSignInButton"[\s\S]*data-i18n="settings\.copilot\.signIn">/);
   assert.match(details, /<button id="copilotCancelSignInButton" class="hidden" data-i18n="settings\.common\.cancel">/);
   assert.match(details, /<button id="copilotLogoutButton" class="hidden" data-i18n="settings\.copilot\.logout">/);
-  assert.match(details, /<pre id="copilotLoginStatus" class="codex-login-output hidden"><\/pre>/);
+  assert.match(details, /<pre id="copilotLoginStatus" class="codex-login-output hidden" role="status" aria-live="polite"><\/pre>/);
   assert.match(details, /<button id="copilotManualToggle"[\s\S]*aria-controls="copilotManualDetails"/);
   assert.match(details, /<div id="copilotManualDetails" class="opencode-add-details accordion-animated-container hidden">/);
   assert.match(details, /<input id="copilotApiTokenInput" type="password"[\s\S]*data-i18n-placeholder="settings\.copilot\.apiTokenPlaceholder"/);
@@ -876,7 +876,7 @@ test('Copilot account panel provides GitHub sign-in plus manual token fallback',
   const renderBody = functionBody(app, 'renderCopilotStatus', 'renderOpenCodeProfiles');
   assert.match(renderBody, /cancelBtn\.classList\.toggle\('hidden', !state\.copilotSignInBusy \|\| !state\.copilotSignInCancelable \|\| linked\)/);
   assert.match(renderBody, /refreshBtn\.classList\.toggle\('hidden', !configured \|\| \(state\.copilotSignInBusy && !linked\)\)/);
-  assert.match(renderBody, /errorEl\.textContent = state\.copilotErrorMessage \|\| '';/);
+  assert.match(renderBody, /accountShellApi\.render\(\{[\s\S]*?error: errorEl,\s*errorText: state\.copilotErrorMessage/);
   assert.doesNotMatch(renderBody, /errorEl\.textContent = '';/);
 
   const statusBody = functionBody(app, 'copilotAccountStatusText', 'apiKeyAccountStatusText');
@@ -1660,7 +1660,7 @@ test('an account message survives the stats re-renders until its own condition r
 
 test('account credentials persist through the settings:update body, not a second write path', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'electron', 'main.js'), 'utf8');
-  assert.match(main, /ipcMain\.handle\('settings:update', \(_event, patch\) => applySettingsPatch\(patch\)\);/);
+  assert.match(main, /ipcMain\.handle\('settings:update', async \(_event, patch\) => \{\s*const result = applySettingsPatch\(patch\);/);
   assert.match(main, /createCredentialCommands\(\{\s*getSettings: \(\) => settings,\s*applySettingsPatch,\s*probeDeps: credentialProbeDeps\s*\}\)/);
   const body = main.slice(main.indexOf('function applySettingsPatch(patch) {'), main.indexOf("ipcMain.handle('appearance:preview'"));
   assert.match(body, /credentialCommands\.noteSettingsPatch\(patch\);/);
@@ -2658,7 +2658,7 @@ test('main settings normalize sync upload intervals and restart only the device 
   assert.match(syncCollector, /createSyncUploadScheduler\(\{/);
   assert.match(syncCollector, /intervalMs: syncUploadIntervalMs\(\)/);
   assert.match(syncCollector, /const visibleSummary = \{[\s\S]*\.\.\.summary,[\s\S]*syncUploadIntervalMs: syncUploadIntervalMs\(\)[\s\S]*\};/);
-  assert.match(syncCollector, /transformUsage: summaryWithArchivedClientUsage/);
+  assert.match(syncCollector, /transformUsage: usageTransform\.transform/);
   assert.match(syncCollector, /await syncUploadScheduler\.enqueue\(visibleSummary, revision\)/);
 
   const hostCollector = main.slice(main.indexOf('function startHostCollector'), main.indexOf('function stopHostStats'));

@@ -18,7 +18,14 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
   getBackgroundImage: () => ipcRenderer.invoke('appearance:getBackgroundImage'),
   chooseBackgroundImage: () => ipcRenderer.invoke('appearance:chooseBackgroundImage'),
   clearBackgroundImage: () => ipcRenderer.invoke('appearance:clearBackgroundImage'),
+  getNativeMaterialState: () => ipcRenderer.invoke('appearance:getNativeMaterial'),
+  onNativeMaterialState: (callback) => {
+    const listener = (_event, state) => { try { callback(state); } catch (_) {} };
+    ipcRenderer.on('appearance:nativeMaterial', listener);
+    return () => ipcRenderer.removeListener('appearance:nativeMaterial', listener);
+  },
   getStats: (options) => ipcRenderer.invoke('stats:get', options),
+  getAllTimeSessions: (snapshotId) => ipcRenderer.invoke('stats:allTimeSessions', snapshotId),
   getSessionDetail: (args) => ipcRenderer.invoke('session:getDetail', args),
   getStreamStatus: () => ipcRenderer.invoke('stream:status'),
   getServiceStatus: (options) => ipcRenderer.invoke('serviceStatus:get', options),

@@ -91,13 +91,20 @@ const { deviceRecordFromAnchor } = require('../shared/anchorSeed');
 const { sendWhenRendererReady } = require('./deferredWindowSend');
 const { actionWindowForEvent, handoffWindow, showWindow } = require('./windowLifecycle');
 const { applyInitialLimitProviderSeed } = require('./initialLimitProviderSeed');
-const { createDeviceRuntime } = require('../shared/deviceRuntime');
+const { createDeviceRuntime } = require('../shared/usage/deviceRuntime');
+const { externalAgentActive } = require('../shared/usage/agentPid');
 const { createDiagnosticJournal } = require('../shared/diagnosticJournal');
 const { createDiagnosticReportGenerator } = require('./diagnostics');
 const { createDiagnosticSnapshotBuilder, diagnosticStreamDetailCode, selectLocalDeviceRecord } = require('./diagnosticSnapshot');
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
-const { normalizeModelAliases, normalizeModelAliasGrouping, projectModelAliasStats, projectModelAliasHistory } = require('./modelAliasPresentation');
+const {
+  normalizeModelAliases,
+  normalizeModelAliasGrouping,
+  projectModelAliasStats,
+  projectModelAliasSessions,
+  projectModelAliasHistory
+} = require('./modelAliasPresentation');
 const { createHub } = require('../hub/server');
 const { probeHubBuild } = require('./hubBuildStatus');
 const {
@@ -229,23 +236,19 @@ const { normalizeCurrency, resolveEffectiveRates, configureRates } = require('..
 const { normalizeCompactTokenUnits } = require('../shared/compactTokens');
 const { fetchRates, isCacheStale } = require('../shared/exchangeRates');
 const {
-  applyArchivedClientUsage,
   captureArchivedClientUsage,
   normalizeArchivedClientUsage,
   pruneArchivedClientUsage
-} = require('../shared/clientUsageArchive');
-const {
-  applySessionUsageArchive,
-  normalizeSessionUsageArchive,
-  sessionUsageArchiveDate
-} = require('../shared/sessionUsageArchive');
+} = require('../shared/usage/clientUsageArchive');
+const { sessionUsageArchiveDate } = require('../shared/usage/sessionUsageArchive');
 const {
   createSessionUsageArchiveStore,
-  readSessionUsageArchiveSnapshot,
   sessionUsageArchiveDatabasePath
-} = require('../shared/sessionUsageArchiveStore');
+} = require('../shared/usage/sessionUsageArchiveStore');
+const { createUsageTransform, usageTransformSettings } = require('../shared/usage/usageTransform');
+const { createUsageHost, terminateUsageHostSubprocesses, whenUsageHostsIdle } = require('../shared/usage/usageHost');
 const { clearDailyHistoryArchive } = require('../shared/dailyHistoryArchive');
-const { aggregateDevices, aggregateHistory, applyProjectRollups } = require('../shared/usage');
+const { aggregateDevices, aggregateHistory } = require('../shared/usage');
 const {
   HUB_RESPONSE_HEADER,
   HUB_RESPONSE_MINIMAL,
@@ -317,8 +320,17 @@ const { classifyStreamFailure } = require('./syncConnection');
 const {
   attachLocalNativeViews,
   attachLocalPresentationNativeViews,
-  composeLocalSyncStats
+  completeLocalSyncStats,
+  composeLocalOnlySummary,
+  composeLocalSyncSummary
 } = require('./syncDisplayStats');
+const {
+  createRendererSnapshots,
+  createStatsPresentationCache,
+  createStatsPublicationBatcher,
+  rendererStats
+} = require('./statsPublisher');
+const { createSseBlockReader, parseSseBlock } = require('./sseEventReader');
 const { createSyncUploadScheduler, normalizeSyncUploadIntervalMs } = require('./syncUploadScheduler');
 const { createLatestWinsReconciler } = require('./latestWinsReconciler');
 const {
@@ -385,6 +397,7 @@ const {
 const { buildEdgeDockCells } = require('./renderer/edgeDock/presentation');
 const { DERIVED_PERIODS: EDGE_DOCK_DERIVED_PERIODS, normalizeEdgeDockItems } = require('./renderer/edgeDock/items');
 const fixedPeriodRangesApi = require('./renderer/fixedPeriodRanges');
+const { normalizeBackgroundImageOpacity } = require('./renderer/glassRendering');
 const tokenRateApi = require('./renderer/tokenRatePresentation');
 const { toPolygons } = require('./renderer/edgeDock/shapes');
 const { rasterizeMask } = require('./edgeDock/mask');
@@ -398,9 +411,18 @@ const {
 } = require('./windowsBackdropMode');
 const { applyWindowsAccentBlur } = require('./windowsBackdrop');
 const {
+  MAC_BACKDROP_LIQUID_GLASS,
+  normalizeMacBackdropMode,
+  normalizeEdgeDockBackdropMode,
+  edgeDockBackdropMode
+} = require('./macBackdropMode');
+const {
   attachNativeMaterialVisibility,
-  syncNativeMaterialVisibility
+  syncNativeMaterialVisibility,
+  getNativeMaterialState
 } = require('./nativeMaterialVisibility');
+const { createMacLiquidGlass } = require('./macLiquidGlass');
+const { isLightHex } = require('./renderer/themePresets');
 
 if (!app.isPackaged) loadDotEnv();
 
@@ -457,9 +479,7 @@ const DEFAULT_HOME_MODULE_LIST = ['limits', 'tool', 'device', 'model', 'trends']
 const TRAY_OPEN_VIEW_IDS = new Set(['home', 'project', 'session', 'limits', 'trends', 'status']);
 
 let mainWindow = null;
-let mainWindowNativeBlurEnabled = false;
 let dashboardWindow = null;
-let dashboardWindowNativeBlurEnabled = false;
 let settingsPath = null;
 let settings = null;
 let initialLimitProvidersPending = false;
@@ -472,13 +492,7 @@ let persistedSettingsSnapshot = null;
 let credentialStore = null;
 let credentialStorageErrorShown = false;
 let antigravityOAuthLoginController = null;
-let sessionUsageArchive = null;
 const sessionUsageArchiveStore = createSessionUsageArchiveStore({ cursorUsageEvents: createCursorUsageEventIndex() });
-let lastSessionUsageArchiveUpdate = {
-  at: null,
-  durationMs: null,
-  failureCode: null
-};
 let rendererViewState = normalizeInitialRendererViewState();
 const serviceStatusClient = createServiceStatusClient();
 const codexResetForecastClient = createCodexResetForecastClient({
@@ -527,8 +541,10 @@ function defaultSettings() {
     refreshMs: Number(process.env.TOKEN_MONITOR_WIDGET_REFRESH_MS || 15000),
     glassOpacity: 68,
     glassBlur: 32,
+    backgroundImageOpacity: 28,
     systemGlass: true,
     windowsBackdrop: 'acrylic',
+    macBackdrop: 'vibrancy',
     reduceMotion: 'system',
     showLiveDot: true,
     showToolIcons: true,
@@ -560,6 +576,7 @@ function defaultSettings() {
     edgeDockMode: 'autoHide',
     edgeDockHaptic: true,
     edgeDockWarnColors: false,
+    edgeDockMacBackdrop: 'inherit',
     edgeDockSide: 'right',
     edgeDockOffset: null,
     edgeDockDisplayId: null,
@@ -2397,6 +2414,7 @@ function readSettings() {
       seededClientSplitsPending = true;
     }
     merged.customScanPaths = normalizeCustomScanPaths(merged.customScanPaths);
+    merged.backgroundImageOpacity = normalizeBackgroundImageOpacity(merged.backgroundImageOpacity);
     // A missing settings file is the only reliable fresh-install signal: a
     // missing limitProviders field also occurs when an existing installation
     // upgrades, where changing the user's effective defaults would be wrong.
@@ -2521,6 +2539,7 @@ function readSettings() {
     merged.edgeDockMode = merged.edgeDockMode === 'always' ? 'always' : 'autoHide';
     merged.edgeDockHaptic = parseBoolean(merged.edgeDockHaptic, true);
     merged.edgeDockWarnColors = parseBoolean(merged.edgeDockWarnColors, false);
+    merged.edgeDockMacBackdrop = normalizeEdgeDockBackdropMode(merged.edgeDockMacBackdrop);
     merged.edgeDockItems = normalizeEdgeDockItems(merged.edgeDockItems);
     merged.trayCustomLayout = normalizeTrayLayout(merged.trayCustomLayout);
     merged.showTrayProviderBadge = parseBoolean(merged.showTrayProviderBadge, false);
@@ -2637,77 +2656,24 @@ function updateArchivedClientUsage(previousClients, nextClients) {
   settings.archivedClientUsage = archive;
 }
 
-function ensureSessionUsageArchiveLoaded() {
-  if (sessionUsageArchive) return sessionUsageArchive;
-  try {
-    // The headless agent owns migration and pruning while its PID is active.
-    // Anchor projection must not turn Electron into a second archive writer.
-    sessionUsageArchive = isExternalAgentActive()
-      ? readSessionUsageArchiveSnapshot()
-      : sessionUsageArchiveStore.read();
-  } catch (error) {
-    console.log(`[session-archive] read failed: ${error.message}`);
-    sessionUsageArchive = normalizeSessionUsageArchive({});
-  }
-  return sessionUsageArchive;
-}
+const usageTransform = createUsageTransform({
+  store: sessionUsageArchiveStore,
+  getSettings: () => settings,
+  isExternalAgentActive,
+  onCaptureFailure: () => diagnosticJournal.record({ subsystem: 'storage', code: 'storage-archive-update-failed' })
+});
 
-function updateSessionUsageArchive(summary, now) {
-  const startedAt = Date.now();
-  const finish = (failureCode = null) => {
-    lastSessionUsageArchiveUpdate = {
-      at: new Date().toISOString(),
-      durationMs: Math.max(0, Date.now() - startedAt),
-      failureCode
-    };
-  };
-  try {
-    const result = sessionUsageArchiveStore.capture(summary, now);
-    sessionUsageArchive = result.archive;
-    if (result.error) throw result.error;
-  } catch (error) {
-    finish('archive-write-failed');
-    diagnosticJournal.record({ subsystem: 'storage', code: 'storage-archive-update-failed' });
-    console.log(`[session-archive] write failed: ${error.message}`);
-    return sessionUsageArchive || ensureSessionUsageArchiveLoaded();
-  }
-  finish();
-  return sessionUsageArchive;
-}
-
-// Read-only projection of both archives onto a summary. Un-tracked clients and
-// retained sessions add to the period totals, not just to the breakdowns, so
-// anything rendered without this reads low. Takes the session archive as an
-// argument because capturing into it is a separate decision, see below.
-function summaryWithArchivesApplied(summary, sessionArchive, now) {
-  const withArchivedClients = applyArchivedClientUsage(summary, settings?.archivedClientUsage, {
-    activeClients: settings?.clients,
-    now
+// The usage runtime every device runtime starts. Collection and the transform
+// run on a worker thread (usageHost.js) and summaries arrive transformed. With
+// TOKEN_MONITOR_USAGE_WORKER=0, or once the worker has failed, it is the
+// in-process collector and `usageTransform` above runs on this thread.
+let latestUsageHost = null;
+function createElectronUsageRuntime(options) {
+  latestUsageHost = createUsageHost(options, {
+    agentPidPath: AGENT_PID_PATH,
+    transformSettings: usageTransformSettings(settings)
   });
-  const visibleSummary = settings?.sessionUsageArchiveEnabled === false
-    ? withArchivedClients
-    : applySessionUsageArchive(withArchivedClients, sessionArchive, {
-        now,
-        canonical: true,
-        canonicalSummary: true,
-        mutate: true
-      });
-  return settings?.projectsEnabled === false ? visibleSummary : applyProjectRollups(visibleSummary);
-}
-
-function summaryWithArchivedClientUsage(summary) {
-  const now = sessionUsageArchiveDate(summary);
-  if (settings?.sessionUsageArchiveEnabled === false) return summaryWithArchivesApplied(summary, null, now);
-  if (isExternalAgentActive()) {
-    try {
-      sessionUsageArchive = sessionUsageArchiveStore.refresh(now);
-    } catch (error) {
-      console.log(`[session-archive] refresh failed: ${error.message}`);
-      sessionUsageArchive = sessionUsageArchive || normalizeSessionUsageArchive({});
-    }
-    return summaryWithArchivesApplied(summary, sessionUsageArchive, now);
-  }
-  return summaryWithArchivesApplied(summary, updateSessionUsageArchive(summary, now), now);
+  return latestUsageHost;
 }
 
 function applyMacActivationPolicy(state = {}) {
@@ -2821,22 +2787,23 @@ function nativeBlurEnabled(source = settings) {
   return floatingBubbleNativeGlassEnabled(source);
 }
 
+function nativeMaterialOptions(source = settings, dashboard = false) {
+  return {
+    enabled: nativeBlurEnabled(source),
+    liquidGlass: normalizeMacBackdropMode(source.macBackdrop) === MAC_BACKDROP_LIQUID_GLASS,
+    opaque: dashboard && source.dashboardFlat === true,
+    reducedTransparency: nativeTheme.prefersReducedTransparency === true,
+    highContrast: nativeTheme.shouldUseHighContrastColors === true,
+    dark: !isLightHex(source.themeColors?.bg),
+    radius: !dashboard && floatingBubbleState.collapsed ? 17 : 14
+  };
+}
+
 function applyNativeMaterial(source = settings) {
-  const enabled = nativeBlurEnabled(source);
-  if (mainWindow && !mainWindow.isDestroyed() && mainWindowNativeBlurEnabled !== enabled) {
-    mainWindowNativeBlurEnabled = enabled;
-    syncNativeMaterialVisibility(mainWindow, enabled);
-  }
-  // This also runs for every appearance slider preview and floating-bubble
-  // transition, so re-applying an unchanged material would rebuild its native
-  // effect view for nothing.
-  if (dashboardWindow && !dashboardWindow.isDestroyed() && dashboardWindowNativeBlurEnabled !== enabled) {
-    dashboardWindowNativeBlurEnabled = enabled;
-    syncNativeMaterialVisibility(dashboardWindow, enabled);
-  }
-  // Windows: backgroundMaterial is locked in at window creation. setBackgroundMaterial('none')
-  // does not restore layered-window transparency once DWM SystemBackdrop has been engaged,
-  // so toggling is handled by rebuildWindow() instead.
+  syncNativeMaterialVisibility(mainWindow, nativeMaterialOptions(source));
+  syncNativeMaterialVisibility(dashboardWindow, nativeMaterialOptions(source, true));
+  // Windows' material is still construction-time; its existing rebuild path
+  // handles setting changes. The macOS manager avoids recreating stable views.
 }
 
 function withHistoryPreview(stats, devices) {
@@ -2893,13 +2860,52 @@ function syncProvenanceActive() {
   return mode === 'sync' || Boolean(String(settings?.hubUrl || '').trim());
 }
 
+const presentationCache = createStatsPresentationCache();
+
+// Every input besides `stats` belongs in the cache key, or a settings change
+// would keep serving the projection it replaced.
 function electronPresentationStats(stats) {
-  return projectModelAliasStats(projectLimitStatsForDisplay(stats, {
+  const limitOptions = {
     localDeviceId: settings?.deviceId,
     syncActive: syncProvenanceActive(),
     opencodeLocalLimitsEnabled: settings?.opencodeLocalLimitsEnabled === true
-  }), settings?.modelAliases, { grouping: settings?.modelAliasGrouping });
+  };
+  const aliases = settings?.modelAliases;
+  const grouping = settings?.modelAliasGrouping;
+  const key = JSON.stringify([limitOptions, aliases ?? null, grouping ?? null]);
+  return presentationCache.get(stats, key, () => projectModelAliasStats(
+    projectLimitStatsForDisplay(stats, limitOptions),
+    aliases,
+    { grouping }
+  ));
 }
+
+const allTimeSessionsCache = createStatsPresentationCache();
+const rendererSnapshots = createRendererSnapshots({ source: () => hubModeGeneration });
+// The local record each Hub snapshot was shown with, captured where the
+// snapshot was built. The collector replaces the live one between publishes.
+const snapshotLocalDevices = new WeakMap();
+
+// The renderer's all-time session list, which rendererStats() keeps out of every
+// push, for the snapshot the renderer is showing. A Hub aggregate carries no
+// all-time session detail (syncPayload drops it from uploads, #118), so a Hub
+// snapshot rebuilds the list: the Hub's cross-device month sessions, then this
+// machine's own full all-time list as it stood when the snapshot was built.
+function rendererAllTimeSessions(stats) {
+  if (!stats) return null;
+  const aliases = settings?.modelAliases;
+  const grouping = settings?.modelAliasGrouping;
+  const key = JSON.stringify([aliases ?? null, grouping ?? null]);
+  return allTimeSessionsCache.get(stats, key, () => {
+    const complete = completeLocalSyncStats(stats);
+    const hubSnapshot = snapshotLocalDevices.get(stats);
+    const sessions = hubSnapshot
+      ? mergedLocalAllTimeSessions(complete.periods, hubSnapshot.localDevice)
+      : complete.periods?.allTime?.sessions || {};
+    return projectModelAliasSessions(stats, sessions, aliases, { grouping });
+  });
+}
+
 let codexPresentationPendingSince = 0;
 let trayCodexSwitchInFlight = false;
 const DEFAULT_EXPORT_INTERVAL_MS = 60 * 1000;
@@ -3008,13 +3014,13 @@ const diagnosticSnapshotBuilder = createDiagnosticSnapshotBuilder({
   getJournalSnapshot: () => diagnosticJournal.getSnapshot(),
   getArchiveState: () => {
     const enabled = settings?.sessionUsageArchiveEnabled !== false;
-    const loaded = sessionUsageArchive !== null;
+    const { loaded, sessionCount, lastUpdate } = latestUsageHost?.getArchiveState?.() || usageTransform.getState();
     return {
       enabled,
       loaded,
-      sessionCount: loaded ? Object.keys(sessionUsageArchive?.sessions || {}).length : null,
+      sessionCount,
       countSource: loaded ? 'loaded-memory' : enabled ? 'not-loaded' : 'not-enabled',
-      lastUpdate: lastSessionUsageArchiveUpdate
+      lastUpdate
     };
   },
   getAppVersion: appVersion,
@@ -3218,13 +3224,7 @@ async function stopEmbeddedHub() {
 }
 
 function isExternalAgentActive() {
-  try {
-    const raw = fs.readFileSync(AGENT_PID_PATH, 'utf8').trim();
-    const pid = parseInt(raw, 10);
-    if (!pid || pid === process.pid) return false;
-    process.kill(pid, 0);
-    return true;
-  } catch (_) { return false; }
+  return externalAgentActive(AGENT_PID_PATH);
 }
 
 function ownsUsageRuntime() {
@@ -3786,6 +3786,29 @@ function stopSyncCollector(options = {}) {
   deviceRuntimeHandle = null;
 }
 
+// Well inside the 3–5 s update promise: a watch tick already waits out its own
+// debounce and scan before it gets here.
+const SYNC_STATS_PUBLISH_WINDOW_MS = 1000;
+const syncStatsPublication = createStatsPublicationBatcher({
+  windowMs: SYNC_STATS_PUBLISH_WINDOW_MS,
+  publish: publishSyncDisplayStats
+});
+
+// Client mode's local ticks and Hub events both land here. The composition reads
+// the newest Hub cache and local record when the window closes, so a request
+// only has to say why it was made.
+function requestSyncDisplayStats(request) {
+  syncStatsPublication.request(request);
+}
+
+function publishSyncDisplayStats({ reason, at, generation, widgetProducerOwner }) {
+  if (!hubModeRequestIsCurrent(generation, 'client')) return;
+  const displayStats = composeLocalSyncSummary(latestHubStats, lastCollectedDevice);
+  if (!displayStats) return;
+  updateDiscordRpcDisplay(displayStats);
+  sendPush({ event: 'stats', data: { type: 'stats', reason, stats: displayStats, at } }, { widgetProducerOwner });
+}
+
 function startSyncCollector() {
   stopSyncCollector();
   if (!effectiveHubConfig().url) return;
@@ -3798,17 +3821,18 @@ function startSyncCollector() {
   const sink = {
     async enqueue(summary, revision) {
       seedInitialLimitProviders(summary);
-      if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
+      if (isExternalAgentActive()) { usageTransform.forget(); return; }
       const visibleSummary = {
         ...summary,
         syncUploadIntervalMs: syncUploadIntervalMs()
       };
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
-      const displayStats = composeLocalSyncStats(latestHubStats, lastCollectedDevice);
-      if (displayStats) {
-        updateDiscordRpcDisplay(displayStats);
-        sendPush({ event: 'stats', data: { type: 'stats', reason: 'local', stats: displayStats, at: new Date().toISOString() } }, { widgetProducerOwner });
-      }
+      requestSyncDisplayStats({
+        reason: 'local',
+        at: new Date().toISOString(),
+        generation: hubModeGeneration,
+        widgetProducerOwner
+      });
       await syncUploadScheduler.enqueue(visibleSummary, revision);
     },
     flush: () => syncUploadScheduler.flush(),
@@ -3819,12 +3843,13 @@ function startSyncCollector() {
     envelope: electronDeviceEnvelope(),
     initialLimits: lastCollectedDevice?.limits,
     limitsOptions: electronLimitsConfig(),
-    transformUsage: summaryWithArchivedClientUsage,
+    transformUsage: usageTransform.transform,
     usageOptions,
     sink,
     onDiagnosticEvent: recordDiagnosticEvent,
     onError: (error, reason) => console.log(`[sync-collector] ${reason}: ${error.message}`)
   }, {
+    createUsageRuntime: createElectronUsageRuntime,
     limitsDeps: electronLimitsDeps()
   });
   usageRuntimeReconciler.setActiveKey(usageConfigFingerprint(usageOptions));
@@ -3839,7 +3864,7 @@ function startHostCollector() {
   const sink = {
     enqueue(summary) {
       seedInitialLimitProviders(summary);
-      if (isExternalAgentActive()) { sessionUsageArchive = null; return; }
+      if (isExternalAgentActive()) { usageTransform.forget(); return; }
       const visibleSummary = summary;
       lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
       if (!embeddedHub) return;
@@ -3867,12 +3892,13 @@ function startHostCollector() {
     envelope: electronDeviceEnvelope(),
     initialLimits: lastCollectedDevice?.limits,
     limitsOptions: electronLimitsConfig(),
-    transformUsage: summaryWithArchivedClientUsage,
+    transformUsage: usageTransform.transform,
     usageOptions,
     sink,
     onDiagnosticEvent: recordDiagnosticEvent,
     onError: (error, reason) => console.log(`[host-collector] ${reason}: ${error.message}`)
   }, {
+    createUsageRuntime: createElectronUsageRuntime,
     limitsDeps: electronLimitsDeps()
   });
   usageRuntimeReconciler.setActiveKey(usageConfigFingerprint(usageOptions));
@@ -3927,19 +3953,7 @@ function injectLocalDeviceStatus(stats) {
       if (lastCollectedDevice.wslStatus) device.wslStatus = lastCollectedDevice.wslStatus;
     }
   }
-  // syncPayload drops the unbounded allTime.sessions from uploads (#118), so a hub
-  // aggregate carries no all-time session detail and the TOTAL session view would fall back
-  // to a model list. Rebuild the list — the hub's cross-device month sessions as the
-  // immediate baseline (present on the first frame, before this restart's first local scan),
-  // then this machine's own full all-time sessions once collected (free, in-process). Carry
-  // it as a display-only sibling instead of mutating periods.allTime.sessions: the exporter
-  // writes periods verbatim under a lossless contract, so the export must keep the true
-  // aggregate. The renderer overlays this onto periods.allTime for the session view.
-  // Only sync/host mode needs this: in local mode periods.allTime.sessions already holds the
-  // full native list, so building the sibling there would just ship the unbounded map twice.
-  if (mode !== 'local' && stats.periods?.allTime) {
-    stats.allTimeSessionsView = mergedLocalAllTimeSessions(stats.periods, lastCollectedDevice);
-  }
+  if (mode !== 'local') snapshotLocalDevices.set(stats, { localDevice: lastCollectedDevice });
   return stats;
 }
 
@@ -4181,7 +4195,7 @@ function sendPush(payload, options = {}) {
     const visibleStats = electronPresentationStats(latestStats);
     rendererPayload = {
       ...payload,
-      data: { ...payload.data, stats: visibleStats }
+      data: { ...payload.data, stats: rendererSnapshots.stamp(latestStats, rendererStats(visibleStats)) }
     };
     scheduleMacWidgetSnapshot(visibleStats, options.widgetProducerOwner);
     updateEdgeDockCells(visibleStats);
@@ -4189,7 +4203,7 @@ function sendPush(payload, options = {}) {
     updateTrayDisplay();
     if (!options.skipExport && settings.exportAutoEnabled && settings.exportDir && Date.now() - lastExportAt >= exportIntervalMs()) {
       lastExportAt = Date.now();
-      writeExportTo(settings.exportDir, payload.data.stats.periods, { skipUnchanged: true })
+      writeExportTo(settings.exportDir, completeLocalSyncStats(payload.data.stats).periods, { skipUnchanged: true })
         .catch((err) => console.warn(`[export] auto-export failed: ${err.message}`));
     }
   }
@@ -4333,6 +4347,10 @@ function sendStatus(connected, extra) {
       });
     }
   }
+  // Hub events received before this status still have to reach the renderer
+  // ahead of it: a batched remote reason arriving after a disconnect would mark
+  // the stream connected again.
+  syncStatsPublication.flush();
   sendPush({ event: 'status', data: { connected: streamConnected, mode, ...(extra || {}) } });
 }
 
@@ -4362,6 +4380,7 @@ function primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner) {
       clients: usageOptions.clients,
       allTimeSince: usageOptions.allTimeSince,
       projectsEnabled: usageOptions.projectsEnabled,
+      customScanPaths: usageOptions.customScanPaths,
       wslScanEnabled: usageOptions.wslScanEnabled,
       wslSupported: process.platform === 'win32',
       hostname: os.hostname(),
@@ -4374,9 +4393,9 @@ function primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner) {
   // reads low for anyone with an un-tracked client or retained sessions, and then
   // jumps when the first scan lands. Read-only on purpose: the capture step
   // records a fresh observation, and an anchor from hours ago is not one.
-  const visible = summaryWithArchivesApplied(
+  const visible = usageTransform.project(
     deviceRecord,
-    settings?.sessionUsageArchiveEnabled === false ? null : ensureSessionUsageArchiveLoaded(),
+    settings?.sessionUsageArchiveEnabled === false ? null : usageTransform.ensureLoaded(),
     sessionUsageArchiveDate(deviceRecord)
   );
   localDevice = visible;
@@ -4407,7 +4426,7 @@ function startLocalCollector() {
     envelope: electronDeviceEnvelope(),
     initialLimits: lastCollectedDevice?.limits,
     limitsOptions: electronLimitsConfig(),
-    transformUsage: summaryWithArchivedClientUsage,
+    transformUsage: usageTransform.transform,
     usageOptions,
     progressive: true,
     onRecord: (summary, meta) => {
@@ -4416,8 +4435,11 @@ function startLocalCollector() {
       const visibleSummary = summary;
       localDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
       lastCollectedDevice = localDevice;
-      localStats = withHistoryPreview(aggregateDevices([localDevice], 0), [localDevice]);
-      attachLocalNativeViews(localStats, localDevice);
+      localStats = composeLocalOnlySummary(localDevice, (stats) => {
+        withHistoryPreview(stats, [localDevice]);
+        attachLocalNativeViews(stats, localDevice);
+        return stats;
+      });
       updateDiscordRpcDisplay(localStats);
       sendPush({ event: 'stats', data: { type: 'stats', reason, stats: localStats, at: new Date().toISOString() } }, { widgetProducerOwner });
       sendStatus(true, { reason });
@@ -4425,6 +4447,7 @@ function startLocalCollector() {
     onDiagnosticEvent: recordDiagnosticEvent,
     onError: (error, reason) => sendStatus(false, { reason: `${reason}:${error.message}` })
   }, {
+    createUsageRuntime: createElectronUsageRuntime,
     limitsDeps: electronLimitsDeps()
   });
   usageRuntimeReconciler.setActiveKey(usageConfigFingerprint(usageOptions));
@@ -4440,18 +4463,6 @@ function stopStatsStream() {
   if (sseAbortController) { try { sseAbortController.abort(); } catch (_) {} }
   sseAbortController = null;
   if (sseRetryTimer) { clearTimeout(sseRetryTimer); sseRetryTimer = null; }
-}
-
-function parseSseChunk(chunk) {
-  let event = 'message';
-  const dataLines = [];
-  for (const line of chunk.split('\n')) {
-    if (!line || line.startsWith(':')) continue;
-    if (line.startsWith('event:')) event = line.slice(6).trim();
-    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
-  }
-  if (dataLines.length === 0) return null;
-  try { return { event, data: JSON.parse(dataLines.join('\n')) }; } catch (_) { return null; }
 }
 
 async function startStatsStream(options = {}) {
@@ -4487,36 +4498,26 @@ async function startStatsStream(options = {}) {
     sendStatus(true);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = '';
+    const blocks = createSseBlockReader();
     for (;;) {
       if (!hubModeRequestIsCurrent(generation, 'client', cacheIdentity)) return;
       const { value, done } = await reader.read();
       if (!hubModeRequestIsCurrent(generation, 'client', cacheIdentity)) return;
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buffer.indexOf('\n\n')) !== -1) {
-        const chunk = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        let parsed = parseSseChunk(chunk);
+      for (const block of blocks.push(decoder.decode(value, { stream: true }))) {
+        const parsed = parseSseBlock(block);
         if (parsed) {
           if ((parsed.event === 'stats' || parsed.event === 'snapshot') && parsed.data?.stats) {
             setLatestHubStatsCache(parsed.data.stats, 'client', generation, cacheIdentity);
-            const displayStats = composeLocalSyncStats(latestHubStats, lastCollectedDevice);
-            parsed = { ...parsed, data: { ...parsed.data, stats: displayStats } };
-            updateDiscordRpcDisplay(displayStats);
+            requestSyncDisplayStats({ reason: parsed.data.reason, at: parsed.data.at, generation, widgetProducerOwner });
           } else if (parsed.event === 'freshness') {
             const refreshed = applyFreshnessEvent(latestHubStats, parsed.data);
             if (!refreshed) continue;
             setLatestHubStatsCache(refreshed, 'client', generation, cacheIdentity);
-            const displayStats = composeLocalSyncStats(latestHubStats, lastCollectedDevice);
-            parsed = {
-              event: 'stats',
-              data: { type: 'stats', reason: parsed.data?.reason || 'ingest', stats: displayStats, at: parsed.data?.at }
-            };
-            updateDiscordRpcDisplay(displayStats);
+            requestSyncDisplayStats({ reason: parsed.data?.reason || 'ingest', at: parsed.data?.at, generation, widgetProducerOwner });
+          } else {
+            sendPush(parsed, { widgetProducerOwner });
           }
-          sendPush(parsed, { widgetProducerOwner });
         }
       }
     }
@@ -5076,6 +5077,17 @@ function ensureEdgeDockController() {
     preloadPath: path.join(__dirname, 'edgeDock', 'preload.js'),
     getSettings: () => settings,
     nativeGlass: () => nativeBlurEnabled(),
+    // The dock follows the widget's glass style unless it has its own, on the
+    // same terms as the main window: Reduce Transparency hands the surface back
+    // to the HUD material.
+    liquidGlass: () => {
+      const options = nativeMaterialOptions();
+      const wanted = process.platform === 'darwin' && options.enabled
+        && edgeDockBackdropMode(settings) === MAC_BACKDROP_LIQUID_GLASS
+        && !options.reducedTransparency && Number.parseInt(os.release(), 10) >= 25;
+      return wanted ? { dark: options.dark } : null;
+    },
+    createGlass: (win) => createMacLiquidGlass(win, { shaped: true }),
     // The renderer reads this preference through a media query, which works on both
     // platforms, but the dock's window fade is this process's own animation and can only
     // see it through Electron. Windows reports the same OS-level setting here as macOS, so
@@ -5148,7 +5160,7 @@ function refreshLimitStatsPresentation() {
     try {
       mainWindow.webContents.send('stats:push', {
         event: 'stats',
-        data: { type: 'stats', reason: 'presentation', mode, stats: visibleStats }
+        data: { type: 'stats', reason: 'presentation', mode, stats: rendererSnapshots.stamp(latestStats, rendererStats(visibleStats)) }
       });
     } catch (_) {}
   }
@@ -5479,6 +5491,7 @@ function startMode() {
   stopStatsStream();
   stopHostStats();
   stopSyncCollector();
+  syncStatsPublication.cancel();
   // Serialize the hub-side work so rapid UI events (mode change immediately
   // followed by a port edit or secret regenerate) reconcile in order rather
   // than racing — otherwise an in-flight start could finish with the old
@@ -5588,6 +5601,11 @@ function stopAll() {
   stopStatsStream();
   stopHostStats();
   stopSyncCollector({ skipCloseWatchers: true });
+  // A collector on the usage worker stops by message, which nothing guarantees
+  // the worker handles before the exit below; its tokscale subprocesses would
+  // outlive us.
+  terminateUsageHostSubprocesses();
+  syncStatsPublication.cancel();
   macWidgetSnapshotController?.stop();
   if (macWidgetDemand) {
     macWidgetDemand.stop();
@@ -5760,7 +5778,7 @@ async function fetchStats(options = {}) {
     });
   }
   setLatestHubStatsCache(stats, 'client', requestGeneration, requestHubIdentity);
-  return injectLocalDeviceStatus(composeLocalSyncStats(stats, lastCollectedDevice));
+  return injectLocalDeviceStatus(composeLocalSyncSummary(stats, lastCollectedDevice));
 }
 
 function managedPricingSidecarPath() {
@@ -6357,12 +6375,8 @@ function createWindow(boundsOverride, options = {}) {
     // Keeps a popover unmaximizable across rebuilds, which never re-run enterTrayMode().
     ...(settings?.trayMode ? { maximizable: false } : {}),
     ...floatingBubbleWindowChrome(process.platform, collapsedFloatingBubble),
-    // visualEffectState is construction-time only — Electron exposes no setter for
-    // it (verified: BrowserWindow has setVibrancy but no setVisualEffectState), and
-    // it is what keeps the material vibrant while the window is not key. Without
-    // it macOS falls back to followWindow and the glass greys out on blur. The
-    // vibrancy here is immediately re-evaluated by applyNativeMaterial() below, so
-    // a window that is not on screen still ends up with no material attached.
+    // Seed the legacy fallback's construction-only active state. The material
+    // manager immediately replaces HUD with Liquid Glass when supported.
     ...(process.platform === 'darwin' ? { vibrancy: 'hud', visualEffectState: 'active' } : {}),
     ...(process.platform === 'win32' && glass && !windowsAccent ? { backgroundMaterial: 'acrylic' } : {}),
     webPreferences: {
@@ -6372,7 +6386,6 @@ function createWindow(boundsOverride, options = {}) {
     }
   });
   mainWindow = win;
-  mainWindowNativeBlurEnabled = null;
   mainWindowChrome = { collapsedFloatingBubble };
   applyMacSpaceBehavior();
   applyWindowsChrome(win, { round: true });
@@ -6410,7 +6423,7 @@ function createWindow(boundsOverride, options = {}) {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
   });
   applyWindowSettings();
-  attachNativeMaterialVisibility(win, () => mainWindowNativeBlurEnabled);
+  attachNativeMaterialVisibility(win, () => nativeMaterialOptions());
   applyNativeMaterial();
   win.on('focus', () => {
     stopFloatingBubbleAutoCollapseTimer();
@@ -6547,10 +6560,9 @@ function createDashboardWindow() {
     }
   });
   dashboardWindow = win;
-  dashboardWindowNativeBlurEnabled = glass;
   applyWindowsChrome(win, { round: true });
-  attachNativeMaterialVisibility(win, () => dashboardWindowNativeBlurEnabled);
-  syncNativeMaterialVisibility(win, dashboardWindowNativeBlurEnabled);
+  attachNativeMaterialVisibility(win, () => nativeMaterialOptions(settings, true));
+  syncNativeMaterialVisibility(win, nativeMaterialOptions(settings, true));
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -6574,7 +6586,6 @@ function createDashboardWindow() {
   });
   win.on('closed', () => {
     dashboardWindow = null;
-    dashboardWindowNativeBlurEnabled = false;
   });
   win.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'))
     .catch((error) => discardFailedDashboardWindow(win, `load failed: ${error.message}`));
@@ -6663,7 +6674,12 @@ app.whenReady().then(() => {
   // Switching the OS between light and dark repaints the taskbar underneath an
   // icon we have already handed to the shell, so the renderer has to recompose
   // it — nothing else in the app would notice the change.
-  nativeTheme.on('updated', () => { void pushSystemUiThemeAfterChange(); });
+  nativeTheme.on('updated', () => {
+    applyNativeMaterial();
+    // Rebuilds the dock only when Reduce Transparency moved its material.
+    if (edgeDockController?.isRunning()) edgeDockController.sync();
+    void pushSystemUiThemeAfterChange();
+  });
   const widgetRuntime = macWidgetRuntimeSupport({
     platform: process.platform,
     osRelease: process.platform === 'darwin' ? os.release() : ''
@@ -6766,12 +6782,19 @@ app.whenReady().then(() => {
       throw new Error(subscriptionWriteFailureCode(error), { cause: error });
     }
   });
-  ipcMain.handle('sessionUsageArchive:clear', () => {
+  ipcMain.handle('sessionUsageArchive:clear', async () => {
     if (isExternalAgentActive()) return { ok: false, error: 'agentActive' };
+    // A worker-hosted collector writes both archives from its own thread, so it
+    // has to be gone before they are deleted or its next tick writes them back.
+    stopLocalCollector();
+    stopSyncCollector();
+    await whenUsageHostsIdle();
     try {
+      // The agent may have started while the worker was stopping.
+      if (isExternalAgentActive()) return { ok: false, error: 'agentActive' };
       sessionUsageArchiveStore.clear();
       clearDailyHistoryArchive();
-      sessionUsageArchive = normalizeSessionUsageArchive({});
+      usageTransform.reset();
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error.message };
@@ -6792,7 +6815,14 @@ app.whenReady().then(() => {
     applySettingsPatch,
     probeDeps: credentialProbeDeps
   });
-  ipcMain.handle('settings:update', (_event, patch) => applySettingsPatch(patch));
+  // Resolves only once a worker-hosted transform runs with the saved settings:
+  // pausing the session archive must not be reported done while the worker can
+  // still capture under the old value.
+  ipcMain.handle('settings:update', async (_event, patch) => {
+    const result = applySettingsPatch(patch);
+    await latestUsageHost?.transformSettingsApplied?.();
+    return result;
+  });
   // The settings:update body, named so a credential save persists through the
   // exact same normalization, runtime reconfigure and limit invalidation.
   function applySettingsPatch(patch) {
@@ -6865,8 +6895,10 @@ app.whenReady().then(() => {
       refreshMs: Math.max(5000, Number(patch.refreshMs ?? settings.refreshMs ?? 15000)),
       glassOpacity: Math.max(0, Math.min(100, Number(patch.glassOpacity ?? settings.glassOpacity ?? 68))),
       glassBlur: Math.max(0, Math.min(100, Number(patch.glassBlur ?? settings.glassBlur ?? 32))),
+      backgroundImageOpacity: normalizeBackgroundImageOpacity(patch.backgroundImageOpacity ?? settings.backgroundImageOpacity),
       systemGlass: patch.systemGlass ?? settings.systemGlass ?? true,
       windowsBackdrop: normalizeWindowsBackdropMode(patch.windowsBackdrop ?? settings.windowsBackdrop),
+      macBackdrop: normalizeMacBackdropMode(patch.macBackdrop ?? settings.macBackdrop),
       reduceMotion: motionPreferenceApi.normalize(patch.reduceMotion ?? settings.reduceMotion),
       showLiveDot: patch.showLiveDot ?? settings.showLiveDot ?? true,
       showToolIcons: patch.showToolIcons ?? settings.showToolIcons ?? true,
@@ -6892,6 +6924,7 @@ app.whenReady().then(() => {
       edgeDockMode: (patch.edgeDockMode ?? settings.edgeDockMode) === 'always' ? 'always' : 'autoHide',
       edgeDockHaptic: parseBoolean(patch.edgeDockHaptic ?? settings.edgeDockHaptic, true),
       edgeDockWarnColors: parseBoolean(patch.edgeDockWarnColors ?? settings.edgeDockWarnColors, false),
+      edgeDockMacBackdrop: normalizeEdgeDockBackdropMode(patch.edgeDockMacBackdrop ?? settings.edgeDockMacBackdrop),
       // `null` is a real value here (back to the automatic default), so the
       // patch is checked for presence rather than coalesced.
       edgeDockItems: normalizeEdgeDockItems('edgeDockItems' in (patch || {}) ? patch.edgeDockItems : settings.edgeDockItems),
@@ -6984,6 +7017,10 @@ app.whenReady().then(() => {
       settings = previousSettingsState;
       throw error;
     }
+    // A worker-hosted transform holds its own copy of the settings it reads.
+    // Update it now rather than when the usage reconfigure settles: pausing the
+    // session archive must stop captures from the next summary on.
+    latestUsageHost?.updateTransformSettings?.(usageTransformSettings(settings));
     if (patch?.limitProviders !== undefined) initialLimitProvidersPending = false;
     if (JSON.stringify(settings.customModelPricing || []) !== previousCustomModelPricing) {
       regenerateTokscalePricing();
@@ -7096,8 +7133,11 @@ app.whenReady().then(() => {
     pushSettingsToRenderer();
     return settingsForRenderer();
   }
-  ipcMain.handle('appearance:preview', (_event, patch) => {
-    applyNativeMaterial({ ...settings, ...patch });
+  ipcMain.handle('appearance:preview', (event, patch) => {
+    // Preview only the requesting surface: another window still renders its
+    // saved theme until settings:update broadcasts the committed preference.
+    const win = BrowserWindow.fromWebContents(event.sender);
+    syncNativeMaterialVisibility(win, nativeMaterialOptions({ ...settings, ...patch }, win === dashboardWindow));
     if (patch && patch.zoomFactor !== undefined && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.setZoomFactor(clampZoom(patch.zoomFactor));
     }
@@ -7215,8 +7255,9 @@ app.whenReady().then(() => {
     // The stream normally carries the stamp, but it is precisely when the stream
     // is down that this read is the only thing still arriving from the hub.
     maybeAdoptSharedSubscriptionRevision(stats);
-    return electronPresentationStats(stats);
+    return rendererSnapshots.stamp(stats, rendererStats(electronPresentationStats(stats)));
   });
+  ipcMain.handle('stats:allTimeSessions', (_event, snapshotId) => rendererAllTimeSessions(rendererSnapshots.get(snapshotId)));
   ipcMain.handle('export:now', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],
@@ -7224,7 +7265,7 @@ app.whenReady().then(() => {
     });
     if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
     const stats = await fetchStats();
-    const written = await writeExportTo(result.filePaths[0], stats.periods);
+    const written = await writeExportTo(result.filePaths[0], completeLocalSyncStats(stats).periods);
     if (!written.ok) return { ok: false, dir: result.filePaths[0], reason: written.reason || 'write-failed' };
     return { ok: true, dir: result.filePaths[0] };
   });
@@ -7258,6 +7299,10 @@ app.whenReady().then(() => {
     saveSettings({ throwOnError: true });
     if (settings.hubMode === 'host') startMode();
     return getHubInfo();
+  });
+  ipcMain.handle('appearance:getNativeMaterial', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return getNativeMaterialState(win);
   });
   ipcMain.handle('app:getInfo', () => ({
     version: app.getVersion(),
