@@ -250,6 +250,7 @@ function normalizeClientName(value) {
   if (/^kilo[\s_-]*code$/.test(raw)) return 'kilo';
   if (/command[\s_-]*code/.test(raw)) return 'commandcode';
   if (raw.includes('micode') || raw.includes('mimo')) return 'mimo';
+  if (raw === 'muse' || /^muse[\s_-]*code$/.test(raw)) return 'muse';
   if (raw.includes('zcode')) return 'zcode';
   if (raw.includes('kiro')) return 'kiro';
   if (raw.includes('codebuddy')) return 'codebuddy';
@@ -262,6 +263,7 @@ function normalizeClientName(value) {
   if (/^unsloth(?:[\s_-]+(?:studio|api))?$/.test(raw)) return 'unsloth';
   if (raw.includes('dsh')) return 'dsh';
   if (raw.includes('devin')) return 'devin';
+  if (raw === 'fx') return 'fx';
   if (raw.includes('opencode')) return 'opencode';
   if (raw.includes('openclaw') || raw.includes('clawd') || raw.includes('moltbot') || raw.includes('moldbot')) return 'openclaw';
   return raw.replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || null;
@@ -534,6 +536,9 @@ function mergeSession(target, source) {
   const sourceLastUsed = timestampMs(source.lastUsedAt);
   const targetLastUsed = timestampMs(target.lastUsedAt);
   if (sourceLastUsed && sourceLastUsed > targetLastUsed) target.lastUsedAt = new Date(sourceLastUsed).toISOString();
+  if (hasOwn(source, 'promptCache') && sourceLastUsed >= targetLastUsed) {
+    target.promptCache = normalizePromptCache(source.promptCache);
+  }
   const sourceProjectId = String(source.projectId || '');
   if (!target.projectId && sourceProjectId) {
     target.projectId = sourceProjectId;
@@ -633,6 +638,13 @@ function sessionFromRow(row) {
   return session;
 }
 
+function normalizePromptCache(input) {
+  const observedAt = normalizeIsoTimestamp(input?.observedAt);
+  const ttlSeconds = input?.ttlSeconds;
+  return observedAt && [300, 1800, 3600].includes(ttlSeconds)
+    ? { observedAt, ttlSeconds } : null;
+}
+
 function normalizeSession(input, fallbackKey) {
   if (!input || typeof input !== 'object') return null;
   if (isReasonixSyntheticSession(input, fallbackKey)) return null;
@@ -648,6 +660,7 @@ function normalizeSession(input, fallbackKey) {
   session.messageCount = Math.max(0, Math.round(firstNumber(input, MESSAGE_COUNT_KEYS)));
   session.startedAt = normalizeIsoTimestamp(firstString(input, STARTED_AT_KEYS));
   session.lastUsedAt = normalizeIsoTimestamp(firstString(input, LAST_USED_AT_KEYS));
+  if (hasOwn(input, 'promptCache')) session.promptCache = normalizePromptCache(input.promptCache);
   session.contextTokens = Math.max(0, Math.round(asNumber(input.contextTokens ?? input.context_tokens ?? 0)));
   session.contextWindow = Math.max(0, Math.round(asNumber(input.contextWindow ?? input.context_window ?? 0)));
   // Carried rather than summed, and only when the source actually states it:
@@ -1621,6 +1634,9 @@ function applyPeriodDelta(base, freshToday, anchorToday) {
 }
 
 function deltaValue(base, fresh, anchor, key) {
+  // Cache observations are snapshots, never additive accounting. Missing
+  // metadata retains the base; only an explicit null clears an observation.
+  if (key === 'promptCache') return fresh === undefined ? base : normalizePromptCache(fresh);
   if (key === 'tokenComponents') {
     // A warm tick may introduce aggregate-only fallback data. Boolean
     // provenance is not arithmetically subtractable, so retain exactness only
