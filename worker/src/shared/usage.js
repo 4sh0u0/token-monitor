@@ -207,6 +207,7 @@ function emptyPeriod() {
     timedTokens: 0,
     timedOutputTokens: 0,
     timedDurationMs: 0,
+    modelThroughput: Object.create(null),
     clients: {},
     clientCosts: {},
     clientCacheReads: {},
@@ -496,6 +497,12 @@ function emptySession(client, id) {
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
     reasoningTokens: 0,
+    // The session's share of the period throughput counters: raw sums, gated
+    // per tokscale entry exactly as the period's are, so a row divides them at
+    // display time into its own tok/s. 0/0 means the client reported no
+    // durations for this session, not that it generated nothing.
+    timedOutputTokens: 0,
+    timedDurationMs: 0,
     startedAt: '',
     lastUsedAt: '',
     // What the session's context window currently holds and how big it is.
@@ -530,6 +537,8 @@ function mergeSession(target, source) {
   target.cacheReadTokens += Math.max(0, Math.round(asNumber(source.cacheReadTokens)));
   target.cacheWriteTokens += Math.max(0, Math.round(asNumber(source.cacheWriteTokens)));
   target.reasoningTokens += Math.max(0, Math.round(asNumber(source.reasoningTokens)));
+  target.timedOutputTokens += Math.max(0, Math.round(asNumber(source.timedOutputTokens)));
+  target.timedDurationMs += Math.max(0, Math.round(asNumber(source.timedDurationMs)));
   const sourceStarted = timestampMs(source.startedAt);
   const targetStarted = timestampMs(target.startedAt);
   if (sourceStarted && (!targetStarted || sourceStarted < targetStarted)) target.startedAt = new Date(sourceStarted).toISOString();
@@ -624,6 +633,7 @@ function sessionFromRow(row) {
   session.messageCount = Math.max(0, Math.round(firstNumber(row, MESSAGE_COUNT_KEYS)));
   Object.assign(session, sessionTokenComponents(row));
   session.outputTokens = Math.max(0, Math.round(outputValueForClient(row, client)));
+  Object.assign(session, entryThroughput(row, session.outputTokens));
   session.startedAt = normalizeIsoTimestamp(firstString(row, STARTED_AT_KEYS));
   session.lastUsedAt = normalizeIsoTimestamp(firstString(row, LAST_USED_AT_KEYS));
   session.projectId = String(row.projectId || row.project_id || '').trim();
@@ -658,6 +668,10 @@ function normalizeSession(input, fallbackKey) {
   session.totalTokens = Math.max(0, Math.round(asNumber(input.totalTokens ?? input.total_tokens ?? input.tokens ?? componentTotal)));
   session.costUsd = asNumber(input.costUsd ?? input.cost_usd ?? input.cost ?? 0);
   session.messageCount = Math.max(0, Math.round(firstNumber(input, MESSAGE_COUNT_KEYS)));
+  session.timedDurationMs = Math.max(0, Math.round(asNumber(input.timedDurationMs ?? input.timed_duration_ms ?? 0)));
+  session.timedOutputTokens = normalizeTimedOutputTokens(
+    input.timedOutputTokens ?? input.timed_output_tokens, session.outputTokens, session.timedDurationMs
+  );
   session.startedAt = normalizeIsoTimestamp(firstString(input, STARTED_AT_KEYS));
   session.lastUsedAt = normalizeIsoTimestamp(firstString(input, LAST_USED_AT_KEYS));
   if (hasOwn(input, 'promptCache')) session.promptCache = normalizePromptCache(input.promptCache);
@@ -752,6 +766,7 @@ function normalizePeriod(input, options = {}) {
     // merge targets, so it is throughput-capable by construction. Missing wire input
     // is different: its zero counters are synthetic and must never seed a live delta.
     period.capabilities.throughput = false;
+    delete period.modelThroughput;
     return period;
   }
   const projectsEnabled = options.projectsEnabled !== false;
@@ -863,6 +878,8 @@ function normalizePeriod(input, options = {}) {
       }
     }
   }
+  period.modelThroughput = normalizeModelThroughput(input.modelThroughput, period);
+  if (!period.modelThroughput) delete period.modelThroughput;
   if (input.modelCosts && typeof input.modelCosts === 'object') {
     for (const [model, value] of Object.entries(input.modelCosts)) {
       const key = normalizeModelName(model);
@@ -920,6 +937,46 @@ function normalizePeriod(input, options = {}) {
 
 const UNATTRIBUTED_USAGE_CLIENT = '__unattributed';
 
+function normalizeTimedOutputTokens(value, outputTokens, durationMs) {
+  return durationMs > 0 ? Math.min(outputTokens, Math.max(0, Math.round(asNumber(value)))) : 0;
+}
+
+function normalizeModelThroughput(value, period) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const result = Object.create(null);
+  for (const [model, counters] of Object.entries(value)) {
+    const key = normalizeModelName(model);
+    if (!key || !counters || typeof counters !== 'object' || Array.isArray(counters)
+      || !['timedTokens', 'timedOutputTokens', 'timedDurationMs'].every((field) => hasOwn(counters, field))) continue;
+    const durationMs = Math.max(0, Math.round(asNumber(counters.timedDurationMs)));
+    const target = result[key] ||= { timedTokens: 0, timedOutputTokens: 0, timedDurationMs: 0 };
+    target.timedTokens += Math.max(0, Math.round(asNumber(counters.timedTokens)));
+    target.timedDurationMs += durationMs;
+    target.timedOutputTokens += normalizeTimedOutputTokens(counters.timedOutputTokens, period.timedOutputTokens, durationMs);
+  }
+  for (const [model, counters] of Object.entries(result)) {
+    counters.timedTokens = Math.min(counters.timedTokens, period.timedTokens);
+    counters.timedDurationMs = Math.min(counters.timedDurationMs, period.timedDurationMs);
+    const outputBound = Math.min(period.timedOutputTokens,
+      hasOwn(period.modelOutputs, model) ? period.modelOutputs[model] : period.outputTokens);
+    counters.timedOutputTokens = normalizeTimedOutputTokens(counters.timedOutputTokens, outputBound, counters.timedDurationMs);
+  }
+  // A malformed map is unavailable; a genuine empty map is an exact zero baseline.
+  if (Object.keys(value).length && !Object.keys(result).length) return undefined;
+  return result;
+}
+
+
+// One tokscale entry's throughput counters. An entry contributes its output to
+// the numerator exactly when it contributes a duration to the denominator, so
+// the two always describe the same entries. Gating rather than scaling by
+// tokscale's `tokenCoverage` keeps both plain counters that merge and delta
+// like every other token field.
+function entryThroughput(row, output) {
+  const performance = row?.performance && typeof row.performance === 'object' ? row.performance : null;
+  const timedDurationMs = Math.max(0, Math.round(firstNumber(performance, TIMED_DURATION_KEYS)));
+  return { timedOutputTokens: timedDurationMs > 0 ? output : 0, timedDurationMs };
+}
 
 function addUsageRowToPeriod(period, row, detectedClient = detectClient(row)) {
   const client = detectedClient;
@@ -930,11 +987,7 @@ function addUsageRowToPeriod(period, row, detectedClient = detectClient(row)) {
   const output = Math.max(0, Math.round(outputValueForClient(row, client)));
   const performance = row?.performance && typeof row.performance === 'object' ? row.performance : null;
   const timedTokens = Math.max(0, Math.round(firstNumber(performance, TIMED_TOKEN_KEYS)));
-  const timedDurationMs = Math.max(0, Math.round(firstNumber(performance, TIMED_DURATION_KEYS)));
-  // A row contributes its output to the throughput numerator exactly when it contributes to
-  // the denominator. Gating rather than scaling by tokscale's `tokenCoverage` keeps this a
-  // plain counter, which is what lets it merge and delta like every other token field.
-  const timedOutputTokens = timedDurationMs > 0 ? output : 0;
+  const { timedOutputTokens, timedDurationMs } = entryThroughput(row, output);
   const model = detectModel(row, client);
   period.totalTokens += Math.max(0, Math.round(tokens));
   period.costUsd += cost;
@@ -944,6 +997,12 @@ function addUsageRowToPeriod(period, row, detectedClient = detectClient(row)) {
   period.timedTokens += timedTokens;
   period.timedOutputTokens += timedOutputTokens;
   period.timedDurationMs += timedDurationMs;
+  if (model && timedDurationMs > 0) {
+    const counters = period.modelThroughput[model] ||= { timedTokens: 0, timedOutputTokens: 0, timedDurationMs: 0 };
+    counters.timedTokens += timedTokens;
+    counters.timedOutputTokens += timedOutputTokens;
+    counters.timedDurationMs += timedDurationMs;
+  }
   if (client && tokens > 0) {
     period.clients[client] = (period.clients[client] || 0) + Math.round(tokens);
     if (cacheRead > 0) period.clientCacheReads[client] = (period.clientCacheReads[client] || 0) + cacheRead;
@@ -1456,6 +1515,15 @@ function addPeriodInto(target, source) {
   target.timedTokens += source.timedTokens;
   target.timedOutputTokens += source.timedOutputTokens;
   target.timedDurationMs += source.timedDurationMs;
+  // Absence is unknown attribution, not an exact empty map. It stays unknown
+  // through partition/WSL merges and device aggregation, regardless of input order.
+  if (!source.modelThroughput) delete target.modelThroughput;
+  if (target.modelThroughput) {
+    for (const [model, counters] of Object.entries(source.modelThroughput)) {
+      const merged = target.modelThroughput[model] ||= { timedTokens: 0, timedOutputTokens: 0, timedDurationMs: 0 };
+      for (const field of ['timedTokens', 'timedOutputTokens', 'timedDurationMs']) merged[field] += counters[field];
+    }
+  }
   for (const [client, tokens] of Object.entries(source.clients)) {
     target.clients[client] = (target.clients[client] || 0) + tokens;
     if (source.clientCacheReads?.[client]) target.clientCacheReads[client] = (target.clientCacheReads[client] || 0) + source.clientCacheReads[client];
@@ -1624,6 +1692,9 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now(), options = {
 // grow (clients/models/clientModels/sessions/...) without per-field bookkeeping.
 function applyPeriodDelta(base, freshToday, anchorToday) {
   const result = deltaValue(base, freshToday, anchorToday, '');
+  if (result && (!base?.modelThroughput || !freshToday?.modelThroughput || !anchorToday?.modelThroughput)) {
+    delete result.modelThroughput;
+  }
   // Older anchors may still contain the pre-native Reasonix stats-path rows.
   // They are not authoritative session detail and must not survive a warm tick
   // merely because the aggregate totals remain valid.

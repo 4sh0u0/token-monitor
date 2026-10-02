@@ -1078,7 +1078,10 @@ function formatLiveTokenRate(value) {
 function renderLiveTokenRate() {
   if (!els.liveTokenRate || !els.liveTokenRateValue) return;
   const enabled = state.settings?.showLiveTokenRate === true;
-  if (!enabled) resetLiveTokenRateTracking();
+  if (!enabled) {
+    resetLiveTokenRateTracking();
+    limitWindowsView.setDetailTooltip(els.liveTokenRate, null);
+  }
   els.liveTokenRate.classList.toggle('hidden', !enabled);
   syncLiveTokenRateFooterState();
   if (!enabled) return;
@@ -1101,8 +1104,25 @@ function renderLiveTokenRate() {
     ? (burn ? 'home.liveTokenRate.burnIdleTitle' : 'home.liveTokenRate.speedIdleTitle')
     : (burn ? 'home.liveTokenRate.burnTitle' : 'home.liveTokenRate.speedTitle');
   const label = t(labelKey, { value: text, scope });
-  els.liveTokenRate.title = label;
-  els.liveTokenRate.setAttribute('aria-label', label);
+  const detailEntries = tokenRateApi.liveTokenRateTooltipEntries(
+    sample, burn ? 'burn' : 'speed', formatLiveTokenRate
+  );
+  limitWindowsView.setDetailTooltip(els.liveTokenRate, detailEntries.length ? detailEntries : null);
+  for (const cell of els.liveTokenRate.querySelectorAll('.limit-detail-tooltip-row span:first-child')) {
+    const model = cell.textContent;
+    const icon = document.createElement('span');
+    icon.className = `row-icon row-icon-${modelVendorFor(model) || 'token-monitor'}`;
+    icon.setAttribute('aria-hidden', 'true');
+    const name = document.createElement('span');
+    name.className = 'live-token-rate-model-label';
+    name.textContent = model;
+    cell.classList.add('live-token-rate-model-name');
+    cell.replaceChildren(icon, name);
+  }
+  if (!detailEntries.length) els.liveTokenRate.title = label;
+  els.liveTokenRate.setAttribute('aria-label', [label, ...detailEntries.map((entry) =>
+    Array.isArray(entry) ? entry.join(': ') : entry.full)].join(', '));
+  syncLiveTokenRateFooterState();
 
   if (!idle && sample.revision !== liveTokenRateRenderedRevision) {
     liveTokenRateRenderedRevision = sample.revision;
@@ -1995,6 +2015,8 @@ function rowTemplate(rowData) {
   row.querySelector('.row-activity').textContent = activity || '';
   row.querySelector('.row-detail').textContent = detail || '';
   bindHoverMarquee(row.querySelector('.row-title'));
+  bindHoverMarquee(row.querySelector('.row-subtitle'));
+  bindHoverMarquee(row.querySelector('.row-activity'));
   bindHoverMarquee(row.querySelector('.row-detail'));
   return row;
 }
@@ -2035,51 +2057,18 @@ document.addEventListener('pointerdown', (event) => {
   }
 });
 
-const hoverMarqueeStates = new WeakMap();
+let homeSessionRenderPending = false;
+const overflowText = window.TokenMonitorOverflowText.create({
+  document, window, prefersReducedMotion,
+  enabled: element => Boolean(element.closest('.session-mode, .home-session-row')),
+  onLeave: () => requestAnimationFrame(() => {
+    if (homeSessionRenderPending && state.breakdown === 'home'
+      && visibleStatsSurface() === 'main' && state.stats) renderHome();
+  })
+});
 
-function stopHoverMarquee(element, { reset = true } = {}) {
-  const motion = hoverMarqueeStates.get(element);
-  if (motion?.delayId) clearTimeout(motion.delayId);
-  if (motion?.frameId) cancelAnimationFrame(motion.frameId);
-  hoverMarqueeStates.delete(element);
-  element.classList.remove('is-hover-scrolling');
-  if (reset) element.scrollLeft = 0;
-}
-
-function startHoverMarquee(element) {
-  stopHoverMarquee(element);
-  if (prefersReducedMotion() || !element.closest('.session-mode')) return;
-  const distance = Math.ceil(element.scrollWidth - element.clientWidth);
-  if (distance <= 1) return;
-
-  const motion = { delayId: 0, frameId: 0 };
-  hoverMarqueeStates.set(element, motion);
-  motion.delayId = setTimeout(() => {
-    motion.delayId = 0;
-    element.classList.add('is-hover-scrolling');
-    const startedAt = performance.now();
-    const duration = Math.max(1800, Math.min(8000, distance * 22));
-    const step = (now) => {
-      const progress = Math.min(1, (now - startedAt) / duration);
-      element.scrollLeft = distance * progress;
-      if (progress < 1) motion.frameId = requestAnimationFrame(step);
-      else motion.frameId = 0;
-    };
-    motion.frameId = requestAnimationFrame(step);
-  }, 240);
-}
-
-function bindHoverMarquee(element) {
-  element.addEventListener('mouseenter', () => startHoverMarquee(element));
-  element.addEventListener('mouseleave', () => stopHoverMarquee(element));
-}
-
-function setHoverMarqueeText(element, value) {
-  stopHoverMarquee(element);
-  const text = value || '';
-  element.textContent = text;
-  element.removeAttribute('title');
-}
+function bindHoverMarquee(element) { overflowText.bind(element); }
+function setHoverMarqueeText(element, value) { overflowText.setText(element, value); }
 
 function renderDeviceAccordion(accordionInner, deviceDetail) {
   const signature = JSON.stringify([
@@ -2390,7 +2379,7 @@ function updateRowLive(row, activityState, activityAt) {
   dot.classList.add('pulse');
 }
 
-function updateRow(row, { name, subtitle, activity, detail, value, cost, barValue, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, unclassifiedTokens, modelRows, tokenDataUnavailable, sessionDetailAvailable, reviewGroup, running, activityState, context, promptCache, contextSnapshot, sortTime }) {
+function updateRow(row, { name, subtitle, activity, detail, value, cost, barValue, max, color, barBackground, accordionRows, deviceDetail, stale, platform, local, client, kind, cacheReadTokens, outputTokens, unclassifiedTokens, modelRows, modelLabel, modelTooltipEntries, tokenDataUnavailable, sessionDetailAvailable, reviewGroup, running, activityState, context, promptCache, contextSnapshot, sortTime }) {
   const width = rowWidth(barValue, max);
   const isExpanded = row.classList.contains('expanded');
   // `running` still drives the row class for layout, but the mark's own state
@@ -2429,16 +2418,48 @@ function updateRow(row, { name, subtitle, activity, detail, value, cost, barValu
     mark.className = 'row-mark dot';
     mark.style.background = color;
   }
-  setHoverMarqueeText(row.querySelector('.row-title'), name);
+  const titleEl = row.querySelector('.row-title');
+  setHoverMarqueeText(titleEl, name);
   const subtitleEl = row.querySelector('.row-subtitle');
-  subtitleEl.textContent = subtitle || '';
+  // A multi-model session abbreviates to "N models"; that label opens the same
+  // tooltip the context gauge carries, one row per model with its tokens and
+  // share of the session. A titled row prints the label inside the
+  // client · model line, so the trigger is just the "N models" span; an
+  // untitled row folds it into the title instead, whose whole text then opens
+  // the tooltip. The trigger mirrors the row's own wording rather than adding
+  // chrome, so there is nothing extra on a single-model row.
+  const modelEntries = Array.isArray(modelTooltipEntries) && modelTooltipEntries.length > 1
+    ? modelTooltipEntries : null;
+  const subtitleShowsModel = Boolean(modelEntries && modelLabel && String(subtitle || '').endsWith(modelLabel));
+  if (subtitleShowsModel) {
+    const models = document.createElement('span');
+    models.className = 'session-models';
+    models.textContent = modelLabel;
+    // Inside the marquee's own wrapper, so a long line still scrolls on hover.
+    const subtitleContent = subtitleEl.querySelector('.overflow-text-content') || subtitleEl;
+    subtitleContent.replaceChildren(document.createTextNode(subtitle.slice(0, -modelLabel.length)), models);
+    overflowText.update(subtitleEl);
+    limitWindowsView.setDetailTooltip(models, modelEntries);
+  } else {
+    setHoverMarqueeText(subtitleEl, subtitle);
+  }
+  if (!subtitleShowsModel && modelEntries && modelLabel && String(name || '').endsWith(modelLabel)) {
+    limitWindowsView.setDetailTooltip(titleEl, modelEntries);
+  } else if (titleEl.classList.contains('limit-detail-tooltip-wrap')) {
+    limitWindowsView.setDetailTooltip(titleEl, null);
+  }
   subtitleEl.classList.toggle('hidden', !subtitle);
+  // The activity line carries time, calls, cache hit and tok/s; a narrow window
+  // fades and scrolls it on hover the way the title does rather than wrapping.
   const activityEl = row.querySelector('.row-activity');
-  activityEl.textContent = activity || '';
+  setHoverMarqueeText(activityEl, activity);
   activityEl.classList.toggle('hidden', !activity);
+  // Move the id into Session Details only when the row can open them; clients
+  // without a detail reader still need their id here to distinguish sessions.
+  const shownDetail = kind === 'session' && interactive ? '' : detail;
   const detailEl = row.querySelector('.row-detail');
-  setHoverMarqueeText(detailEl, detail);
-  detailEl.classList.toggle('hidden', !detail);
+  setHoverMarqueeText(detailEl, shownDetail);
+  detailEl.classList.toggle('hidden', !shownDetail);
   const valueEl = row.querySelector('.row-value');
   if (tokenDataUnavailable === true) {
     row.dataset.tokenDataUnavailable = 'true';
@@ -2845,6 +2866,7 @@ function rawSessionRowsForPeriod(period) {
     stableColor,
     fallbackColors: fallbackModelColors,
     archivedLabel: t('session.archived'),
+    unattributedLabel: t('dashboard.tooltip.unclassified'),
     nativeSessions: state.stats?.nativeSessions?.[state.period] || {}
   });
 }
@@ -4006,7 +4028,7 @@ function limitDetailTooltipShouldHoldRender() {
 }
 
 function sessionTooltipShouldHoldRender() {
-  return Boolean(document.querySelector('.home-session-meta .limit-detail-tooltip-wrap:hover, .home-session-meta .limit-detail-tooltip-wrap:focus-within, .row-context.limit-detail-tooltip-wrap:hover, .row-context.limit-detail-tooltip-wrap:focus-within'));
+  return Boolean(document.querySelector('.home-session-row .is-hover-reading, .home-session-meta .limit-detail-tooltip-wrap:hover, .home-session-meta .limit-detail-tooltip-wrap:focus-within, .row-context.limit-detail-tooltip-wrap:hover, .row-context.limit-detail-tooltip-wrap:focus-within, .row-label .limit-detail-tooltip-wrap:hover, .row-label .limit-detail-tooltip-wrap:focus-within, .detail-ex-title.limit-detail-tooltip-wrap:hover, .detail-ex-title.limit-detail-tooltip-wrap:focus-within'));
 }
 
 function flushPendingLimitDetailTooltipRender() {
@@ -4674,19 +4696,34 @@ function renderSessionDetail({ detail, loading, error } = {}) {
   container.replaceChildren();
 
   const back = document.createElement('button');
-  back.className = 'detail-back';
-  back.textContent = `‹ ${t('sessions') || 'Sessions'}`;
+  const title = state.openSession?.title;
+  const backLabel = state.openSession?.returnTo?.kind === 'background-review-group'
+    ? t('sessions.backgroundReviews') : (t('sessions') || 'Sessions');
+  back.type = 'button';
+  back.className = title ? 'detail-back detail-back-titled' : 'detail-back';
+  if (!title) back.textContent = `‹ ${backLabel}`;
+  back.setAttribute('aria-label', title
+    ? t('sessions.backToWithTitle', { title, destination: backLabel })
+    : t('sessions.backTo', { destination: backLabel }));
+  if (!title) back.title = backLabel;
   back.addEventListener('click', sessionDetailBack);
   head.append(back);
 
-  if (state.openSession?.title) {
-    const heading = document.createElement('strong');
+  if (title) {
+    const arrow = document.createElement('span');
+    arrow.className = 'detail-back-arrow';
+    arrow.textContent = '‹';
+    arrow.setAttribute('aria-hidden', 'true');
+    const heading = document.createElement('span');
     heading.className = 'detail-heading';
-    heading.textContent = state.openSession.title;
-    heading.title = state.openSession.title;
+    heading.textContent = title;
+    heading.title = title;
     bindHoverMarquee(heading);
-    head.append(heading);
+    back.append(arrow, heading);
   }
+
+  const idLabel = sessionRowsApi.sessionDetailIdLabel(state.openSession?.client, state.openSession?.sessionId, detail);
+  if (idLabel) container.append(sessionIdLine(idLabel));
 
   if (loading) { container.append(detailNote(t('detailLoading') || 'Loading…')); return; }
   if (error || (detail && detail.found === false)) { container.append(detailNote(t('detailNotFound') || 'Transcript not found on this machine.')); return; }
@@ -4707,6 +4744,25 @@ function renderSessionDetail({ detail, loading, error } = {}) {
   for (const row of rows) container.append(exchangeNode(row, max));
 }
 
+// Copy the conversation identity, not a multi-UUID rollout filename.
+function sessionIdLine(idLabel) {
+  const line = document.createElement('div');
+  line.className = 'detail-session-id';
+  const text = document.createElement('span');
+  text.className = 'detail-session-id-text';
+  text.textContent = idLabel;
+  text.title = idLabel;
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'detail-session-id-copy';
+  copy.textContent = '⧉';
+  copy.title = t('session.copyId');
+  copy.setAttribute('aria-label', t('session.copyId'));
+  copy.addEventListener('click', () => copyToClipboard(idLabel, copy));
+  line.append(text, copy);
+  return line;
+}
+
 function backgroundReviewRunNode(row, max, parent) {
   const wrap = document.createElement('div');
   wrap.className = 'detail-exchange background-review-run';
@@ -4721,6 +4777,12 @@ function backgroundReviewRunNode(row, max, parent) {
   const titleEl = wrap.querySelector('.detail-ex-title');
   titleEl.textContent = title;
   titleEl.title = title;
+  bindHoverMarquee(titleEl);
+  // A multi-model run reads "N models · time" here — the same label the
+  // Sessions list opens for its per-model shares, so the title opens it too.
+  if (row.modelTooltipEntries?.length > 1) {
+    limitWindowsView.setDetailTooltip(titleEl, row.modelTooltipEntries);
+  }
   wrap.querySelector('.detail-ex-sub').textContent = row.detail || '';
   wrap.querySelector('.detail-ex-value').textContent = formatNumber(row.value);
   wrap.querySelector('.detail-ex-cost').textContent = formatCost(row.cost || 0);
@@ -4751,13 +4813,22 @@ function renderBackgroundReviewDetail(request) {
   container.replaceChildren();
 
   const back = document.createElement('button');
-  back.className = 'detail-back';
-  back.textContent = `‹ ${t('sessions') || 'Sessions'}`;
+  back.type = 'button';
+  back.className = 'detail-back detail-back-titled';
+  back.setAttribute('aria-label', t('sessions.backToWithTitle', {
+    title: t('sessions.backgroundReviews'), destination: t('sessions') || 'Sessions'
+  }));
   back.addEventListener('click', closeSessionDetail);
-  const heading = document.createElement('strong');
+  const arrow = document.createElement('span');
+  arrow.className = 'detail-back-arrow';
+  arrow.textContent = '‹';
+  arrow.setAttribute('aria-hidden', 'true');
+  const heading = document.createElement('span');
   heading.className = 'detail-heading';
   heading.textContent = t('sessions.backgroundReviews');
-  head.append(back, heading);
+  bindHoverMarquee(heading);
+  back.append(arrow, heading);
+  head.append(back);
 
   const rows = request?.summary?.backgroundReviewRows || [];
   if (rows.length === 0) {
@@ -4801,6 +4872,7 @@ function exchangeNode(row, max) {
     exTitle.append(role, sep);
   }
   exTitle.append(document.createTextNode(row.title));
+  bindHoverMarquee(exTitle);
   wrap.querySelector('.detail-ex-sub').textContent = row.subtitle;
   const tokensAvailable = row.tokensAvailable !== false;
   wrap.querySelector('.detail-ex-value').textContent = tokensAvailable
@@ -5819,7 +5891,10 @@ function scheduleSessionStatusRepaint(period, incompleteHint = '') {
 
 function renderHomeSessionModule() {
   const current = els.homePanel?.querySelector('.home-module-session');
-  if (current && sessionTooltipShouldHoldRender()) return current;
+  if (current && sessionTooltipShouldHoldRender()) {
+    homeSessionRenderPending = true;
+    return current;
+  }
   const rows = window.TokenMonitorEdgeDockPresentation.recentSessionRows(state.stats, 5, { includeRunningBeyondCap: true });
   const runningCount = rows.filter((row) => window.TokenMonitorSessionLive.sessionActivityState(row) === 'running').length;
   const meta = runningCount > 0 ? t('home.runningSessions', { count: runningCount }) : '';
@@ -5851,6 +5926,7 @@ function renderHomeSessionModule() {
     const name = document.createElement('span');
     name.className = 'home-list-name';
     name.textContent = row.title || row.projectLabel || String(row.sessionId || '').slice(0, 12) || '—';
+    bindHoverMarquee(name);
     const value = document.createElement('span');
     value.className = 'home-list-value';
     value.textContent = formatCompact(row.totalTokens);
@@ -5859,7 +5935,23 @@ function renderHomeSessionModule() {
     const age = homeSessionAgo(Date.parse(row.lastUsedAt || row.startedAt || ''));
     const description = document.createElement('span');
     description.className = 'home-list-sub';
-    description.textContent = [sessionRowsApi.sessionModelLabel(row), age].filter(Boolean).join(' · ');
+    // The same "N models" hover the Sessions list draws: the label stays the
+    // row's own text, and the tooltip lists the models behind the count.
+    const modelLabel = sessionRowsApi.sessionModelLabel(row);
+    const modelEntries = sessionRowsApi.sessionModelTooltipEntries(row, {
+      unattributedLabel: t('dashboard.tooltip.unclassified'),
+      formatTokens: formatCompact
+    });
+    if (modelLabel && modelEntries.length > 1) {
+      const models = document.createElement('span');
+      models.className = 'session-models';
+      models.textContent = modelLabel;
+      limitWindowsView.setDetailTooltip(models, modelEntries);
+      description.append(models);
+      if (age) description.append(document.createTextNode(` · ${age}`));
+    } else {
+      description.textContent = [modelLabel, age].filter(Boolean).join(' · ');
+    }
     meta.append(description);
     const context = window.TokenMonitorSessionLive.sessionActivityState(row) !== 'idle' ? row.context : null;
     const cache = window.TokenMonitorSessionLive.sessionPromptCacheForRow(row);
@@ -6336,7 +6428,11 @@ function renderHomeTrendsModule() {
 
 function renderHome() {
   if (!els.homePanel) return;
-  if (sessionTooltipShouldHoldRender()) return;
+  if (sessionTooltipShouldHoldRender()) {
+    homeSessionRenderPending = true;
+    return;
+  }
+  homeSessionRenderPending = false;
   // The previous scroller (and its ResizeObserver) is about to be replaced; drop the
   // observer so at most one is live. Keep the active tooltip visible while the
   // replacement heatmap reconnects it to the same date cell.
@@ -6517,7 +6613,10 @@ function render() {
     if (state.openSession.kind === 'background-review-group') {
       const latest = sessionRowsForPeriod(period).find((row) => row.reviewGroup === true);
       if (latest) state.openSession.summary = latest;
-      renderBackgroundReviewDetail(state.openSession);
+      // The rebuild replaces every run node, so a hovered run tooltip would die
+      // mid-read (and a keyboard focus with it); hold until it closes, as the
+      // session and home lists already do.
+      if (!sessionTooltipShouldHoldRender()) renderBackgroundReviewDetail(state.openSession);
     }
     if (state.openSession.renderOptions) {
       const options = state.openSession.renderOptions;
