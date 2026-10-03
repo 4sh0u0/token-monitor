@@ -3314,7 +3314,7 @@ async function deleteDeviceFromCurrentSync(deviceId) {
   if (!target) {
     throw Object.assign(new Error('device_not_found'), { code: 'device_not_found' });
   }
-  if (hubMode === 'icloud' && target.stale !== true) {
+  if (target.stale !== true) {
     throw Object.assign(new Error('device_not_stale'), { code: 'device_not_stale' });
   }
 
