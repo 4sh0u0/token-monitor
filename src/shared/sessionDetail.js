@@ -5,6 +5,39 @@ const { resolveSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./providers/opencode/session');
 const { readReasonixSessionEvents } = require('./providers/reasonix/sessionDetail');
 
+function* readTranscriptLines(filePath) {
+  const fd = fs.openSync(filePath, 'r');
+  let parts = [];
+  let lineBytes = 0;
+  try {
+    for (;;) {
+      const buffer = Buffer.allocUnsafe(64 * 1024);
+      const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      const chunk = buffer.subarray(0, bytesRead);
+      let start = 0;
+      while (start < chunk.length) {
+        const newline = chunk.indexOf(10, start);
+        const end = newline === -1 ? chunk.length : newline;
+        lineBytes += end - start;
+        // Bound each record before decoding; never silently drop oversized usage.
+        if (lineBytes > 16 * 1024 * 1024) {
+          throw Object.assign(new Error('Session detail record exceeds 16 MiB'), { code: 'SESSION_DETAIL_LINE_TOO_LARGE' });
+        }
+        parts.push(chunk.subarray(start, end));
+        if (newline === -1) break;
+        yield Buffer.concat(parts, lineBytes).toString('utf8');
+        parts = [];
+        lineBytes = 0;
+        start = newline + 1;
+      }
+    }
+    if (lineBytes) yield Buffer.concat(parts, lineBytes).toString('utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function num(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -92,6 +125,10 @@ function codexResponseItemPrompt(payload) {
 }
 
 function parseClaudeTranscript(text) {
+  return parseClaudeTranscriptLines(String(text || '').split(/\r?\n/));
+}
+
+function parseClaudeTranscriptLines(lines) {
   const events = [];
   // Claude Code inflates a transcript two ways, both of which would otherwise multiply token counts:
   //   1. Resume replay — on resume it re-appends prior transcript entries verbatim, copying their
@@ -101,7 +138,7 @@ function parseClaudeTranscript(text) {
   //      usage once and merge the tool names so a single reply is one turn, not N.
   const seenLineUuids = new Set();
   const turnByMessageId = new Map();
-  for (const line of String(text || '').split(/\r?\n/)) {
+  for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     let obj;
@@ -150,13 +187,13 @@ function codexToolName(payload) {
   return payload.name || payload.tool_name || payload.tool || '';
 }
 
-function parseCodexTranscriptData(text) {
+function parseCodexTranscriptData(lines) {
   const events = [];
   let canonicalSessionId = '';
   let sawSessionMeta = false;
   let pendingTools = [];
   let adjacentPrompt = null;
-  for (const line of String(text || '').split(/\r?\n/)) {
+  for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     // Codex can persist the same prompt in either schema order. Snapshot and clear the candidate
@@ -232,7 +269,7 @@ function parseCodexTranscriptData(text) {
 }
 
 function parseCodexTranscript(text) {
-  return parseCodexTranscriptData(text).events;
+  return parseCodexTranscriptData(String(text || '').split(/\r?\n/)).events;
 }
 
 function emptyTokens() {
@@ -340,12 +377,6 @@ function distributeCost(exchanges, sessionCost) {
   return exchanges;
 }
 
-function parseByClient(client, text) {
-  if (client === 'claude') return parseClaudeTranscript(text);
-  if (client === 'codex') return parseCodexTranscript(text);
-  return [];
-}
-
 function totalsOf(exchanges, sessionCost) {
   const totalTokens = exchanges.reduce((acc, ex) => acc + ex.tokens.total, 0);
   const turnCount = exchanges.reduce((acc, ex) => acc + ex.turnCount, 0);
@@ -406,14 +437,20 @@ function readSessionDetail({ client, sessionId, period = 'total', sessionCost = 
   if (client === 'reasonix') return readReasonixSessionDetail({ sessionId, period, home, deps });
   const filePath = resolveSessionFile(client, sessionId, home, { env, useEnvRoots });
   if (!filePath) return { found: false, client, sessionId, period, exchanges: [], totals: totalsOf([], sessionCost) };
-  let text;
-  try { text = fs.readFileSync(filePath, 'utf8'); } catch (_) {
-    return { found: false, client, sessionId, period, exchanges: [], totals: totalsOf([], sessionCost) };
+  let parsed;
+  let events;
+  try {
+    const lines = readTranscriptLines(filePath);
+    // The filename is a lookup key, not necessarily Codex's conversation identity.
+    parsed = client === 'codex' ? parseCodexTranscriptData(lines) : null;
+    events = parsed ? parsed.events : parseClaudeTranscriptLines(lines);
+  } catch (error) {
+    if (error.code === 'ENOENT') return { found: false, client, sessionId, period, exchanges: [], totals: totalsOf([], sessionCost) };
+    return {
+      found: false, client, sessionId, period, exchanges: [], totals: totalsOf([], sessionCost),
+      error: error.code === 'SESSION_DETAIL_LINE_TOO_LARGE' ? 'line-too-large' : 'read-failed'
+    };
   }
-  // Reuse the on-demand transcript parse; the filename is a lookup key, not
-  // necessarily Codex's conversation identity.
-  const parsed = client === 'codex' ? parseCodexTranscriptData(text) : null;
-  const events = parsed ? parsed.events : parseByClient(client, text);
   const now = new Date((deps.now || Date.now)());
   const grouped = filterExchangesByPeriod(groupEvents(events), period, now);
   distributeCost(grouped, sessionCost);

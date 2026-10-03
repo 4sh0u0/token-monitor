@@ -35,7 +35,7 @@ function resolveSessionDetailForPlatform(args = {}, deps = {}) {
     });
   const nativeDetail = readDetail({ ...args, home: nativeHome }, false);
 
-  if (nativeDetail.found || platform !== 'win32' || !WSL_FALLBACK_CLIENTS.has(args.client)) {
+  if (nativeDetail.found || nativeDetail.error || platform !== 'win32' || !WSL_FALLBACK_CLIENTS.has(args.client)) {
     return nativeDetail;
   }
 
@@ -51,7 +51,7 @@ function resolveSessionDetailForPlatform(args = {}, deps = {}) {
     if (!home || searched.has(home)) continue;
     searched.add(home);
     const detail = readDetail({ ...args, home }, true);
-    if (detail.found) return detail;
+    if (detail.found || detail.error) return detail;
   }
   return nativeDetail;
 }

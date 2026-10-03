@@ -17,6 +17,62 @@ function missing(args) {
   return { found: false, client: args.client, sessionId: args.sessionId, exchanges: [] };
 }
 
+for (const client of ['codex', 'claude']) {
+  test(`${client} continues WSL fallback when a resolved native or WSL file disappears`, (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-detail-race-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const homes = ['native', 'wsl-first', 'wsl-next'].map(name => path.join(root, name));
+    const sessionId = 'disappearing-session';
+    const files = homes.map(home => {
+      const dir = client === 'codex'
+        ? path.join(home, '.codex', 'sessions')
+        : path.join(home, '.claude', 'projects', 'test');
+      fs.mkdirSync(dir, { recursive: true });
+      return path.join(dir, `${sessionId}.jsonl`);
+    });
+    const turn = JSON.stringify(client === 'codex'
+      ? { type: 'event_msg', payload: { type: 'token_count', info: { last_token_usage: { input_tokens: 10, output_tokens: 5 } } } }
+      : { type: 'assistant', message: { usage: { input_tokens: 10, output_tokens: 5 } } });
+    const openSync = fs.openSync;
+    for (const disappearingIndex of [0, 1]) {
+      fs.writeFileSync(files[disappearingIndex], turn);
+      fs.writeFileSync(files[2], turn);
+      const opened = [];
+      t.mock.method(fs, 'openSync', (filePath, ...options) => {
+        opened.push(filePath);
+        if (filePath === files[disappearingIndex]) fs.unlinkSync(filePath);
+        return openSync(filePath, ...options);
+      });
+      const detail = resolveSessionDetailForPlatform(
+        { client, sessionId, period: 'total', sessionCost: 0.25 },
+        { platform: 'win32', homedir: () => homes[0], env: {}, wslUsageHomes: () => homes.slice(1) }
+      );
+      t.mock.restoreAll();
+      assert.deepEqual(opened, [files[disappearingIndex], files[2]]);
+      assert.equal(detail.found, true);
+      assert.equal(detail.totals.totalTokens, 15);
+      assert.equal(detail.totals.costUsd, 0.25);
+      assert.equal(Object.hasOwn(detail, 'error'), false);
+    }
+  });
+}
+
+test('keeps native and WSL read failures instead of reporting a missing transcript', () => {
+  for (const failingHome of ['/native', '/wsl']) {
+    const attempts = [];
+    const detail = resolveSessionDetailForPlatform({ client: 'codex', sessionId: 'large' }, {
+      platform: 'win32', homedir: () => '/native',
+      wslUsageHomes: () => ['/wsl', '/other'],
+      readSessionDetail: args => {
+        attempts.push(args.home);
+        return args.home === failingHome ? { found: false, error: 'line-too-large' } : missing(args);
+      }
+    });
+    assert.equal(detail.error, 'line-too-large');
+    assert.deepEqual(attempts, failingHome === '/native' ? ['/native'] : ['/native', '/wsl']);
+  }
+});
+
 test('reads a Claude transcript from a discovered WSL home', (t) => {
   const nativeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-native-detail-'));
   const wslHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-wsl-detail-'));
