@@ -39,6 +39,10 @@ Only the app, agent and packaging scripts run `ensure:tokscale`, which installs 
 
 Claude and Codex derive prompt-cache observations in their existing provider-owned session metadata pass, alongside context and turn state. Do not add an independent transcript reader for each metric. Append scans retain cache-accounting identity so duplicate records cannot restart an estimate when the original record leaves the initial tail. In anchored watch propagation, an omitted `promptCache` leaves the prior observation alone; explicit `null` clears it.
 
+Catalog-only title updates must preserve transcript-derived activity, context, cache and attribution; subsequent transcript reads must resume normal metadata updates. Keep title provenance in local metadata caches and anchors, never in published session rows. Confirmed T3 title removals clear only the matching override and restore any native fallback; missing or unreadable stores preserve the latest known state.
+
+Watch title changes and confirmed removals must survive later read misses and restarts without changing token/cost baselines or the full-scan timestamp. Persist anchors only when title state changes. Watch metadata refresh covers sessions present in today, including retained client partitions; month/allTime-only sessions refresh on the next full scan.
+
 ### Watching
 
 - There is no cooldown on top of the debounce, because the product promises 3–5 s updates. The debounce is instead capped by `watchMaxWaitMs` (5 s, floored at the debounce), because a trailing debounce never fires while agents keep writing faster than it. Time behind an in-flight tick does not count toward the cap, so a slow tick cannot chain scans back-to-back.
