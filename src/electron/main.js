@@ -26,6 +26,7 @@ const motionPreferenceApi = require('./motionPreference');
 const { clearBackgroundImage, getBackgroundImage, importBackgroundImage } = require('./backgroundImage');
 const { createClientSourceIpcHandlers } = require('./clientSourceIpc');
 const { createClaudeWebFetch } = require('./providers/claude/webFetch');
+const { createMimoExchangeFetch } = require('./providers/mimo/exchangeFetch');
 const { runAntigravityOAuthLogin } = require('./providers/antigravity/oauthLogin');
 const antigravityOAuth = require('../shared/providers/antigravity/oauth');
 const {
@@ -58,9 +59,19 @@ const electronWorkbuddyLocalAuth = createWorkbuddyLocalAuth({
 // `deps.fetch` — see limits/fetch.js for why the branch and the request options
 // are what they are. Probes that build their own transport inherit neither
 // branch: cursorProbe and antigravityProbe on node:https, Claude Web on the
-// claudeWebFetch above, the CLI fallbacks on a spawned binary.
+// claudeWebFetch above, the CLI fallbacks on a spawned binary, and MiMo's
+// exchange on the mimoExchangeFetch below, which keeps undici for the per-hop
+// request it needs but still asks Chromium which proxy to use.
 function electronLimitsFetch() {
   return createElectronLimitsFetch({ net, env: process.env });
+}
+
+// Lazy because `session.defaultSession` only exists once the app is ready, and
+// process-wide because the transport caches one proxy agent per proxy URL.
+let mimoExchangeFetch = null;
+function ensureMimoExchangeFetch() {
+  if (!mimoExchangeFetch) mimoExchangeFetch = createMimoExchangeFetch({ session: session.defaultSession });
+  return mimoExchangeFetch;
 }
 
 // Settings-side provider probes take the same transport as the collector's.
@@ -68,7 +79,7 @@ function electronLimitsFetch() {
 // global fetch refuses to save an account on exactly the machines this
 // transport exists for.
 function electronProviderDeps(deps = {}) {
-  return { ...deps, fetch: electronLimitsFetch() };
+  return { ...deps, fetch: electronLimitsFetch(), mimoExchangeFetch: ensureMimoExchangeFetch() };
 }
 const {
   DEFAULT_CLIENTS,
@@ -261,8 +272,10 @@ const {
   MIMO_PLATFORM_CONSOLE_URL,
   createMimoManagedAccount,
   fetchMimoLimits,
-  normalizeMimoCookieHeader
+  normalizeMimoCookieHeader,
+  withDetectedMimoAccount
 } = require('../shared/providers/mimo/limits');
+const { createMimoAccountMetadataReader } = require('./providers/mimo/accountMetadata');
 const { deviceHistoryRevision, historyPreview, historyRevision } = require('../shared/history');
 const { completeHistorySource, resolveCompleteHistory, resolveCompleteHistoryWithDevices } = require('./historySource');
 const { fixedPeriodHistoryMeta } = require('./fixedPeriodHistory');
@@ -857,6 +870,7 @@ function credentialProbeDeps(renewed = {}) {
 function electronLimitsDeps() {
   return {
     fetch: electronLimitsFetch(),
+    mimoExchangeFetch: ensureMimoExchangeFetch(),
     claudeWebFetch: electronClaudeWebFetch,
     workbuddyFetch: async (url, init = {}, expectedSession = null) => {
       const result = await electronWorkbuddyLocalAuth.request(url, init, expectedSession);
@@ -1248,17 +1262,42 @@ function normalizeMimoManagedAccounts(value) {
   return accounts;
 }
 
-function mimoAccountsForRenderer() {
-  return normalizeMimoManagedAccounts(settings?.mimoManagedAccounts).map(({
-    id, accountKey, accountEmail, accountLabel, addedAt, updatedAt, enabled
-  }) => ({ id, accountKey, accountEmail, accountLabel, addedAt, updatedAt, enabled }));
+// Synthetic settings-row id for the session discovered from MiMo Desktop. It is
+// local UI state, not a provider id.
+const MIMO_DETECTED_ACCOUNT_ID = 'mimo-local-session';
+const detectedMimoAccountKey = createMimoAccountMetadataReader();
+
+// Settings lists a detected Desktop identity without retaining its credential.
+function mimoDetectedAccount() {
+  const accountKey = detectedMimoAccountKey();
+  if (!accountKey) return null;
+  return {
+    id: MIMO_DETECTED_ACCOUNT_ID,
+    accountKey,
+    accountEmail: '',
+    accountLabel: '',
+    enabled: true
+  };
 }
 
+function mimoAccountsForRenderer() {
+  const accounts = normalizeMimoManagedAccounts(settings?.mimoManagedAccounts).map(({
+    id, accountKey, accountEmail, accountLabel, addedAt, updatedAt, enabled
+  }) => ({ id, accountKey, accountEmail, accountLabel, addedAt, updatedAt, enabled }));
+  return withDetectedMimoAccount(accounts, mimoDetectedAccount());
+}
+
+// Every saved account is handed over, including one whose credential cannot be
+// read right now: the provider answers that account with its own not-configured
+// row, which keeps the failure on the account it belongs to. Dropping it here
+// instead used to leave the provider with no accounts at all, and a provider with
+// no accounts answers once for the whole lane — which cleared every other
+// account's row with it.
 function mimoManagedAccountsForCollector() {
   return normalizeMimoManagedAccounts(settings?.mimoManagedAccounts).map((account) => ({
     ...account,
     cookieHeader: readMimoCredential(account.id)
-  })).filter((account) => account.cookieHeader);
+  }));
 }
 
 function legacyMimoCredentialPath(id) {
@@ -1296,7 +1335,10 @@ async function addMimoManagedAccount(cookieValue) {
   const accounts = normalizeMimoManagedAccounts(settings?.mimoManagedAccounts);
   const result = createMimoManagedAccount(cookieValue, accounts);
   if (!result.ok) return result;
-  const [validation] = await fetchMimoLimits({ mimoManagedAccounts: [result.account] }, electronProviderDeps());
+  const [validation] = await fetchMimoLimits({
+    mimoManagedAccounts: [result.account],
+    limitRefreshScope: { provider: 'mimo', accountKey: result.account.accountKey }
+  }, credentialProbeDeps());
   if (validation?.status !== 'ok') {
     const errorCode = validation?.status === 'unauthorized'
       ? 'invalidCookie'
