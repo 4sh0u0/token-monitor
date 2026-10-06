@@ -1270,10 +1270,11 @@ function sqliteReturning(rows) {
 }
 const presentFile = { statSync: () => ({ isFile: () => true }) };
 
-(sqlite ? test : test.skip)('the reader opens read-only and filters cookie names and domains', (t) => {
+(sqlite ? test : test.skip)('Windows discovery opens the partition read-only and filters cookies', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mimo-cookie-reader-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const file = path.join(root, 'Cookies');
+  const file = path.join(root, 'Xiaomi MiMo', 'Partitions', 'xiaomi-account', 'Network', 'Cookies');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   const database = new sqlite.DatabaseSync(file);
   database.exec('CREATE TABLE cookies (host_key TEXT, name TEXT, value TEXT, encrypted_value BLOB)');
   const insert = database.prepare('INSERT INTO cookies VALUES (?, ?, ?, NULL)');
@@ -1285,7 +1286,9 @@ const presentFile = { statSync: () => ({ isFile: () => true }) };
   database.close();
   let readOnly = false;
   const read = readMimoDesktopAccount({
-    candidates: [file],
+    platform: 'win32',
+    home: root,
+    env: { APPDATA: root },
     sqlite: { DatabaseSync: class {
       constructor(dbPath, options) {
         readOnly = options.readOnly;
@@ -1313,7 +1316,9 @@ test('the partition resolves on verified or documented platforms only', () => {
   assert.deepEqual(mimoDesktopCookieCandidates({ platform: 'darwin', home }), [
     path.join(home, 'Library', 'Application Support', 'Xiaomi MiMo', 'Partitions', 'xiaomi-account', 'Cookies')
   ]);
-  assert.equal(mimoDesktopCookieCandidates({ platform: 'win32', home, env: {} }).length, 1);
+  assert.deepEqual(mimoDesktopCookieCandidates({ platform: 'win32', home, env: {} }), [
+    path.join(home, 'AppData', 'Roaming', 'Xiaomi MiMo', 'Partitions', 'xiaomi-account', 'Network', 'Cookies')
+  ]);
   assert.deepEqual(mimoDesktopCookieCandidates({ platform: 'linux', home, env: {} }), []);
   assert.deepEqual(mimoDesktopCookieCandidates({ platform: 'freebsd', home, env: {} }), []);
 });
