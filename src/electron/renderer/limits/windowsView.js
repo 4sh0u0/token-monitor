@@ -1712,9 +1712,21 @@
       // the generic path below.
       return plan ? presentationApi.limitProviderPlanDisplayLabel(provider, plan) : '';
     }
-    const label = String(provider?.planLabel || provider?.accountLabel || '').trim();
+    const plan = String(provider?.planLabel || '').trim();
+    let legacyLabel = String(provider?.accountLabel || '').trim();
+    if (provider?.provider === 'cursor' && !plan) {
+      // Cursor stores its email identity in accountLabel when membership is
+      // unknown. It is never a plan, even when email masking is disabled.
+      const email = String(provider?.accountEmail || '').trim();
+      if ((email && legacyLabel.toLowerCase() === email.toLowerCase()) || /^[^\s@]+@[^\s@]+$/.test(legacyLabel)) legacyLabel = '';
+    }
+    const label = plan || legacyLabel;
     if (label) return presentationApi.limitProviderPlanDisplayLabel(provider, label);
     return provider?.status && provider.status !== 'ok' ? limitStatusLabel(provider.status) : '';
+  }
+
+  function limitPlanText(provider, options = {}) {
+    return options.planText ?? limitProviderPlan(provider);
   }
 
   function renderLimitProviderMark(id, color) {
@@ -1788,7 +1800,7 @@
     }
     const plan = document.createElement('div');
     plan.className = 'limit-plan';
-    plan.textContent = options.planText ?? limitProviderPlan(provider);
+    plan.textContent = limitPlanText(provider, options);
     // A record binds to one account, so the provider-wide rollup belongs on the
     // row that stands for the provider as a whole — the header of a group, or a
     // provider's single row — and not on each member of a group, which would
@@ -2079,10 +2091,10 @@
     opencode: (provider, color, { grouped }) => ({
       options: {
         // A profile name that is neither Go nor Zen predates accountName, and it
-        // is the only label the row has — repeating it in the plan cell says
-        // nothing. Only a group row has a sibling whose plan cell it could be
-        // mistaken for.
-        ...(grouped && legacyOpencodeProfileLabel(provider) ? { planText: '' } : {}),
+        // is repeated by the legacy plan fallback. Hide that duplicate only
+        // for healthy/stale rows with no explicit plan. Recovery status and
+        // known Go/Zen plans must survive.
+        ...(grouped && (provider?.status === 'ok' || provider?.stale) && !String(provider?.planLabel || '').trim() && legacyOpencodeProfileLabel(provider) ? { planText: '' } : {}),
         ...(grouped ? { showIcon: false } : {})
       }
     }),
@@ -2097,7 +2109,16 @@
     // only repeats it. Standing alone the row has nothing else to be recognised
     // by and keeps its own.
     openrouter: (provider, color, { grouped }) => ({
-      options: grouped ? { showIcon: false } : {}
+      options: grouped ? {
+        showIcon: false,
+        // A credits-only response has no key plan; accountLabel then repeats
+        // the profile title. Keep explicit plans and recovery status visible.
+        ...((provider?.status === 'ok' || provider?.stale)
+          && !String(provider?.planLabel || '').trim()
+          && String(provider?.accountName || '').trim()
+          && String(provider?.accountName || '').trim() === String(provider?.accountLabel || '').trim()
+          ? { planText: '' } : {})
+      } : {}
     }),
     antigravity: (provider, color, { grouped }) => ({
       options: grouped ? { showIcon: false } : {}
@@ -2135,6 +2156,12 @@
     const policy = LIMIT_ACCOUNT_ROW_POLICIES[String(id || '').trim().toLowerCase()];
     const resolved = policy ? policy(provider, color, context) : {};
     return { color: resolved.color || color, options: resolved.options || {} };
+  }
+
+  // Compact surfaces keep the same plan-cell policy as the full account rows.
+  function limitAccountPlan(provider, { grouped = false } = {}) {
+    const policy = limitAccountRowPolicy(provider?.provider, provider, '', { grouped, sharedFamily: null });
+    return limitPlanText(provider, policy.options);
   }
 
   // A provider's row standing on its own. Both surfaces call this rather than
@@ -2715,6 +2742,7 @@
     setDetailTooltip,
     codexResetForecastExpired,
     limitAccountTitle,
+    limitAccountPlan,
     limitProviderMeta,
     limitProviderPlan,
     limitStatusLabel,

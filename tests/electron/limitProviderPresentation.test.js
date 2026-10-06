@@ -2899,6 +2899,56 @@ test('MiMo settings stays connected while one independent product is live', () =
   assert.equal(presentation.limitProviderSettingsRecord([expired], 'mimo'), expired);
 });
 
+test('OpenRouter grouped plan policy separates profile identities, explicit plans, and recovery status', () => {
+  const view = createLimitWindowsView({ presentation: require('../../src/electron/renderer/limits/providerPresentation') });
+  for (const [status, recovery] of [['ok', ''], ['unauthorized', 'Sign in again'], ['unavailable', 'Unavailable']]) {
+    for (const stale of [true, false]) {
+      for (const grouped of [true, false]) {
+        for (const planLabel of ['', 'Management']) {
+          const provider = { provider: 'openrouter', status, stale, accountName: 'Work', accountLabel: 'Work', planLabel };
+          const expected = status !== 'ok' && !stale ? recovery : planLabel || (grouped ? '' : 'Work');
+          assert.equal(view.limitAccountPlan(provider, { grouped }), expected);
+        }
+      }
+    }
+  }
+  assert.equal(view.limitAccountPlan({ provider: 'openrouter', status: 'ok', accountName: 'Work', accountLabel: 'Pay-as-you-go' }, { grouped: true }), 'Pay-as-you-go');
+});
+
+test('OpenCode grouped plan policy preserves explicit plans beside legacy profile titles', () => {
+  const view = createLimitWindowsView({ presentation: require('../../src/electron/renderer/limits/providerPresentation') });
+  const provider = { provider: 'opencode', status: 'ok', accountLabel: 'Work profile' };
+  for (const [planLabel, expected] of [['', ''], ['   ', ''], ['Zen', 'Zen'], ['Go', 'Go'], [' Zen ', 'Zen']]) {
+    assert.equal(view.limitAccountPlan({ ...provider, planLabel }, { grouped: true }), expected);
+  }
+  assert.equal(view.limitAccountPlan(provider), 'Work profile');
+  for (const [status, recovery] of [['ok', ''], ['unauthorized', 'Sign in again'], ['unavailable', 'Unavailable']]) {
+    for (const stale of [true, false]) {
+      for (const grouped of [true, false]) {
+        for (const planLabel of ['', 'Zen']) {
+          const expected = status !== 'ok' && !stale ? recovery : planLabel || (grouped ? '' : 'Work profile');
+          assert.equal(view.limitAccountPlan({ ...provider, status, stale, planLabel }, { grouped }), expected);
+        }
+      }
+    }
+  }
+});
+
+test('Cursor shared plan cells omit email identities while preserving membership and legacy plans', () => {
+  const view = createLimitWindowsView({ presentation: require('../../src/electron/renderer/limits/providerPresentation') });
+  const provider = { provider: 'cursor', status: 'ok', accountEmail: 'alice@example.com', accountLabel: 'alice@example.com', planLabel: '' };
+  for (const resolve of [view.limitProviderPlan, view.limitAccountPlan]) {
+    assert.equal(resolve(provider), '');
+    assert.equal(resolve({ ...provider, accountLabel: ' ALICE@example.com ' }), '');
+    assert.equal(resolve({ ...provider, accountEmail: '', accountLabel: 'legacy@example.com' }), '');
+    assert.equal(resolve({ ...provider, planLabel: 'Pro' }), 'Pro');
+    assert.equal(resolve({ ...provider, accountLabel: 'Pro', accountEmail: '' }), 'Pro');
+    assert.equal(resolve({ ...provider, status: 'unauthorized' }), 'Sign in again');
+    assert.equal(resolve({ ...provider, status: 'unavailable', stale: true }), 'Unavailable');
+    assert.equal(resolve({ ...provider, status: 'unavailable', stale: true, planLabel: 'Pro' }), 'Pro');
+  }
+});
+
 test('MiMo plan cells keep missing plan names empty and use shared recovery text', () => {
   const view = createLimitWindowsView({
     mimoProductLabel: limitWindowLabels.mimoProductLabel,
