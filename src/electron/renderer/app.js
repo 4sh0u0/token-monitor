@@ -16129,6 +16129,10 @@ function setupModelAliasesUI() {
     getAliases: () => state.settings?.modelAliases || {},
     getBase: () => syncContentForm?.base(),
     getGrouping: () => state.settings?.modelAliasGrouping || 'off',
+    getModelIds: () => [
+      ...customPricingFormApi.inUseModelIds(state.stats),
+      ...(state.settings?.customModelPricing || []).map(entry => entry.modelId)
+    ],
     saveAliases: async (modelAliases, base) => {
       modelAliasSaveConflict = false;
       try {
