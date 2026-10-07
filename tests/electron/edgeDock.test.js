@@ -166,6 +166,8 @@ const {
   edgeDockPeekBounds,
   edgeDockPlacementForDrop,
   edgeDockRailBounds,
+  edgeDockRefreshBounds,
+  edgeDockRefreshCorridor,
   edgeDockTriggerBounds,
   normalizeEdgeDockDisplayId,
   normalizeEdgeDockOffset,
@@ -2518,4 +2520,54 @@ test('live rate card renders device model rows with vendor marks and retains eve
   const empty = node('section', '');
   render(empty, { rateDevices: [] });
   assert.equal(empty.children.length, 0);
+});
+
+test('refresh placement preserves rail bounds and stays accessible at either display edge', () => {
+  const area = { x: -1200, y: 80, width: 1200, height: 700 };
+  for (const side of ['left', 'right']) {
+    for (const offset of [0, 0.3, 1]) {
+      const rail = edgeDockRailBounds({ workArea: area, side, offset, cellKinds: ['provider', 'provider'] });
+      const before = structuredClone(rail);
+      const button = edgeDockRefreshBounds({ workArea: area, railBounds: rail });
+      assert.deepEqual(rail, before);
+      if (offset === 1) {
+        assert.equal(button.y + button.height, rail.y + rail.height);
+      } else {
+        assert.equal(button.x + button.width / 2, rail.x + rail.width / 2);
+        assert.equal(rail.y + rail.height - button.y, Math.round(EDGE_DOCK_METRICS.shoulder * 0.7) - EDGE_DOCK_METRICS.refreshGap);
+      }
+      assert.equal(button.x + button.width / 2, rail.x + rail.width / 2);
+      assert.ok(button.y >= area.y + EDGE_DOCK_METRICS.screenMargin);
+      assert.ok(button.y + button.height <= area.y + area.height - EDGE_DOCK_METRICS.screenMargin);
+      const corridor = edgeDockRefreshCorridor(rail, button);
+      assert.equal(corridor.width, 0);
+    }
+    const full = edgeDockRailBounds({ workArea: area, side, offset: 1, cellKinds: Array(30).fill('provider') });
+    const button = edgeDockRefreshBounds({ workArea: area, railBounds: full });
+    assert.equal(button.x + button.width / 2, full.x + full.width / 2);
+    assert.ok(button.y + button.height <= area.y + area.height - EDGE_DOCK_METRICS.screenMargin);
+    assert.equal(edgeDockRefreshCorridor(full, button).width, 0);
+    for (const count of [2, 12, 30]) {
+      for (const offset of [0, 0.3, 0.75, 0.95, 1]) {
+        const rail = edgeDockRailBounds({ workArea: area, side, offset, cellKinds: Array(count).fill('provider') });
+        const action = edgeDockRefreshBounds({ workArea: area, railBounds: rail });
+        assert.equal(action.x + action.width / 2, rail.x + rail.width / 2);
+        assert.ok(action.y >= rail.y + rail.height - action.height, 'refresh must stay at the bottom, never above the rail');
+        assert.ok(action.y + action.height <= area.y + area.height - EDGE_DOCK_METRICS.screenMargin);
+      }
+    }
+  }
+});
+
+test('refresh retains its original bottom position when the display extends below the work area', () => {
+  const area = { x: 0, y: 24, width: 1200, height: 820 };
+  const displayBounds = { x: 0, y: 0, width: 1200, height: 900 };
+  for (const side of ['left', 'right']) {
+    const rail = edgeDockRailBounds({ workArea: area, side, offset: 1, cellKinds: Array(12).fill('provider') });
+    const button = edgeDockRefreshBounds({ workArea: area, displayBounds, railBounds: rail });
+    assert.equal(button.x + button.width / 2, rail.x + rail.width / 2);
+    assert.equal(button.y, rail.y + rail.height - Math.round(EDGE_DOCK_METRICS.shoulder * 0.7) + EDGE_DOCK_METRICS.refreshGap);
+    assert.ok(button.y + button.height > area.y + area.height - EDGE_DOCK_METRICS.screenMargin);
+    assert.ok(button.y + button.height <= displayBounds.y + displayBounds.height - EDGE_DOCK_METRICS.screenMargin);
+  }
 });

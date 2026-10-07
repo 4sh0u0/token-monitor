@@ -22,6 +22,13 @@ class FakeWebContents extends EventEmitter {
 
 class FakeBrowserWindow extends EventEmitter {
   static instances = [];
+  static zOrder = [];
+
+  static atPoint(point) {
+    return this.zOrder.findLast((win) => !win.destroyed && win.visible && !win.ignoreMouse
+      && point.x >= win.bounds.x && point.x < win.bounds.x + win.bounds.width
+      && point.y >= win.bounds.y && point.y < win.bounds.y + win.bounds.height);
+  }
 
   constructor(options) {
     super();
@@ -29,6 +36,7 @@ class FakeBrowserWindow extends EventEmitter {
     this.webContents = new FakeWebContents();
     this.bounds = { x: 0, y: 0, width: options.width, height: options.height };
     this.opacity = 1;
+    this.opacityChanges = [];
     this.visible = false;
     this.destroyed = false;
     this.shapeCalls = [];
@@ -48,9 +56,14 @@ class FakeBrowserWindow extends EventEmitter {
   isVisible() { return this.visible; }
   getOpacity() { return this.opacity; }
   getBounds() { return { ...this.bounds }; }
-  setOpacity(value) { this.opacity = value; }
+  setOpacity(value) { this.opacity = value; this.opacityChanges.push(value); }
   setIgnoreMouseEvents(value) { this.ignoreMouse = value; }
-  showInactive() { this.visible = true; this.zOrderCalls.push('showInactive'); }
+  showInactive() { this.visible = true; this.zOrderCalls.push('showInactive'); this.orderFront(); }
+  moveTop() { this.zOrderCalls.push('moveTop'); this.orderFront(); }
+  orderFront() {
+    FakeBrowserWindow.zOrder = FakeBrowserWindow.zOrder.filter((win) => win !== this);
+    FakeBrowserWindow.zOrder.push(this);
+  }
   setBounds(bounds) { this.bounds = { ...bounds }; }
   setAlwaysOnTop(flag, level) { this.zOrderCalls.push(['setAlwaysOnTop', flag, level]); }
   setVisibleOnAllWorkspaces() {}
@@ -100,8 +113,10 @@ function sentPayload(win, surface) {
 
 function createFixture(options = {}) {
   FakeBrowserWindow.instances = [];
+  FakeBrowserWindow.zOrder = [];
   const settings = {
     edgeDockEnabled: true,
+    edgeDockRefreshEnabled: true,
     edgeDockMode: 'always',
     edgeDockSide: 'right',
     edgeDockOffset: 0.3,
@@ -132,7 +147,9 @@ function createFixture(options = {}) {
     nativeGlass: () => options.nativeGlass === true,
     liquidGlass: () => (typeof options.liquidGlass === 'function' ? options.liquidGlass() : options.liquidGlass || null),
     createGlass: options.createGlass,
-    prefersReducedMotion: () => true,
+    canRefreshLimits: options.canRefreshLimits,
+    onRefreshLimits: options.onRefreshLimits,
+    prefersReducedMotion: options.prefersReducedMotion || (() => true),
     isFullScreen: options.isFullScreen,
     applyShapeMask: (win) => {
       maskWindows.push(win);
@@ -157,7 +174,12 @@ function createFixture(options = {}) {
   controller.sync();
   for (const win of FakeBrowserWindow.instances) win.webContents.emit('did-finish-load');
   const windowFor = (surface) => FakeBrowserWindow.instances.filter((win) => !win.destroyed && win.surface === surface).at(-1);
-  return { controller, hapticCalls, haptics, ipcMain, maskWindows, placements, screen, settings, windowFor };
+  const paintPeek = () => {
+    const win = windowFor('peek');
+    const payload = sentPayload(win, 'peek');
+    ipcMain.emit('edgeDock:peekPainted', { sender: win.webContents }, { mode: payload.peekMode, shapeKey: payload.shape?.key });
+  };
+  return { controller, hapticCalls, haptics, ipcMain, maskWindows, placements, screen, settings, windowFor, paintPeek };
 }
 
 test('Windows Edge Dock reasserts topmost after each surface is first shown and rebuilt', (t) => {
@@ -650,3 +672,435 @@ test('display metric changes hide and remeasure an open card against the new wor
   assert.equal(bubble.bounds.height, 300 - EDGE_DOCK_METRICS.screenMargin * 2);
   assert.equal(bubble.opacity, 1);
 });
+
+test('refresh reuses the peek and retains one Liquid Glass view across role changes', async (t) => {
+  const factory = fakeGlassFactory();
+  let enabled = true;
+  let calls = 0;
+  let finish;
+  const fixture = createFixture({ platform: 'darwin', nativeGlass: true,
+    liquidGlass: { dark: true }, createGlass: factory.create,
+    settings: { edgeDockMode: 'autoHide' }, canRefreshLimits: () => enabled,
+    onRefreshLimits: () => { calls += 1; return new Promise((resolve) => { finish = resolve; }); }
+  });
+  t.after(() => fixture.controller.stop());
+  const peek = fixture.windowFor('peek');
+  const rail = fixture.windowFor('rail');
+  const originalRail = { ...rail.bounds };
+  const handler = fixture.ipcMain.handlers.get('edgeDock:refreshLimits');
+  assert.equal((await handler({ sender: peek.webContents })).ok, false);
+  fixture.ipcMain.emit('edgeDock:click', { sender: peek.webContents });
+  assert.equal(sentPayload(peek, 'peek').peekMode, 'refresh');
+  assert.equal(peek.ignoreMouse, true, 'old handle frame stays hidden until the new paint');
+  assert.equal((await handler({ sender: peek.webContents })).ok, false);
+  fixture.paintPeek();
+  assert.equal(peek.ignoreMouse, false);
+  assert.equal(sentPayload(peek, 'peek').liquidGlass, true);
+  assert.equal(peek.bounds.width, EDGE_DOCK_METRICS.refreshSize);
+  assert.deepEqual(rail.bounds, originalRail);
+  assert.equal(FakeBrowserWindow.instances.length, 3);
+  assert.equal((await handler({ sender: rail.webContents })).ok, false);
+  const first = handler({ sender: peek.webContents });
+  const duplicate = handler({ sender: peek.webContents });
+  await Promise.resolve();
+  assert.equal(calls, 1);
+  finish({ ok: true });
+  assert.equal((await first).ok, true);
+  assert.equal((await duplicate).ok, true);
+  const glass = factory.glasses.find((entry) => entry.win === peek);
+  fixture.screen.point = { x: peek.bounds.x + 16, y: rail.bounds.y + rail.bounds.height + 2 };
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.equal(sentPayload(peek, 'peek').peekMode, 'refresh', 'crossing the gap keeps the rail open');
+  fixture.screen.point = { x: 100, y: 100 };
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.equal(sentPayload(peek, 'peek').peekMode, 'handle');
+  assert.equal(sentPayload(peek, 'peek').liquidGlass, false);
+  assert.equal(peek.bounds.width, EDGE_DOCK_METRICS.peekWidth);
+  assert.equal(glass.updates.at(-1).visible, false);
+  fixture.controller.setAppearance({ language: 'zh-TW' });
+  assert.equal(glass.updates.at(-1).visible, false);
+  fixture.ipcMain.emit('edgeDock:click', { sender: peek.webContents });
+  assert.equal(factory.glasses.filter((entry) => entry.win === peek).length, 1);
+  enabled = false;
+  fixture.controller.sync();
+  assert.equal(peek.ignoreMouse, true);
+  assert.equal((await handler({ sender: peek.webContents })).ok, false);
+});
+
+test('always-visible refresh appears on hover, stays over the button and hides during a drag', async (t) => {
+  const fixture = createFixture({ canRefreshLimits: () => true, onRefreshLimits: async () => ({ ok: true }) });
+  t.after(() => fixture.controller.stop());
+  const rail = fixture.windowFor('rail');
+  const peek = fixture.windowFor('peek');
+  assert.equal(peek.ignoreMouse, true);
+  fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 20 };
+  await new Promise((resolve) => setTimeout(resolve, 105));
+  fixture.paintPeek();
+  assert.equal(peek.ignoreMouse, false);
+  fixture.screen.point = { x: peek.bounds.x + 16, y: peek.bounds.y + 16 };
+  await new Promise((resolve) => setTimeout(resolve, 105));
+  assert.equal(peek.ignoreMouse, false);
+  fixture.ipcMain.emit('edgeDock:dragStart', { sender: rail.webContents }, { grabOffsetY: 20 });
+  assert.equal(peek.ignoreMouse, true);
+  fixture.ipcMain.emit('edgeDock:dragEnd', { sender: rail.webContents });
+  fixture.screen.point = { x: 100, y: 100 };
+  await new Promise((resolve) => setTimeout(resolve, 105));
+  assert.equal(peek.ignoreMouse, true);
+  assert.equal(rail.ignoreMouse, false);
+});
+
+test('refresh is raised above the rail shoulder after paint and on each hover reveal', async (t) => {
+  const fixture = createFixture({ platform: 'darwin', canRefreshLimits: () => true });
+  t.after(() => fixture.controller.stop());
+  const rail = fixture.windowFor('rail');
+  const peek = fixture.windowFor('peek');
+  const raises = () => peek.zOrderCalls.filter((call) => call === 'moveTop').length;
+  assert.equal(raises(), 0);
+  fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 20 };
+  await new Promise((resolve) => setTimeout(resolve, 105));
+  assert.equal(raises(), 0, 'the old handle frame stays hidden');
+  fixture.paintPeek();
+  assert.equal(raises(), 1);
+  assert.ok(peek.bounds.y < rail.bounds.y + rail.bounds.height, 'circle nests into the native rail rectangle');
+  const edge = { x: peek.bounds.x + 16, y: peek.bounds.y + 3 };
+  assert.equal(FakeBrowserWindow.atPoint(edge), peek, 'the circular edge receives input ahead of the rail');
+  await new Promise((resolve) => setTimeout(resolve, 105));
+  assert.equal(raises(), 1, 'steady hover does not repeatedly reorder windows');
+  fixture.screen.point = { x: 100, y: 100 };
+  await new Promise((resolve) => setTimeout(resolve, 105));
+  fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 20 };
+  await new Promise((resolve) => setTimeout(resolve, 105));
+  assert.equal(raises(), 2, 'reused refresh mode is raised again after being hidden');
+});
+
+test('a rail that finishes loading last leaves the painted refresh above its shoulder', (t) => {
+  const fixture = createFixture({ platform: 'darwin', settings: { edgeDockMode: 'autoHide' }, canRefreshLimits: () => true });
+  t.after(() => fixture.controller.stop());
+  const peek = fixture.windowFor('peek');
+  const rail = fixture.windowFor('rail');
+  fixture.ipcMain.emit('edgeDock:click', { sender: peek.webContents });
+  fixture.paintPeek();
+  const before = peek.zOrderCalls.filter((call) => call === 'moveTop').length;
+  // Native first-show ordering is reapplied when a newly loaded rail reveals.
+  rail.visible = false;
+  rail.webContents.emit('did-finish-load');
+  assert.equal(peek.zOrderCalls.filter((call) => call === 'moveTop').length, before + 1);
+  assert.equal(FakeBrowserWindow.atPoint({ x: peek.bounds.x + 16, y: peek.bounds.y + 3 }), peek);
+  assert.equal(peek.ignoreMouse, false);
+});
+
+for (const side of ['left', 'right']) {
+  test(`${side} full-height rail dismisses its bottom card when the pointer reaches refresh`, async (t) => {
+    const fixture = createFixture({
+      settings: { edgeDockSide: side },
+      displays: [{ id: 1, bounds: { x: 0, y: 0, width: 1200, height: 700 }, workArea: { x: 0, y: 0, width: 1200, height: 700 } }],
+      canRefreshLimits: () => true,
+      onRefreshLimits: async () => ({ ok: true })
+    });
+    t.after(() => fixture.controller.stop());
+    fixture.controller.setCells(Array.from({ length: 12 }, (_, index) => ({ id: `provider-${index}`, kind: 'provider', label: `Provider ${index}` })));
+    const rail = fixture.windowFor('rail');
+    const bubble = fixture.windowFor('bubble');
+    const peek = fixture.windowFor('peek');
+    fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 20 };
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    fixture.paintPeek();
+    fixture.ipcMain.emit('edgeDock:click', { sender: rail.webContents }, { cellIndex: 11 });
+    fixture.ipcMain.emit('edgeDock:bubbleSize', { sender: bubble.webContents }, { cellId: 'provider-11', height: 180 });
+    assert.equal(bubble.ignoreMouse, false);
+    assert.equal(peek.bounds.x + peek.bounds.width / 2, rail.bounds.x + rail.bounds.width / 2,
+      'the button stays in the original rail column even for a full-height rail');
+    fixture.screen.point = { x: peek.bounds.x + 16, y: peek.bounds.y + 16 };
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    assert.equal(bubble.ignoreMouse, true);
+    assert.equal(bubble.opacity, 0);
+    assert.equal(sentPayload(rail, 'rail').focusCellId, null);
+    assert.equal(peek.ignoreMouse, false);
+    assert.equal(peek.opacity, 1);
+    const handler = fixture.ipcMain.handlers.get('edgeDock:refreshLimits');
+    assert.deepEqual(await handler({ sender: peek.webContents }), { ok: true });
+    // Returning to the same bottom cell must reopen its card through hover.
+    fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + rail.bounds.height - 35 };
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    assert.equal(sentPayload(rail, 'rail').focusCellId, 'provider-11');
+    fixture.ipcMain.emit('edgeDock:bubbleSize', { sender: bubble.webContents }, { cellId: 'provider-11', height: 180 });
+    assert.equal(bubble.ignoreMouse, false);
+  });
+}
+
+test('refresh follows the rail fallback when shaped Liquid Glass fails', (t) => {
+  const factory = fakeGlassFactory({ failShape: true });
+  const fixture = createFixture({ platform: 'darwin', nativeGlass: true,
+    liquidGlass: { dark: false }, createGlass: factory.create,
+    settings: { edgeDockMode: 'autoHide' }, canRefreshLimits: () => true });
+  t.after(() => fixture.controller.stop());
+  const peek = fixture.windowFor('peek');
+  fixture.ipcMain.emit('edgeDock:click', { sender: peek.webContents });
+  assert.equal(sentPayload(peek, 'peek').peekMode, 'refresh');
+  assert.equal(sentPayload(peek, 'peek').liquidGlass, false);
+  assert.equal(sentPayload(peek, 'peek').glass, true);
+  assert.ok(fixture.maskWindows.includes(peek));
+  assert.equal(peek.vibrancyCalls.at(-1), 'hud');
+});
+
+for (const mode of ['always', 'autoHide']) {
+  test(`${mode} refresh is opt-in and removing it rejects stale refresh requests`, async (t) => {
+    let calls = 0;
+    const fixture = createFixture({
+      settings: { edgeDockMode: mode, edgeDockRefreshEnabled: undefined },
+      canRefreshLimits: () => true,
+      onRefreshLimits: async () => { calls += 1; return { ok: true }; }
+    });
+    t.after(() => fixture.controller.stop());
+    const rail = fixture.windowFor('rail');
+    const peek = fixture.windowFor('peek');
+    const handler = fixture.ipcMain.handlers.get('edgeDock:refreshLimits');
+    if (mode === 'autoHide') fixture.ipcMain.emit('edgeDock:click', { sender: peek.webContents });
+    fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 20 };
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    assert.equal(peek.ignoreMouse, true, 'older settings without the preference keep refresh off');
+    assert.equal((await handler({ sender: peek.webContents })).ok, false);
+    fixture.settings.edgeDockRefreshEnabled = true;
+    fixture.controller.sync();
+    fixture.paintPeek();
+    assert.equal(peek.ignoreMouse, false);
+    assert.deepEqual(await handler({ sender: peek.webContents }), { ok: true });
+    fixture.settings.edgeDockRefreshEnabled = false;
+    // A settings change invalidates IPC even before the visibility sync.
+    assert.equal((await handler({ sender: peek.webContents })).ok, false);
+    fixture.controller.sync();
+    assert.equal(peek.ignoreMouse, true);
+    assert.equal(calls, 1);
+    assert.equal(rail.ignoreMouse, false, 'removing refresh leaves the rail available');
+  });
+}
+
+for (const { platform, enabled, expected } of [
+  { platform: 'darwin', enabled: true, expected: [{ pattern: 'alignment', performanceTime: 'now' }] },
+  { platform: 'darwin', enabled: false, expected: [] },
+  { platform: 'win32', enabled: true, expected: [] }
+]) {
+  test(`${platform} refresh hover haptics ${enabled ? 'enabled' : 'disabled'} match readouts without click feedback`, async (t) => {
+    let finish;
+    let calls = 0;
+    const fixture = createFixture({
+      platform, settings: { edgeDockMode: 'autoHide', edgeDockHaptic: enabled },
+      canRefreshLimits: () => true,
+      onRefreshLimits: () => { calls += 1; return new Promise((resolve) => { finish = resolve; }); }
+    });
+    t.after(() => fixture.controller.stop());
+    const peek = fixture.windowFor('peek');
+    const rail = fixture.windowFor('rail');
+    const handler = fixture.ipcMain.handlers.get('edgeDock:refreshLimits');
+    fixture.ipcMain.emit('edgeDock:click', { sender: peek.webContents });
+    fixture.hapticCalls.length = 0; // Exclude the existing rail-reveal feedback.
+    fixture.screen.point = { x: peek.bounds.x + 16, y: peek.bounds.y + 16 };
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    assert.deepEqual(fixture.hapticCalls, [], 'the unpainted action does not trigger hover feedback');
+    assert.equal((await handler({ sender: peek.webContents })).ok, false);
+    fixture.paintPeek();
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    assert.deepEqual(fixture.hapticCalls, expected, 'entering a painted action triggers alignment feedback');
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    assert.deepEqual(fixture.hapticCalls, expected, 'staying over the action does not repeat feedback');
+    assert.equal((await handler({ sender: rail.webContents })).ok, false);
+    const first = handler({ sender: peek.webContents });
+    const duplicate = handler({ sender: peek.webContents });
+    assert.deepEqual(fixture.hapticCalls, expected, 'clicks do not overlap the trackpad click feedback');
+    await Promise.resolve();
+    assert.equal(calls, 1);
+    finish({ ok: false });
+    assert.equal((await first).ok, false);
+    assert.equal((await duplicate).ok, false);
+    assert.deepEqual(fixture.hapticCalls, expected, 'failure does not trigger more feedback');
+    fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 40 };
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    assert.deepEqual(fixture.hapticCalls, [...expected, ...expected], 'returning to a readout gets its own hover feedback');
+    fixture.screen.point = { x: peek.bounds.x + 16, y: peek.bounds.y + 16 };
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    assert.deepEqual(fixture.hapticCalls, [...expected, ...expected, ...expected], 're-entering the action triggers one more tick');
+    const next = handler({ sender: peek.webContents });
+    const nextDuplicate = handler({ sender: peek.webContents });
+    await Promise.resolve();
+    assert.equal(calls, 2);
+    finish({ ok: true });
+    assert.equal((await next).ok, true);
+    assert.equal((await nextDuplicate).ok, true);
+    const successFeedback = platform === 'darwin' && enabled
+      ? [{ pattern: 'generic', performanceTime: 'default' }] : [];
+    assert.deepEqual(fixture.hapticCalls, [...expected, ...expected, ...expected, ...successFeedback],
+      'success adds one completion tick shared by duplicate requests');
+  });
+}
+
+for (const change of ['stop', 'restart', 'remove', 'disable haptics']) {
+  test(`a refresh that completes after ${change} does not emit completion haptics`, async (t) => {
+    let finish;
+    const fixture = createFixture({
+      platform: 'darwin', settings: { edgeDockMode: 'autoHide' },
+      canRefreshLimits: () => true,
+      onRefreshLimits: () => new Promise((resolve) => { finish = resolve; })
+    });
+    t.after(() => fixture.controller.stop());
+    const peek = fixture.windowFor('peek');
+    fixture.ipcMain.emit('edgeDock:click', { sender: peek.webContents });
+    fixture.paintPeek();
+    fixture.hapticCalls.length = 0;
+    const request = fixture.ipcMain.handlers.get('edgeDock:refreshLimits')({ sender: peek.webContents });
+    await Promise.resolve();
+    assert.deepEqual(fixture.hapticCalls, [], 'clicking does not emit feedback');
+    if (change === 'stop' || change === 'restart') fixture.controller.stop();
+    if (change === 'restart') fixture.controller.sync();
+    if (change === 'remove') fixture.settings.edgeDockRefreshEnabled = false;
+    if (change === 'disable haptics') fixture.settings.edgeDockHaptic = false;
+    finish({ ok: true });
+    assert.deepEqual(await request, { ok: true }, 'feedback gating does not change the refresh result');
+    assert.deepEqual(fixture.hapticCalls, []);
+  });
+}
+
+for (const mode of ['always', 'alwaysExceptFullScreen']) {
+  for (const outcome of ['success', 'failure', 'throw']) {
+    test(`${mode} refresh stays visible after pointer leave until ${outcome}`, async (t) => {
+      let finish;
+      let fail;
+      const animated = mode === 'always' && outcome === 'success';
+      const fixture = createFixture({
+        prefersReducedMotion: () => !animated,
+        settings: { edgeDockMode: mode }, isFullScreen: () => false,
+        canRefreshLimits: () => true,
+        onRefreshLimits: () => new Promise((resolve, reject) => { finish = resolve; fail = reject; })
+      });
+      t.after(() => fixture.controller.stop());
+      const peek = fixture.windowFor('peek');
+      const rail = fixture.windowFor('rail');
+      fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 40 };
+      await new Promise((resolve) => setTimeout(resolve, 105));
+      fixture.paintPeek();
+      const request = fixture.ipcMain.handlers.get('edgeDock:refreshLimits')({ sender: peek.webContents });
+      await Promise.resolve();
+      fixture.screen.point = { x: 100, y: 100 };
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      assert.equal(peek.ignoreMouse, false, 'the busy button remains visible after the normal leave grace');
+      assert.equal(peek.opacity, 1);
+      assert.equal(rail.ignoreMouse, false);
+      assert.equal(sentPayload(peek, 'peek').peekMode, 'refresh');
+      if (outcome === 'throw') fail(new Error('Probe failed'));
+      else finish({ ok: outcome === 'success' });
+      assert.equal((await request).ok, outcome === 'success');
+      peek.opacityChanges.length = 0;
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      assert.equal(peek.ignoreMouse, false, 'the result remains visible long enough to read');
+      assert.equal(peek.opacity, 1);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      assert.equal(peek.ignoreMouse, true, 'the unhovered button hides after the result hold');
+      assert.equal(peek.opacity, 0);
+      if (animated) assert.ok(peek.opacityChanges.some((opacity) => opacity > 0 && opacity < 1),
+        'the button fades through intermediate opacity rather than disappearing');
+      assert.equal(rail.ignoreMouse, false);
+    });
+  }
+}
+
+test('busy visibility yields to dragging and removing the action', async (t) => {
+  let finish;
+  const fixture = createFixture({
+    canRefreshLimits: () => true,
+    onRefreshLimits: () => new Promise((resolve) => { finish = resolve; })
+  });
+  t.after(() => fixture.controller.stop());
+  const peek = fixture.windowFor('peek');
+  const rail = fixture.windowFor('rail');
+  fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 40 };
+  await new Promise((resolve) => setTimeout(resolve, 105));
+  fixture.paintPeek();
+  const request = fixture.ipcMain.handlers.get('edgeDock:refreshLimits')({ sender: peek.webContents });
+  await Promise.resolve();
+  fixture.screen.point = { x: 100, y: 100 };
+  await new Promise((resolve) => setTimeout(resolve, 105));
+  assert.equal(peek.ignoreMouse, false);
+  fixture.ipcMain.emit('edgeDock:dragStart', { sender: rail.webContents }, { grabOffsetY: 20 });
+  assert.equal(peek.ignoreMouse, true);
+  fixture.ipcMain.emit('edgeDock:dragEnd', { sender: rail.webContents });
+  assert.equal(peek.ignoreMouse, false, 'the busy button returns after dragging');
+  fixture.settings.edgeDockRefreshEnabled = false;
+  fixture.controller.sync();
+  assert.equal(peek.ignoreMouse, true, 'removing the action takes effect during refresh');
+  finish({ ok: true });
+  assert.deepEqual(await request, { ok: true });
+  assert.equal(peek.ignoreMouse, true);
+});
+
+for (const rebuild of ['material', 'restart']) {
+  test(`refresh joined after ${rebuild} rebuild keeps the new window busy and holds its result`, async (t) => {
+    let finish;
+    let calls = 0;
+    let glass = null;
+    const fixture = createFixture({
+      platform: 'darwin', nativeGlass: true,
+      liquidGlass: () => glass,
+      createGlass: () => ({ update() {}, setShape() { return true; }, dispose() {} }),
+      canRefreshLimits: () => true,
+      onRefreshLimits: () => { calls += 1; return new Promise((resolve) => { finish = resolve; }); }
+    });
+    t.after(() => fixture.controller.stop());
+    let peek = fixture.windowFor('peek');
+    let rail = fixture.windowFor('rail');
+    fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 40 };
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    fixture.paintPeek();
+    const handler = fixture.ipcMain.handlers.get('edgeDock:refreshLimits');
+    const original = handler({ sender: peek.webContents });
+    await Promise.resolve();
+    const oldPeek = peek;
+    if (rebuild === 'material') glass = { dark: true };
+    else fixture.controller.stop();
+    fixture.controller.sync();
+    for (const win of FakeBrowserWindow.instances.filter((win) => !win.destroyed)) win.webContents.emit('did-finish-load');
+    peek = fixture.windowFor('peek');
+    rail = fixture.windowFor('rail');
+    assert.notEqual(peek, oldPeek);
+    fixture.screen.point = { x: rail.bounds.x + 32, y: rail.bounds.y + 40 };
+    await new Promise((resolve) => setTimeout(resolve, 105));
+    fixture.paintPeek();
+    const joined = handler({ sender: peek.webContents });
+    await Promise.resolve();
+    assert.equal(calls, 1, 'rejoining does not dispatch another refresh');
+    fixture.screen.point = { x: 100, y: 100 };
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    assert.equal(peek.ignoreMouse, false, 'new busy window remains visible after pointer leave');
+    fixture.hapticCalls.length = 0;
+    finish({ ok: true });
+    assert.deepEqual(await original, { ok: true });
+    assert.deepEqual(await joined, { ok: true });
+    assert.deepEqual(fixture.hapticCalls, [{ pattern: 'generic', performanceTime: 'default' }]);
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    assert.equal(peek.ignoreMouse, false, 'the new window holds its result');
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    assert.equal(peek.ignoreMouse, true, 'the new window hides after the hold');
+  });
+}
+
+for (const mode of ['autoHide', 'alwaysExceptFullScreen']) {
+  test(`${mode} keeps auto-hide behaviour during refresh in its auto-hide state`, async (t) => {
+    let finish;
+    const fixture = createFixture({
+      settings: { edgeDockMode: mode }, isFullScreen: () => true,
+      canRefreshLimits: () => true,
+      onRefreshLimits: () => new Promise((resolve) => { finish = resolve; })
+    });
+    t.after(() => fixture.controller.stop());
+    const peek = fixture.windowFor('peek');
+    const rail = fixture.windowFor('rail');
+    fixture.ipcMain.emit('edgeDock:click', { sender: peek.webContents });
+    fixture.paintPeek();
+    const request = fixture.ipcMain.handlers.get('edgeDock:refreshLimits')({ sender: peek.webContents });
+    await Promise.resolve();
+    fixture.screen.point = { x: 100, y: 100 };
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    assert.equal(rail.ignoreMouse, true, 'leaving still retracts the auto-hide rail while refreshing');
+    assert.equal(sentPayload(peek, 'peek').peekMode, 'handle');
+    finish({ ok: true });
+    assert.deepEqual(await request, { ok: true });
+  });
+}
