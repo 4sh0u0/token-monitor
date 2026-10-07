@@ -123,6 +123,8 @@ function createEdgeDockController(deps) {
   let handleGrowth = 0;
   let handleGrowthTimer = null;
   let pointerOnHandle = false;
+  // Whether the Windows region is what clips the handle's hit test.
+  let peekRegionClips = false;
   let peekMode = 'handle';
   let peekPaintPending = false;
   let peekTargetVisible = false;
@@ -285,7 +287,9 @@ function createEdgeDockController(deps) {
   function setVisible(surface, visible, duration) {
     const win = windows[surface];
     if (!alive(win)) return;
-    win.setIgnoreMouseEvents(!(visible && (surface !== 'peek' || peekTakesPointer())));
+    const ignore = !(visible && (surface !== 'peek' || peekTakesPointer()));
+    if (surface === 'peek') setPeekIgnoresMouse(win, ignore, visible);
+    else win.setIgnoreMouseEvents(ignore);
     if (!win.isVisible()) {
       win.setOpacity(0);
       win.showInactive();
@@ -313,19 +317,40 @@ function createEdgeDockController(deps) {
     showPeekWindow(visible, duration);
   }
 
-  // The handle's window is larger than the handle, and macOS hit-tests the whole
-  // window rectangle whatever is painted in it, so the margin would take clicks
-  // meant for the app beneath. The window passes the pointer through unless it
-  // is on the handle itself, read from the same cursor poll that drives the dock.
+  // The handle's window is larger than the handle. On Windows its region clips
+  // the hit test to the handle, but macOS hit-tests the whole window rectangle
+  // whatever is painted in it, so the margin would take clicks meant for the app
+  // beneath. There the window passes the pointer through unless it is on the
+  // handle itself, with the pointer's moves forwarded so the page can report it
+  // arriving before the next cursor poll. Windows forwards through a system-wide
+  // mouse hook, so a Windows window left without its region falls back to the
+  // poll alone.
   function peekTakesPointer() {
-    return peekMode !== 'handle' || pointerOnHandle;
+    return peekMode !== 'handle' || peekRegionClips || pointerOnHandle;
+  }
+
+  function setPeekIgnoresMouse(win, ignore, shown) {
+    if (ignore && shown && peekMode === 'handle' && platform === 'darwin') win.setIgnoreMouseEvents(true, { forward: true });
+    else win.setIgnoreMouseEvents(ignore);
+  }
+
+  function syncPeekPointer() {
+    const win = windows.peek;
+    if (alive(win) && peekMode === 'handle' && peekTargetVisible && !peekPaintPending) setPeekIgnoresMouse(win, !peekTakesPointer(), true);
   }
 
   function setPointerOnHandle(on) {
     if (on === pointerOnHandle) return;
     pointerOnHandle = on;
-    const win = windows.peek;
-    if (alive(win) && peekMode === 'handle' && peekTargetVisible) win.setIgnoreMouseEvents(!on);
+    syncPeekPointer();
+  }
+
+  // The handle's own reading of the pointer, shared by the cursor poll and the
+  // page's pointer reports so the two cannot disagree.
+  function trackHandlePointer(point, current) {
+    const revealed = intent.snapshot().revealed;
+    setPeekNear(!revealed && peekMode === 'handle' && rectContains(current.approach, point));
+    setPointerOnHandle(!revealed && rectContains(current.handle, point));
   }
 
   function setPeekNear(near) {
@@ -540,6 +565,7 @@ function createEdgeDockController(deps) {
     peeking = false;
     peekNear = false;
     pointerOnHandle = false;
+    peekRegionClips = false;
     stopHandleGrowth();
     handleGrowth = 0;
     peekMode = 'handle';
@@ -622,10 +648,18 @@ function createEdgeDockController(deps) {
         logger(`[edge-dock] ${surface} native material mask unavailable; showing the tinted silhouette only`);
       }
     } else if (platform === 'win32') {
+      let shaped = false;
       try {
-        win.setShape?.(shapeRectsFromPolygons(toPolygons(closed), width, height));
+        if (win.setShape) {
+          win.setShape(shapeRectsFromPolygons(toPolygons(closed), width, height));
+          shaped = true;
+        }
       } catch (error) {
         logger(`[edge-dock] ${surface} shape failed: ${error.message}`);
+      }
+      if (surface === 'peek' && shaped !== peekRegionClips) {
+        peekRegionClips = shaped;
+        syncPeekPointer();
       }
     }
     render(surface);
@@ -898,8 +932,7 @@ function createEdgeDockController(deps) {
           if (hoveredTarget) hapticTick('alignment', 'now');
           hapticTarget = hoveredTarget;
         }
-        setPeekNear(!revealed && peekMode === 'handle' && rectContains(current.approach, point));
-        setPointerOnHandle(!revealed && rectContains(current.handle, point));
+        trackHandlePointer(point, current);
         applyEffects(intent.tick(input, Date.now()), { hapticReveal: !alwaysVisible() });
         refreshHovered = input.inRail || input.inBubble || input.inCorridor;
         syncRefresh(current);
@@ -985,6 +1018,11 @@ function createEdgeDockController(deps) {
         intent.focusCell(index);
         showBubble(index);
       }
+    });
+    ipcMain.on('edgeDock:pointer', (event) => {
+      if (surfaceFor(event.sender) !== 'peek' || peekMode !== 'handle' || drag) return;
+      const current = layout();
+      if (current) trackHandlePointer(screen.getCursorScreenPoint(), current);
     });
     ipcMain.removeHandler('edgeDock:refreshLimits');
     ipcMain.on('edgeDock:peekPainted', (event, payload) => {
