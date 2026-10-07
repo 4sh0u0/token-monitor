@@ -30,8 +30,25 @@ const EDGE_DOCK_METRICS = Object.freeze({
   // plus a little slack, but not the strip at the physical screen edge.
   hitRadius: 28,
   edgeInset: 0,
-  peekWidth: 7,
-  peekLength: 48,
+  // The handle's window, with room for the handle to grow while the pointer
+  // approaches it and for its outline and shadow to clear the window's edges.
+  // The handle is a silhouette inside it like the rail's, so its material and
+  // tint are the rail's too. Only the handle itself takes the pointer (see
+  // edgeDockHandleBounds). AppKit clamps a window narrower than 10px.
+  peekWidth: 10,
+  peekLength: 88,
+  handleWidth: 6,
+  handleLength: 72,
+  handleNearWidth: 8,
+  handleNearLength: 80,
+  // Around the handle, measured in from the screen edge. Resting the pointer in
+  // the wake zone reveals the rail, the way the edge strip does; the approach
+  // zone only grows the handle, so it can be found before it is reached. Both
+  // stay local to the handle: a full-length band this deep would open the rail
+  // on the way to every scrollbar along the edge.
+  wakeDepth: 24,
+  approachDepth: 48,
+  approachSlack: 24,
   refreshSize: 32,
   refreshGap: 4,
   bubbleWidth: 280,
@@ -178,6 +195,28 @@ function edgeDockPeekBounds({ workArea, side, railBounds, metrics = EDGE_DOCK_ME
   return { x: Math.round(x), y, width: metrics.peekWidth, height };
 }
 
+// The handle within its window: flush with the screen edge and centred along it.
+// `handle` is its current size, fractional mid-growth.
+function edgeDockHandleBounds({ side, peekBounds, handle = null, metrics = EDGE_DOCK_METRICS }) {
+  if (!peekBounds) return null;
+  const width = handle?.width ?? metrics.handleWidth;
+  const height = handle?.length ?? metrics.handleLength;
+  const x = normalizeEdgeDockSide(side) === 'left' ? peekBounds.x : peekBounds.x + peekBounds.width - width;
+  return { x, y: peekBounds.y + (peekBounds.height - height) / 2, width, height };
+}
+
+function edgeDockHandleZones({ side, peekBounds, metrics = EDGE_DOCK_METRICS }) {
+  if (!peekBounds) return null;
+  const left = normalizeEdgeDockSide(side) === 'left';
+  const zone = (depth, slack) => ({
+    x: left ? peekBounds.x : peekBounds.x + peekBounds.width - depth,
+    y: peekBounds.y - slack,
+    width: depth,
+    height: peekBounds.height + slack * 2
+  });
+  return { wake: zone(metrics.wakeDepth, 0), approach: zone(metrics.approachDepth, metrics.approachSlack) };
+}
+
 function edgeDockRefreshBounds({ workArea, displayBounds = workArea, railBounds, metrics = EDGE_DOCK_METRICS }) {
   if (!workArea || !railBounds) return null;
   const size = metrics.refreshSize;
@@ -303,7 +342,7 @@ function createEdgeDockIntent(timing = EDGE_DOCK_TIMING) {
       return effects;
     }
     if (!state.revealed) {
-      if (input.inTrigger || input.inPeek) {
+      if (input.inTrigger || input.inPeek || input.inWake) {
         if (state.dwellSince === null) state.dwellSince = now;
         const delay = input.inPeek ? Math.min(60, timing.revealDelayMs) : timing.revealDelayMs;
         if (now - state.dwellSince >= delay) {
@@ -458,6 +497,8 @@ module.exports = {
   edgeDockCellAt,
   edgeDockCellLayout,
   edgeDockCorridorBounds,
+  edgeDockHandleBounds,
+  edgeDockHandleZones,
   edgeDockPeekBounds,
   edgeDockPlacementForDrop,
   edgeDockRailBounds,
