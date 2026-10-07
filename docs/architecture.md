@@ -37,6 +37,8 @@ Only the app, agent and packaging scripts run `ensure:tokscale`, which installs 
 - **Defensive extraction.** `src/shared/usage.js` deep-walks tokscale's JSON and never assumes a fixed layout.
 - **Targeted watch scans.** Changed paths map back to clients, and those partitions are scanned in one unioned `--today` scan. That makes the client id a partition key — see the partition invariants in `docs/providers/README.md`.
 
+Codex Dots usage merges after native/WSL scans and stays outside native delta anchors and scan partitions. Its ledger owns retention; generic usage archives must not duplicate it. Visibility changes refresh the projection without restarting observation. See [Codex](providers/codex.md#dots-local-execution) for source and lifecycle details.
+
 Claude and Codex derive prompt-cache observations in their existing provider-owned session metadata pass, alongside context and turn state. Do not add an independent transcript reader for each metric. Append scans retain cache-accounting identity so duplicate records cannot restart an estimate when the original record leaves the initial tail. In anchored watch propagation, an omitted `promptCache` leaves the prior observation alone; explicit `null` clears it.
 
 Catalog-only title updates must preserve transcript-derived activity, context, cache and attribution; subsequent transcript reads must resume normal metadata updates. Keep title provenance in local metadata caches and anchors, never in published session rows. Confirmed T3 title removals clear only the matching override and restore any native fallback; missing or unreadable stores preserve the latest known state.

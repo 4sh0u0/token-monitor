@@ -92,6 +92,7 @@ const {
   clientDiagnosticRoots,
   getTokscaleStatus,
   lookupModelPricing,
+  pricingFingerprint,
   normalizeHistoryIntervalMs,
   visibleDiagnosticRoots
 } = require('../shared/collector');
@@ -610,6 +611,8 @@ function defaultSettings() {
     icloudWriterId: '',
     lastPostedDeviceId: '',
     clients: clientsCsvForSetting(process.env.TOKEN_MONITOR_CLIENTS),
+    codexDotsEnabled: process.env.TOKEN_MONITOR_CODEX_LOCAL_USAGE === '1',
+    codexDotsVisible: true,
     customScanPaths: {},
     clientDisplayOrder: '',
     hiddenClients: '',
@@ -2542,6 +2545,8 @@ function readSettings() {
     if (saved.wslScanEnabled !== undefined) {
       merged.wslScanEnabled = parseBoolean(saved.wslScanEnabled, true);
     }
+    merged.codexDotsEnabled = parseBoolean(merged.codexDotsEnabled, false);
+    merged.codexDotsVisible = parseBoolean(merged.codexDotsVisible, true);
     merged.collectionMode = normalizeCollectionMode(merged.collectionMode);
     merged.collectionIntervalMs = normalizeCollectionIntervalMs(merged.collectionIntervalMs);
     merged.syncUploadIntervalMs = normalizeSyncUploadIntervalMs(merged.syncUploadIntervalMs);
@@ -7408,13 +7413,17 @@ app.whenReady().then(() => {
     const settingsIdentity = contentRuntime.status().identity;
     await contentRuntime.publishPatch(patch, patch?.syncContentBase);
     if (sharedEdit && settingsIdentity !== contentRuntime.status().identity) throw new Error('hub_changed');
-    const result = applySettingsPatch(patch);
+    let dotsVisibilityApplied = Promise.resolve();
+    applySettingsPatch(patch, (refresh) => { dotsVisibilityApplied = refresh; });
     await latestUsageHost?.transformSettingsApplied?.();
-    return result;
+    await dotsVisibilityApplied;
+    // Other settings writes may finish while this visibility projection waits.
+    // Return the latest saved selection rather than restoring an older one.
+    return settingsForRenderer();
   });
   // The settings:update body, named so a credential save persists through the
   // exact same normalization, runtime reconfigure and limit invalidation.
-  function applySettingsPatch(patch) {
+  function applySettingsPatch(patch, onDotsVisibilityRefresh = () => {}) {
     const contentRuntime = getSyncContentRuntime();
     credentialCommands.noteSettingsPatch(patch);
     const previousSettingsState = settings;
@@ -7489,6 +7498,8 @@ app.whenReady().then(() => {
       syncContentState: normalizeSyncContentState(settings.syncContentState),
       deviceId: (patch.deviceId !== undefined ? String(patch.deviceId).trim() : settings.deviceId) || defaultDeviceId(),
       clients: patch.clients !== undefined ? clientsCsvForSetting(patch.clients, '') : clientsCsvForSetting(settings.clients, DEFAULT_CLIENTS),
+      codexDotsEnabled: parseBoolean(patch.codexDotsEnabled ?? settings.codexDotsEnabled, false),
+      codexDotsVisible: parseBoolean(patch.codexDotsVisible ?? settings.codexDotsVisible, true),
       customScanPaths: normalizeCustomScanPaths(patch.customScanPaths ?? settings.customScanPaths),
       refreshMs: Math.max(5000, Number(patch.refreshMs ?? settings.refreshMs ?? 15000)),
       glassOpacity: Math.max(0, Math.min(100, Number(patch.glassOpacity ?? settings.glassOpacity ?? 68))),
@@ -7693,6 +7704,14 @@ app.whenReady().then(() => {
     } else {
       if (runtimeChange.usageStructural) {
         reconfigureUsageRuntimeForMode();
+      } else if (previousRuntimeSettings.codexDotsVisible !== settings.codexDotsVisible) {
+        const dotsVisibilityApplied = Promise.resolve(deviceRuntimeHandle?.setCodexDotsVisible(settings.codexDotsVisible));
+        onDotsVisibilityRefresh(dotsVisibilityApplied);
+        // Keep failure observable to settings:update without an unhandled
+        // rejection for callers that use the synchronous settings path.
+        dotsVisibilityApplied.catch((error) => {
+          console.log(`[collector] Dots visibility refresh failed: ${error.message}`);
+        });
       }
       if (runtimeChange.limitsReconfigure && deviceRuntimeHandle) {
         deviceRuntimeHandle.reconfigureLimits(electronLimitsConfig());
@@ -7907,7 +7926,9 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('session:getDetail', (_event, args) => {
     const { client, sessionId, period, sessionCost } = args || {};
-    return readSessionDetailForPlatform({ client, sessionId, period, sessionCost });
+    return readSessionDetailForPlatform({ client, sessionId, period, sessionCost }, {
+      lookupModelPricing, getPricingRevision: () => pricingFingerprint({ pricingPath: customPricingPath() })
+    });
   });
   ipcMain.handle('stream:status', () => ({ connected: streamConnected, mode, ...(streamFailure || {}) }));
   ipcMain.handle('serviceStatus:get', (_event, options) => serviceStatusClient.getServiceStatus({
