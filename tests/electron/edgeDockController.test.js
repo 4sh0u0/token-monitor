@@ -5,7 +5,7 @@ const { EventEmitter } = require('node:events');
 const test = require('node:test');
 
 const { createEdgeDockController } = require('../../src/electron/edgeDock/controller');
-const { EDGE_DOCK_METRICS, EDGE_DOCK_TIMING, edgeDockBubbleBounds } = require('../../src/electron/edgeDock/geometry');
+const { EDGE_DOCK_METRICS, EDGE_DOCK_TIMING, edgeDockBubbleBounds, edgeDockCellLayout, edgeDockPlacementForDrop, scaledEdgeDockMetrics } = require('../../src/electron/edgeDock/geometry');
 
 class FakeWebContents extends EventEmitter {
   constructor() {
@@ -18,6 +18,8 @@ class FakeWebContents extends EventEmitter {
   }
 
   setWindowOpenHandler() {}
+  getZoomFactor() { return this.zoomFactor ?? 1; }
+  setZoomFactor(value) { this.zoomFactor = value; }
 }
 
 class FakeBrowserWindow extends EventEmitter {
@@ -388,6 +390,131 @@ test('dragging onto another display moves the dock there and persists its id', a
   assert.equal(rail.bounds.x, 1800 - 64);
   assert.equal(fixture.placements.at(-1).displayId, '2');
   assert.equal(fixture.placements.at(-1).side, 'right');
+});
+
+test('the dock size scales its windows and zooms their pages to match', (t) => {
+  const fixture = createFixture({ settings: { edgeDockSize: 'large' } });
+  t.after(() => fixture.controller.stop());
+  const large = scaledEdgeDockMetrics(1.25);
+  const rail = fixture.windowFor('rail');
+  const bubble = fixture.windowFor('bubble');
+  const workArea = fixture.screen.displays[0].workArea;
+
+  assert.equal(rail.bounds.width, large.railWidth);
+  for (const surface of ['rail', 'bubble', 'peek']) {
+    assert.equal(fixture.windowFor(surface).options.webPreferences.zoomFactor, 1.25, `${surface} page zoom`);
+  }
+  // The page lays its cells out in its own, unzoomed units.
+  const windowLayout = edgeDockCellLayout(workArea, ['provider', 'provider', 'provider'], large);
+  const payload = sentPayload(rail, 'rail');
+  assert.equal(payload.zoom, 1.25);
+  assert.deepEqual(payload.cellLayout.tops, windowLayout.tops.map((top) => top / 1.25));
+
+  // A card measured by its page in page units opens a window that many times larger.
+  fixture.ipcMain.emit('edgeDock:click', { sender: rail.webContents }, { cellIndex: 1 });
+  fixture.ipcMain.emit('edgeDock:bubbleSize', { sender: bubble.webContents }, { cellId: 'codex', height: 180 });
+  const { tailY: _tailY, ...expected } = edgeDockBubbleBounds({ railBounds: rail.bounds, cellIndex: 1, height: 225, workArea, side: 'right', metrics: large });
+  assert.deepEqual(bubble.bounds, expected);
+  assert.equal(sentPayload(bubble, 'bubble').placed.height, 180, 'the page keeps its own measurement');
+  assert.equal(sentPayload(bubble, 'bubble').maxCardHeight, Math.floor((workArea.height - EDGE_DOCK_METRICS.screenMargin * 2) / 1.25));
+
+  fixture.settings.edgeDockSize = 'medium';
+  fixture.controller.sync();
+  assert.equal(rail.bounds.width, EDGE_DOCK_METRICS.railWidth);
+  assert.equal(rail.webContents.getZoomFactor(), 1);
+  assert.equal(sentPayload(rail, 'rail').zoom, 1);
+});
+
+test('a larger dock that would not fit the display zooms to the size it is drawn at', (t) => {
+  const fixture = createFixture({
+    settings: { edgeDockSize: 'large' },
+    displays: [{ id: 1, scaleFactor: 1, bounds: { x: 0, y: 0, width: 1200, height: 520 }, workArea: { x: 0, y: 0, width: 1200, height: 480 } }]
+  });
+  t.after(() => fixture.controller.stop());
+  const rail = fixture.windowFor('rail');
+  fixture.controller.setCells(['claude', 'codex', 'cursor', 'gemini', 'kiro'].map((id) => ({ id, kind: 'provider', label: id, remainingPercent: 50 })));
+  const zoom = sentPayload(rail, 'rail').zoom;
+  assert.ok(zoom > 1 && zoom < 1.25, `zoom ${zoom}`);
+  assert.equal(rail.webContents.getZoomFactor(), zoom);
+  assert.equal(rail.bounds.width, scaledEdgeDockMetrics(zoom).railWidth);
+  assert.equal(sentPayload(rail, 'rail').cellLayout.compact, false, 'at full density');
+  const workArea = fixture.screen.displays[0].workArea;
+  const kinds = Array(5).fill('provider');
+  assert.equal(edgeDockCellLayout(workArea, kinds, scaledEdgeDockMetrics(zoom + 0.01)).compact, true, 'and the largest size that is');
+
+  // Fewer cells fit at the size asked for.
+  fixture.controller.setCells([{ id: 'codex', kind: 'provider', label: 'Codex', remainingPercent: 70 }]);
+  assert.equal(rail.webContents.getZoomFactor(), 1.25);
+  assert.equal(rail.bounds.width, scaledEdgeDockMetrics(1.25).railWidth);
+});
+
+test('a drag onto a display that fits a different size keeps the grab point under the pointer', async (t) => {
+  const displays = [
+    { id: 1, scaleFactor: 1, bounds: { x: 0, y: 0, width: 1000, height: 520 }, workArea: { x: 0, y: 0, width: 1000, height: 480 } },
+    { id: 2, scaleFactor: 1, bounds: { x: 1000, y: 0, width: 800, height: 1200 }, workArea: { x: 1000, y: 0, width: 800, height: 1160 } }
+  ];
+  const fixture = createFixture({ displays, settings: { edgeDockSize: 'custom', edgeDockCustomScale: 1.5 } });
+  t.after(() => fixture.controller.stop());
+  fixture.controller.setCells(['claude', 'codex', 'cursor', 'gemini', 'kiro'].map((id) => ({ id, kind: 'provider', label: id, remainingPercent: 50 })));
+  const rail = fixture.windowFor('rail');
+  assert.ok(rail.webContents.getZoomFactor() < 1.5, 'the short display fits less than asked');
+
+  fixture.screen.point = { x: 1700, y: 600 };
+  fixture.ipcMain.emit('edgeDock:dragStart', { sender: rail.webContents }, { grabOffsetY: 100 });
+  await new Promise((resolve) => setTimeout(resolve, 35));
+  fixture.ipcMain.emit('edgeDock:dragEnd', { sender: rail.webContents });
+
+  assert.equal(rail.webContents.getZoomFactor(), 1.5, 'the tall one fits it all');
+  // 100 page units into the rail is 150 window pixels at the new size.
+  assert.equal(rail.bounds.y, 600 - 150);
+});
+
+test('an open card stays within the work area when the dock grows', (t) => {
+  const fixture = createFixture({ settings: { edgeDockSize: 'custom', edgeDockCustomScale: 1 } });
+  t.after(() => fixture.controller.stop());
+  const rail = fixture.windowFor('rail');
+  const bubble = fixture.windowFor('bubble');
+  const workArea = fixture.screen.displays[0].workArea;
+  fixture.ipcMain.emit('edgeDock:click', { sender: rail.webContents }, { cellIndex: 1 });
+  fixture.ipcMain.emit('edgeDock:bubbleSize', { sender: bubble.webContents }, { cellId: 'codex', height: 800 });
+  fixture.controller.previewScale(1.5);
+  assert.ok(bubble.bounds.height <= workArea.height - EDGE_DOCK_METRICS.screenMargin * 2, `card ${bubble.bounds.height}px tall`);
+});
+
+test('a custom size previews while its slider is dragged and the saved size replaces it', (t) => {
+  const fixture = createFixture({ settings: { edgeDockSize: 'custom', edgeDockCustomScale: 1 } });
+  t.after(() => fixture.controller.stop());
+  const rail = fixture.windowFor('rail');
+
+  fixture.controller.previewScale(1.4);
+  assert.equal(rail.webContents.getZoomFactor(), 1.4);
+  assert.equal(rail.bounds.width, scaledEdgeDockMetrics(1.4).railWidth);
+  assert.equal(fixture.settings.edgeDockCustomScale, 1, 'nothing is saved yet');
+
+  fixture.settings.edgeDockCustomScale = 1.2;
+  fixture.controller.sync();
+  assert.equal(rail.webContents.getZoomFactor(), 1.2);
+  assert.equal(rail.bounds.width, scaledEdgeDockMetrics(1.2).railWidth);
+});
+
+test('a drag on a larger dock keeps the grab point under the pointer', async (t) => {
+  const fixture = createFixture({ settings: { edgeDockSize: 'custom', edgeDockCustomScale: 1.5 } });
+  t.after(() => fixture.controller.stop());
+  const rail = fixture.windowFor('rail');
+  const workArea = fixture.screen.displays[0].workArea;
+  fixture.screen.point = { x: 1100, y: 420 };
+  // Reported in page units: 30 there is 45 on screen.
+  fixture.ipcMain.emit('edgeDock:dragStart', { sender: rail.webContents }, { grabOffsetY: 30 });
+  await new Promise((resolve) => setTimeout(resolve, 35));
+  fixture.ipcMain.emit('edgeDock:dragEnd', { sender: rail.webContents });
+  const expected = edgeDockPlacementForDrop({
+    workArea,
+    pointer: { x: 1100, y: 420 },
+    grabOffsetY: 45,
+    cellKinds: ['provider', 'provider', 'provider'],
+    metrics: scaledEdgeDockMetrics(1.5)
+  });
+  assert.equal(fixture.placements.at(-1).offset, expected.offset);
 });
 
 test('Windows Edge Dock keeps every glass setting on the shaped renderer surface', (t) => {
