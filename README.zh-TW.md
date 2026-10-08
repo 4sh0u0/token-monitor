@@ -90,7 +90,7 @@ Token Monitor 對 Token 用量、帳戶額度與 session 明細分別支援：
 - MiniMax Code 讀取 CLI 寫入的本機工作階段記錄，位於 `~/.minimax` 或 `MINIMAX_DATA_DIR` / `MAVIS_DATA_DIR`（亦包括 `~/.mavis` 與 `~/.minimax-<profile>` / `~/.mavis-<profile>`），並加上以 `tokscale headless mcode` 擷取的執行；兩邊都有的同一輪只計一次。
 
 - Command Code transcript 不包含實際 Token 數或每則訊息的模型資料。Token 用量依 transcript 文字估算；模型歸屬與推算成本則可能反映目前設定的模型，而非每次請求當時實際使用的模型。
-- Cursor 快取來自 Cursor 的帳號層級用量匯出，因此涵蓋 Cursor IDE、Cursor CLI 與 Grok Bot 的用量。Token Monitor 會自動偵測 Cursor 桌面版已登入的帳號，也可在設定中手動新增。快取過期時會自動重新同步，但剛完成的 session 可能要幾分鐘才會出現在 Cursor 控制台，因此用量會在同步後更新，而非即時顯示。
+- Cursor 快取來自 Cursor 的帳號層級用量匯出，因此涵蓋 Cursor IDE、Cursor CLI 與 Grok Bot 的用量。Token Monitor 會自動偵測 Cursor 桌面版已登入的帳號，也可在設定中手動新增。快取過期時會自動重新同步，但剛完成的 session 可能要幾分鐘才會出現在 Cursor 控制台，因此最新用量仍可能延遲顯示。
 
 - Custom 會從一個 GET 餘額端點映射數值 JSON 欄位；僅相容 OpenAI 或 Anthropic API 並不足夠。
 
