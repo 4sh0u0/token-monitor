@@ -20,11 +20,28 @@ public struct HubConnection: Sendable, Hashable, Codable {
     }
 
     /// Builds a connection from what the user typed or pasted.
+    ///
+    /// Input without a `scheme://` gets `http://` when its host is on the
+    /// local network or a tailnet (`192.168.1.10:17321`, `mac.local:17321`):
+    /// the Node hub and the widget's Host hub serve plain HTTP there, so an
+    /// `https://` guess would only fail the TLS handshake. Every other host
+    /// (the Worker, a reverse proxy) gets `https://`. An explicit scheme is
+    /// always kept.
     /// - Throws: `HubClientError.invalidURL` when `input` is not an HTTP(S) URL.
     public init(userInput: String, secret: String) throws {
-        guard let url = Self.normalizedBaseURL(from: userInput) else { throw HubClientError.invalidURL }
+        guard let url = Self.normalizedBaseURL(from: userInput, defaultScheme: Self.defaultScheme(forUserInput: userInput)) else {
+            throw HubClientError.invalidURL
+        }
         self.baseURL = url
         self.secret = secret.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The scheme `init(userInput:secret:)` assumes when the input has none.
+    static func defaultScheme(forUserInput input: String) -> String {
+        guard let probe = normalizedBaseURL(from: input, defaultScheme: "https"),
+              let host = URLComponents(url: probe, resolvingAgainstBaseURL: false)?.host ?? probe.host,
+              isLocalHost(host) else { return "https" }
+        return "http"
     }
 
     public var hasSecret: Bool { !secret.isEmpty }

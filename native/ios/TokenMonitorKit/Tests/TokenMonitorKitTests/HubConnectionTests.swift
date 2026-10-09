@@ -43,6 +43,35 @@ final class HubConnectionTests: XCTestCase {
         }
     }
 
+    func testUserInputWithoutSchemeUsesHTTPOnlyForLocalHosts() throws {
+        let cases: [(String, String)] = [
+            // The Node hub / widget Host hub on the LAN or a tailnet: plain HTTP.
+            ("192.168.1.10:17321", "http://192.168.1.10:17321"),
+            ("MAC.local:17321/api/stats", "http://mac.local:17321"),
+            ("localhost:17321", "http://localhost:17321"),
+            ("10.0.0.2:17321", "http://10.0.0.2:17321"),
+            ("100.101.102.103:17321", "http://100.101.102.103:17321"),
+            ("my-mac.tail1234.ts.net:17321", "http://my-mac.tail1234.ts.net:17321"),
+            ("nas:17321", "http://nas:17321"),
+            ("nas.home.arpa", "http://nas.home.arpa"),
+            ("[::1]:17321", "http://[::1]:17321"),
+            ("[fd00::1]:17321", "http://[fd00::1]:17321"),
+            // Anything that may cross the internet keeps the HTTPS default.
+            ("hub.example.com", "https://hub.example.com"),
+            ("token-monitor.example.workers.dev", "https://token-monitor.example.workers.dev"),
+            ("8.8.8.8:17321", "https://8.8.8.8:17321"),
+            ("172.32.0.1:17321", "https://172.32.0.1:17321"),
+            // An explicit scheme always wins.
+            ("https://192.168.1.10:17321", "https://192.168.1.10:17321"),
+            ("http://hub.example.com", "http://hub.example.com")
+        ]
+        for (input, expected) in cases {
+            XCTAssertEqual(try HubConnection(userInput: input, secret: "").baseURL.absoluteString, expected, input)
+        }
+        XCTAssertThrowsError(try HubConnection(userInput: "javascript:alert(1)", secret: ""))
+        XCTAssertFalse(try HubConnection(userInput: "192.168.1.10:17321", secret: "").isInsecureRemote)
+    }
+
     func testEndpointURLsKeepAProxyPrefix() throws {
         let plain = try HubConnection(userInput: "http://192.168.1.10:17321", secret: "")
         XCTAssertEqual(plain.url(for: .stats).absoluteString, "http://192.168.1.10:17321/api/stats")
