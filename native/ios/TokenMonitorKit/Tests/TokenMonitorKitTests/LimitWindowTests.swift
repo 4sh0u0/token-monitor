@@ -1,0 +1,129 @@
+import Foundation
+import XCTest
+@testable import TokenMonitorKit
+
+final class LimitWindowTests: XCTestCase {
+    private func provider(_ id: String) throws -> LimitProvider {
+        try XCTUnwrap(Fixture.stats().limits.first { $0.provider == id })
+    }
+
+    func testPercentWindows() throws {
+        let claude = try provider("claude")
+        let session = claude.windows[0]
+        XCTAssertEqual(session.kind, .session)
+        XCTAssertFalse(session.isMoney)
+        XCTAssertEqual(session.usedPercent, 42)
+        XCTAssertEqual(session.remainingPercent, 58)
+        XCTAssertEqual(session.displayFraction ?? -1, 0.58, accuracy: 1e-9)
+        XCTAssertEqual(claude.meterFraction(for: session) ?? -1, 0.58, accuracy: 1e-9)
+        XCTAssertEqual(session.windowMinutes, 300)
+        XCTAssertEqual(session.boundaryKind, .reset)
+        XCTAssertNotNil(session.resetsAt)
+        XCTAssertNil(session.label)
+        XCTAssertEqual(claude.windows[1].remainingPercent, 79.5)
+    }
+
+    func testMoneyWindowsHonourShowMeter() throws {
+        let claude = try provider("claude")
+        let spend = claude.windows[2]
+        XCTAssertTrue(spend.isMoney)
+        XCTAssertTrue(spend.isSpend)
+        XCTAssertEqual(spend.moneyAmount, 12.4)
+        XCTAssertEqual(spend.currency, "USD")
+        XCTAssertEqual(spend.label, "Usage credits")
+        XCTAssertFalse(spend.showMeter)
+        XCTAssertNil(spend.displayFraction)
+        XCTAssertNil(claude.meterFraction(for: spend))
+
+        let balance = claude.windows[3]
+        XCTAssertTrue(balance.isCredits)
+        XCTAssertEqual(balance.moneyAmount, 37.5)
+        XCTAssertFalse(balance.showMeter, "Claude's prepaid pool has no denominator")
+        XCTAssertNil(claude.meterFraction(for: balance))
+        XCTAssertEqual(claude.headlineWindow?.kind, .session, "the percentage window with the least left")
+    }
+
+    func testCreditsWithAndWithoutWirePercentage() throws {
+        let openRouter = try provider("openrouter")
+        let credits = openRouter.windows[0]
+        XCTAssertTrue(credits.isCredits)
+        XCTAssertEqual(credits.moneyAmount, 13.8)
+        XCTAssertEqual(credits.displayFraction ?? -1, 0.69, accuracy: 1e-9)
+
+        // DeepSeek reports money only: the meter is the desktop's display-only
+        // derivation balance / (balance + month spend).
+        let deepSeek = try provider("deepseek")
+        let balance = deepSeek.windows[0]
+        XCTAssertNil(balance.usedPercent)
+        XCTAssertNil(balance.displayFraction)
+        XCTAssertTrue(balance.showMeter)
+        XCTAssertEqual(balance.currency, "CNY")
+        XCTAssertEqual(deepSeek.meterFraction(for: balance) ?? -1, 86.42 / (86.42 + 23.6), accuracy: 1e-9)
+        XCTAssertEqual(deepSeek.headlineWindow, balance)
+
+        var empty = deepSeek
+        empty.windows[0].remaining = 0
+        XCTAssertEqual(empty.meterFraction(for: empty.windows[0]), 0, "no money left is 0%, not full")
+    }
+
+    func testCodexAdditionalBucketsStayOutOfCompactSurfaces() throws {
+        let codex = try provider("codex")
+        XCTAssertEqual(codex.windows.count, 3)
+        XCTAssertTrue(codex.windows[2].isAdditional)
+        XCTAssertEqual(codex.windows[2].label, "GPT-5.3-Codex-Spark")
+        XCTAssertEqual(codex.windows[2].limitId, "codex_bengalfox")
+        XCTAssertEqual(codex.primaryWindows.count, 2)
+        XCTAssertEqual(codex.headlineWindow?.remainingPercent, 39)
+        XCTAssertEqual(Set(codex.windows.map(\.id)).count, 3)
+        XCTAssertEqual(codex.compacted().windows.count, 2)
+    }
+
+    func testWireNormalization() throws {
+        let json = """
+        {"provider":"Kiro","status":"ok","windows":[
+          {"kind":"monthly","used":30,"limit":120},
+          {"type":"Weekly","used_percent":140,"resets_at":1791936000},
+          {"kind":"weekly","utilization":"25","meter":false,"boundary_kind":"MIXED"},
+          {"kind":"five_hour","usedPercent":10},
+          {"kind":"daily","remainingPercent":12,"currency":"usd","detail":"Unlimited"},
+          {"kind":"daily","remainingPercent":12}
+        ]}
+        """
+        let provider = try JSONDecoder().decode(LimitProvider.self, from: Data(json.utf8))
+        XCTAssertEqual(provider.provider, "kiro")
+        XCTAssertEqual(provider.id, "kiro-anonymous")
+        XCTAssertEqual(provider.windows.map(\.kind), [.billing, .weekly, .weekly, .daily, .daily], "unknown kinds are dropped")
+        XCTAssertEqual(provider.windows[0].usedPercent, 25, "derived from used/limit")
+        XCTAssertEqual(provider.windows[1].usedPercent, 100, "clamped")
+        XCTAssertEqual(provider.windows[1].remainingPercent, 0)
+        XCTAssertEqual(provider.windows[1].resetsAt, Date(timeIntervalSince1970: 1_791_936_000))
+        XCTAssertEqual(provider.windows[2].usedPercent, 25)
+        XCTAssertFalse(provider.windows[2].showMeter)
+        XCTAssertEqual(provider.windows[2].boundaryKind, .mixed)
+        XCTAssertNil(provider.windows[3].usedPercent)
+        XCTAssertEqual(provider.windows[3].remainingPercent, 12)
+        XCTAssertEqual(provider.windows[3].currency, "USD")
+        XCTAssertTrue(provider.windows[3].isUnlimited)
+        XCTAssertNotEqual(provider.windows[3].id, provider.windows[4].id, "duplicate windows get distinct ids")
+    }
+
+    func testProviderRoundTripsThroughItsOwnEncoding() throws {
+        let original = try Fixture.stats().limits
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode([LimitProvider].self, from: data)
+        XCTAssertEqual(decoded, original)
+    }
+
+    func testCompactedMasksIdentity() throws {
+        let claude = try provider("claude").compacted()
+        XCTAssertEqual(claude.accountEmail, "d***v@example.com")
+        XCTAssertEqual(LimitProvider.maskedEmail("a@b.co"), "a***@b.co")
+        XCTAssertNil(LimitProvider.maskedEmail("not-an-email"))
+        XCTAssertNil(LimitProvider.maskedEmail("x@localhost"))
+        XCTAssertEqual(LimitProvider.safeDisplayName("  Team   Plan "), "Team Plan")
+        XCTAssertNil(LimitProvider.safeDisplayName("/Users/me/.config"))
+        XCTAssertNil(LimitProvider.safeDisplayName("https://example.com"))
+        XCTAssertNil(LimitProvider.safeDisplayName("C:\\Users\\me"))
+        XCTAssertNil(LimitProvider.safeDisplayName("me@example.com"))
+    }
+}
