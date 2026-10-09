@@ -164,6 +164,7 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 - **Menu bar layout composer** — the menu bar and the floating bubble can use a built-in preset or a layout you build yourself: pick "Custom…" to add AI tool icons, quota bars, percentages, reset times, cost, the live token rate, or custom text, drag to reorder against a live preview, and give each item its own AI tool, account, quota window, and typeface
 - **Appearance controls** — interface theme switching (incl. a light mode), per-tool vendor colours, glass opacity, blur, transparent window mode, and custom fonts
 - **Native macOS Widgets** — View token usage and cost, trends, AI tool quota remaining and reset times, activity heatmaps, and breakdowns by tool or model in Small, Medium, and Large layouts on macOS 14+
+- **Native iPhone & Apple Watch app** — A read-only companion that reads any hub: usage, cost, trends, and AI tool quotas in an iPhone app, Home Screen and Lock Screen widgets, a watchOS app, and watch complications on iOS 17+ and watchOS 10+; see [native/ios/README.md](native/ios/README.md)
 - **Customizable tool list** — hide, pin, and reorder tools in the main dashboard without changing what gets tracked
 - **Recordable global shortcut** — show or hide the window from anywhere
 - **Discord Rich Presence** — broadcast today's tokens, cost, and top client (opt-in)
@@ -222,7 +223,7 @@ npx wrangler secret put TOKEN_MONITOR_SECRET
 npx wrangler deploy
 ```
 
-Paste the deployed URL into each device's widget at Settings → Multi-device Sync. See [worker/README.md](worker/README.md) for the iOS widget recipe and endpoint reference, or [docs/API.md](docs/API.md) for the hub HTTP API.
+Paste the deployed URL into each device's widget at Settings → Multi-device Sync. See [worker/README.md](worker/README.md) for the iOS widget recipe and endpoint reference, or [docs/API.md](docs/API.md) for the hub HTTP API. The [native iPhone & Apple Watch app](native/ios/README.md) reads the same URL.
 
 #### Option D — iCloud Drive (macOS, no Hub server)
 

@@ -169,6 +169,7 @@ Qoder CN 的 Token 用量来自应用本地数据，而非 API —— 在 Settin
 - **菜单栏排版自定义**：菜单栏与悬浮小窗的显示内容可以直接挑内置版式，也可以选“自定义…”自己排——加入 AI 工具图标、额度条、百分比、重置时间、成本、Token 速率或自定义文字等项目，拖动排序并实时预览，每个项目还能各自指定 AI 工具、账号、额度周期与字体
 - **外观控制**：界面主题切换（含浅色模式）、各工具厂商色、玻璃透明度、模糊度、完全透明窗口、自定义字体
 - **原生 macOS 小部件**：在 macOS 14+ 上通过小号、中号和大号布局查看 Token 用量与成本、趋势、各 AI 工具的剩余额度与重置时间、活动热力图，以及按工具或模型分类的明细
+- **原生 iPhone 与 Apple Watch app**：只读伴侣，可连接任意 Hub；在 iOS 17+ 与 watchOS 10+ 上提供 iPhone app、主屏幕与锁屏小部件、watchOS app 和表盘复杂功能，查看 Token 用量与成本、趋势及各 AI 工具的剩余额度，详见 [native/ios/README.md](native/ios/README.md)
 - **工具列表自定义**：可隐藏、置顶和拖曳排序主列表中的工具，不影响实际追踪
 - **可录制全局快捷键**：可从任何地方快速显示或隐藏窗口
 - **Discord Rich Presence**：将今日 Token、花费与主要工具广播到你的 Discord 个人资料（需手动开启）
@@ -227,7 +228,7 @@ npx wrangler secret put TOKEN_MONITOR_SECRET
 npx wrangler deploy
 ```
 
-把部署 URL 贴到每台设备的小部件 设置 → 多设备同步。iOS 小部件配方与端点参考见 [worker/README.md](worker/README.md)，hub HTTP API 见 [docs/API.md](docs/API.md)。
+把部署 URL 贴到每台设备的小部件 设置 → 多设备同步。iOS 小部件配方与端点参考见 [worker/README.md](worker/README.md)，hub HTTP API 见 [docs/API.md](docs/API.md)。原生 [iPhone 与 Apple Watch app](native/ios/README.md) 读取同一个 URL。
 
 #### 方案 D——iCloud Drive（macOS，无需 Hub Server）
 

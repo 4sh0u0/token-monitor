@@ -26,6 +26,7 @@ To dry-run the agent without posting: `npm run agent:once -- --dry-run`.
 | anything under `src/shared/providers/<id>/` or `src/electron/providers/<id>/` | `docs/providers/README.md`, then the note whose `ids:` front matter lists that id if one exists — `grep -lE '^ids:.*[[, ]<id>[],]' docs/providers/*.md`. Most providers have no note; the README and the code/tests are then authoritative |
 | adding or renaming a tracked client or limits provider | `docs/providers/README.md` (both registration checklists) |
 | the device wire shape or Hub endpoints | `docs/API.md` |
+| anything under `native/ios/` | `native/ios/README.md` |
 
 Update the matching document in the same change when its contract moves, and delete stale claims rather than preserving history.
 

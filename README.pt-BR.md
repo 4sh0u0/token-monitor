@@ -164,6 +164,7 @@ A maioria dos monitores de uso só é útil na máquina em que roda. O Token Mon
 - **Compositor de layout da barra de menus** — a barra de menus e a bolha flutuante podem usar uma predefinição embutida ou um layout montado por você: escolha "Personalizado…" para adicionar ícones de ferramentas de IA, barras de cota, porcentagens, horários de reset, custo, taxa de tokens ao vivo ou texto personalizado, arraste para reordenar com uma prévia ao vivo e dê a cada item sua própria ferramenta de IA, conta, janela de cota e fonte
 - **Controles de aparência** — troca do tema da interface (inclusive um modo claro), cores por fornecedor de ferramenta, opacidade do vidro, desfoque, modo de janela transparente e fontes personalizadas
 - **Widgets nativos do macOS** — veja uso de tokens e custo, tendências, cota restante das ferramentas de IA e horários de reset, mapas de calor de atividade e detalhamentos por ferramenta ou modelo nos layouts Pequeno, Médio e Grande no macOS 14+
+- **App nativo para iPhone e Apple Watch** — um companheiro somente leitura que lê qualquer hub: uso de tokens e custo, tendências e cotas das ferramentas de IA em um app para iPhone, widgets da Tela de Início e da Tela Bloqueada, um app para watchOS e complicações do mostrador, no iOS 17+ e no watchOS 10+; veja [native/ios/README.md](native/ios/README.md)
 - **Lista de ferramentas personalizável** — oculte, fixe e reordene ferramentas no painel principal sem alterar o que é acompanhado
 - **Atalho global gravável** — mostre ou oculte a janela de qualquer lugar
 - **Discord Rich Presence** — transmita os tokens de hoje, o custo e o cliente principal (opcional)
@@ -222,7 +223,7 @@ npx wrangler secret put TOKEN_MONITOR_SECRET
 npx wrangler deploy
 ```
 
-Cole a URL implantada no widget de cada dispositivo em Configurações → Sincronização multidispositivo. Veja [worker/README.md](worker/README.md) para a receita do widget do iOS e a referência de endpoints, ou [docs/API.md](docs/API.md) para a API HTTP do hub.
+Cole a URL implantada no widget de cada dispositivo em Configurações → Sincronização multidispositivo. Veja [worker/README.md](worker/README.md) para a receita do widget do iOS e a referência de endpoints, ou [docs/API.md](docs/API.md) para a API HTTP do hub. O [app nativo para iPhone e Apple Watch](native/ios/README.md) lê a mesma URL.
 
 #### Opção D — iCloud Drive (macOS, sem servidor Hub)
 
