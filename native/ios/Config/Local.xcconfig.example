@@ -1,0 +1,9 @@
+// Personal overrides for Base.xcconfig.
+//
+// Copy this file to Local.xcconfig (gitignored, next to Base.xcconfig) and
+// uncomment the lines you need. The bundle id and App Group must be ones your
+// Apple Developer team can register; the App Group must start with "group.".
+//
+// TM_BUNDLE_ID = com.yourname.tokenmonitor
+// TM_APP_GROUP = group.com.yourname.tokenmonitor
+// DEVELOPMENT_TEAM = ABCDE12345

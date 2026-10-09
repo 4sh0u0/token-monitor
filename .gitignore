@@ -23,3 +23,8 @@ worker/.wrangler/
 worker/node_modules/
 worker/.dev.vars
 devlog/
+
+# Native iOS / watchOS (native/ios)
+native/ios/Config/Local.xcconfig
+xcuserdata/
+native/ios/**/.build/

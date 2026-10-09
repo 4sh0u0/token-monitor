@@ -1,0 +1,24 @@
+// Shared, non-personal build settings for the iOS / watchOS project.
+//
+// The project-level Debug and Release configurations are based on this file,
+// so every target inherits it. Personal values (bundle id prefix, App Group,
+// signing team) belong in Local.xcconfig, which is gitignored and included
+// last so it overrides anything here: copy Local.xcconfig.example to start.
+// Do not set these in the Xcode target editor; a target-level value in
+// project.pbxproj would shadow Local.xcconfig and end up in the commit.
+
+// Bundle id of the iOS app. The other targets derive theirs from it
+// ($(TM_BUNDLE_ID).widget, .watchkitapp, .watchkitapp.widget) because an
+// embedded bundle's id must be prefixed by its host's, and the watch app's
+// WKCompanionAppBundleIdentifier must equal it.
+TM_BUNDLE_ID = com.example.tokenmonitor.mobile
+
+// App Group shared by all four targets (snapshot cache, settings, Keychain
+// access group). It reaches each .entitlements file and each Info.plist
+// (key TMAppGroup) through build-setting expansion.
+TM_APP_GROUP = group.com.example.tokenmonitor
+
+// Empty so the project builds unsigned in CI and for anyone without a team.
+DEVELOPMENT_TEAM =
+
+#include? "Local.xcconfig"
