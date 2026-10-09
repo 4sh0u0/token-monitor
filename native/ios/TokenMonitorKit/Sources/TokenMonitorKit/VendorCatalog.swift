@@ -72,7 +72,8 @@ public enum VendorCatalog {
     )
 
     // Compiled once: the resolver runs for every model row of every refresh.
-    private static let modelVendorExpressions: [(NSRegularExpression, String)] = generatedModelVendorRules.compactMap { rule in
+    // Internal for the test that no generated pattern fails to compile.
+    static let modelVendorExpressions: [(NSRegularExpression, String)] = generatedModelVendorRules.compactMap { rule in
         guard let expression = try? NSRegularExpression(pattern: rule.pattern) else { return nil }
         return (expression, rule.vendorID)
     }

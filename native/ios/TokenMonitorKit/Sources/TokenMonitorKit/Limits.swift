@@ -467,6 +467,31 @@ public struct LimitProvider: Sendable, Equatable, Identifiable {
         }.map(\.element)
     }
 
+    /// Most constrained first, for surfaces that lead with "the tightest
+    /// quota": healthy, fresh readings (`isReady`) first; among them the least
+    /// left first, by `meterFraction(for: headlineWindow)`; providers without
+    /// a meter after every measured one; ties keep the input order, so equal
+    /// rows never swap between refreshes.
+    public static func sortedByUrgency(_ providers: [LimitProvider]) -> [LimitProvider] {
+        providers.enumerated().sorted { left, right in
+            let leftReady = left.element.isReady ? 0 : 1
+            let rightReady = right.element.isReady ? 0 : 1
+            if leftReady != rightReady { return leftReady < rightReady }
+            switch (left.element.headlineFraction, right.element.headlineFraction) {
+            case let (leftRemaining?, rightRemaining?) where leftRemaining != rightRemaining:
+                return leftRemaining < rightRemaining
+            case (.some, nil): return true
+            case (nil, .some): return false
+            default: return left.offset < right.offset
+            }
+        }.map(\.element)
+    }
+
+    /// What is left of the headline window (0...1), nil without a meter.
+    var headlineFraction: Double? {
+        headlineWindow.flatMap { meterFraction(for: $0) }
+    }
+
     // Port of `maskedWidgetEmail()` in src/shared/macWidgetSnapshot.js.
     static func maskedEmail(_ value: String) -> String? {
         let email = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

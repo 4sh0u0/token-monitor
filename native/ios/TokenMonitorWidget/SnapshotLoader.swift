@@ -22,16 +22,24 @@ enum SnapshotLoader {
     static func load(forceRefresh: Bool, now: Date = Date()) async -> WidgetDataState {
         let connections = HubConnectionStore.shared
         // Only the URL is read here; the Keychain is touched just before a fetch.
-        guard connections.isConfigured else { return .notConfigured }
-        let cached = SnapshotStore.shared.load()
+        guard let hubKey = connections.snapshotKey else { return .notConfigured }
+        let cached = cachedSnapshot(hubKey: hubKey)
         if !forceRefresh, let cached, isFresh(cached, at: now) {
             return .ready(cached)
         }
-        if let fetched = await SnapshotRefresher.shared.refresh(connections: connections, force: forceRefresh, now: now) {
+        if let fetched = await SnapshotRefresher.refresh(connections: connections, hubKey: hubKey, force: forceRefresh, now: now) {
             return .ready(fetched)
         }
         if let cached { return .ready(cached) }
         return .unavailable
+    }
+
+    /// The App Group snapshot, unless it came from another Hub than the saved
+    /// one (the app clears it on a Hub switch, but a widget can read it first,
+    /// or a fetch for the old Hub can land after the clear).
+    static func cachedSnapshot(hubKey: String? = HubConnectionStore.shared.snapshotKey) -> TokenSnapshot? {
+        guard let snapshot = SnapshotStore.shared.load(), snapshot.belongs(toHubKey: hubKey) else { return nil }
+        return snapshot
     }
 
     /// A snapshot dated in the future (the clock moved back) counts as old,
@@ -42,47 +50,31 @@ enum SnapshotLoader {
     }
 }
 
-/// Serializes Hub fetches inside the extension process.
-///
-/// `reloadAllTimelines()` asks for every placed widget's timeline at once;
-/// without this each one would fetch and decode its own copy of the full
-/// `/api/stats` response, which is how a widget extension blows through its
-/// memory limit. Concurrent callers share one fetch, and a fetch that just
-/// finished is reused by callers that read the cache a moment too early.
-actor SnapshotRefresher {
-    static let shared = SnapshotRefresher()
+/// Hub fetches of the extension process, shared through one
+/// `SnapshotFetchCoalescer`: `reloadAllTimelines()` asks for every placed
+/// widget's timeline at once, and each decoding its own copy of the full
+/// `/api/stats` response is how a widget extension blows through its memory
+/// limit.
+enum SnapshotRefresher {
+    private static let coalescer = SnapshotFetchCoalescer(reuseWindow: 60)
 
-    private static let reuseWindow: TimeInterval = 60
-
-    private var inFlight: Task<TokenSnapshot?, Never>?
-    private var lastFetched: TokenSnapshot?
-
-    func refresh(connections: HubConnectionStore, force: Bool, now: Date) async -> TokenSnapshot? {
-        if let inFlight {
-            return await inFlight.value
+    static func refresh(connections: HubConnectionStore, hubKey: String, force: Bool, now: Date) async -> TokenSnapshot? {
+        await coalescer.snapshot(hubKey: hubKey, force: force, now: now) {
+            await fetch(connections: connections, hubKey: hubKey)
         }
-        if !force, let lastFetched, SnapshotLoader.isFresh(lastFetched, at: now),
-           !lastFetched.isOlder(than: Self.reuseWindow, at: now) {
-            return lastFetched
-        }
-        let task = Task<TokenSnapshot?, Never> {
-            await Self.fetch(connections: connections)
-        }
-        inFlight = task
-        let result = await task.value
-        // Only the creator clears it: joiners return above and a new task can
-        // start only after this line.
-        inFlight = nil
-        if let result { lastFetched = result }
-        return result
     }
 
-    private static func fetch(connections: HubConnectionStore) async -> TokenSnapshot? {
+    private static func fetch(connections: HubConnectionStore, hubKey: String) async -> TokenSnapshot? {
         do {
             // Throws before first unlock (Keychain unreadable): never call the
             // Hub without its secret — the cache is the right answer then.
             let client = try HubClient(store: connections, session: WidgetNetwork.session, timeout: HubClient.widgetTimeout)
+            // The Hub was switched since the caller read the settings.
+            guard client.connection.snapshotKey == hubKey else { return nil }
             let snapshot = try await makeSnapshot(client: client)
+            // Switched while the request was in flight: these numbers are the
+            // previous Hub's and must not overwrite the new Hub's cache.
+            guard !Task.isCancelled, connections.snapshotKey == hubKey else { return nil }
             try? SnapshotStore.shared.save(snapshot)
             return snapshot
         } catch {
@@ -94,7 +86,7 @@ actor SnapshotRefresher {
     /// released as soon as the compact snapshot exists.
     private static func makeSnapshot(client: HubClient) async throws -> TokenSnapshot {
         let stats = try await client.stats()
-        return TokenSnapshot(stats: stats, fetchedAt: Date())
+        return TokenSnapshot(stats: stats, fetchedAt: Date(), hub: client.connection)
     }
 }
 

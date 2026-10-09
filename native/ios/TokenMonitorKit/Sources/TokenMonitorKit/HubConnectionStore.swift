@@ -54,8 +54,9 @@ public final class InMemorySecretStorage: SecretStorage, @unchecked Sendable {
 /// extension (and, on the watch, the watch app and its widgets) read the same
 /// item; App Group identifiers are valid Keychain access groups on iOS and
 /// watchOS without a keychain-access-groups entitlement.
-/// `kSecAttrAccessibleAfterFirstUnlock` lets widgets refresh while the device
-/// is locked; the item is never synchronized through iCloud Keychain.
+/// `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` lets widgets refresh
+/// while the device is locked and keeps the secret out of backups restored
+/// to another device; the item is never synchronized through iCloud Keychain.
 public struct KeychainSecretStorage: SecretStorage {
     public static let defaultService = "TokenMonitor.Hub"
     public static let defaultAccount = "hub-secret"
@@ -100,15 +101,30 @@ public struct KeychainSecretStorage: SecretStorage {
         }
     }
 
+    /// Updates the item in place, which also moves an item written by an
+    /// earlier build to the current accessibility; when the Keychain refuses
+    /// that, the item is replaced.
     public func writeSecret(_ secret: String) throws {
         let data = Data(secret.utf8)
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
         let updateStatus = SecItemUpdate(baseQuery as CFDictionary, attributes as CFDictionary)
-        if updateStatus == errSecSuccess { return }
-        guard updateStatus == errSecItemNotFound else { throw SecretStorageError.keychain(status: updateStatus) }
+        switch updateStatus {
+        case errSecSuccess:
+            return
+        case errSecItemNotFound:
+            break
+        case errSecInteractionNotAllowed:
+            // Locked (before first unlock): replacing would fail the same way.
+            throw SecretStorageError.keychain(status: updateStatus)
+        default:
+            let deleteStatus = SecItemDelete(baseQuery as CFDictionary)
+            guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
+                throw SecretStorageError.keychain(status: updateStatus)
+            }
+        }
         var item = baseQuery
         for (key, value) in attributes { item[key] = value }
         let addStatus = SecItemAdd(item as CFDictionary, nil)
@@ -153,6 +169,13 @@ public struct HubConnectionStore: @unchecked Sendable {
     }
 
     public var isConfigured: Bool { baseURL != nil }
+
+    /// The saved Hub's `HubConnection.snapshotKey`, nil when none is saved.
+    /// Reads only the URL, so it works before the first unlock, when the
+    /// Keychain refuses to hand out the secret.
+    public var snapshotKey: String? {
+        baseURL.map(HubConnection.snapshotKey(for:))
+    }
 
     /// The saved connection; nil when no URL is saved.
     /// - Throws: `SecretStorageError` when the Keychain cannot be read (for

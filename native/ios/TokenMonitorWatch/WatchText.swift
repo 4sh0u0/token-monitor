@@ -30,8 +30,8 @@ enum WatchText {
         case .notConfigured: return String(localized: "Not configured")
         case .unauthorized: return String(localized: "Sign in again")
         case .rateLimited, .sourceRateLimited: return String(localized: "Rate limited")
-        case .unavailable: return String(localized: "Temporarily unavailable")
-        case .error: return String(localized: "Unavailable")
+        case .unavailable: return String(localized: "Unavailable")
+        case .error: return String(localized: "Temporarily unavailable")
         }
     }
 

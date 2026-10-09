@@ -21,7 +21,16 @@ struct TokenEntry: TimelineEntry {
         guard let snapshot else { return false }
         return snapshot.isSourceStale
             || snapshot.isOlder(than: WidgetTiming.staleAfter, at: date)
-            || !Calendar.current.isDate(snapshot.fetchedAt, inSameDayAs: date)
+            || !snapshot.isCurrent(.today, at: date)
+    }
+
+    /// The configured period's figures, nil once that period has rolled over
+    /// since the fetch (after midnight a cached "today" is yesterday's, after
+    /// the 1st "this month" is last month's): views show "—" then, never the
+    /// old totals under the new period's name.
+    var periodSummary: PeriodSummary? {
+        guard let snapshot, snapshot.isCurrent(period, at: date) else { return nil }
+        return snapshot[period]
     }
 }
 
@@ -47,7 +56,7 @@ enum TokenTimeline {
     /// what the widget looks like. A placed widget never shows sample data.
     static func gallery(_ options: EntryOptions) -> TokenEntry {
         let now = Date()
-        if HubConnectionStore.shared.isConfigured, let cached = SnapshotStore.shared.load() {
+        if let cached = SnapshotLoader.cachedSnapshot() {
             return options.entry(at: now, state: .ready(cached))
         }
         return options.entry(at: now, state: .ready(SampleSnapshot.make(now: now)))

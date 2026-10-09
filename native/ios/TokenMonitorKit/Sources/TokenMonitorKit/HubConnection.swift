@@ -46,6 +46,19 @@ public struct HubConnection: Sendable, Hashable, Codable {
 
     public var hasSecret: Bool { !secret.isEmpty }
 
+    /// Which Hub a `TokenSnapshot` came from (`TokenSnapshot.hubKey`): a
+    /// stable hash of the normalized base URL. Never derived from the secret,
+    /// so it carries nothing of it, and a rotated secret keeps the cache.
+    public var snapshotKey: String { Self.snapshotKey(for: baseURL) }
+
+    /// `snapshotKey` of the Hub at `baseURL`, for callers that have only the
+    /// saved URL (widgets before the Keychain is readable).
+    public static func snapshotKey(for baseURL: URL) -> String {
+        // Normalized again: a decoded connection (`Codable`) keeps its URL as sent.
+        let normalized = normalizedBaseURL(from: baseURL.absoluteString)?.absoluteString ?? baseURL.absoluteString
+        return StableHash.hex(normalized, length: 16)
+    }
+
     /// Plain HTTP to a host that is not on the local network or a tailnet:
     /// the secret and usage would cross the internet unencrypted, so the UI
     /// should warn.

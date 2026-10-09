@@ -30,7 +30,7 @@ final class WatchStore {
 
     init() {
         hubURL = HubConnectionStore.shared.baseURL
-        snapshot = SnapshotStore.shared.load()
+        snapshot = Self.storedSnapshot(for: hubURL)
         observer = NotificationCenter.default.addObserver(
             forName: WatchSessionBridge.didChangeNotification,
             object: nil,
@@ -101,7 +101,7 @@ final class WatchStore {
             let stats = try await HubClient(connection: connection).stats()
             // A newer refresh started, or the iPhone switched Hubs meanwhile.
             guard current == generation, HubConnectionStore.shared.baseURL == url else { return }
-            let fresh = TokenSnapshot(stats: stats)
+            let fresh = TokenSnapshot(stats: stats, hub: connection)
             snapshot = fresh
             lastError = nil
             try? SnapshotStore.shared.save(fresh)
@@ -134,7 +134,7 @@ final class WatchStore {
         let url = HubConnectionStore.shared.baseURL
         let hubChanged = url != hubURL
         hubURL = url
-        let stored = url == nil ? nil : SnapshotStore.shared.load()
+        let stored = Self.storedSnapshot(for: url)
         if hubChanged {
             generation += 1
             isRefreshing = false
@@ -148,5 +148,14 @@ final class WatchStore {
         } else if let stored, stored.fetchedAt > (snapshot?.fetchedAt ?? .distantPast) {
             snapshot = stored
         }
+    }
+
+    /// The cached snapshot, when it was read from the Hub at `url`: one
+    /// written for the previous Hub (a complication fetch that crossed a
+    /// switch) must not be shown as this one's.
+    private static func storedSnapshot(for url: URL?) -> TokenSnapshot? {
+        guard let url, let snapshot = SnapshotStore.shared.load(),
+              snapshot.belongs(toHubKey: HubConnection.snapshotKey(for: url)) else { return nil }
+        return snapshot
     }
 }

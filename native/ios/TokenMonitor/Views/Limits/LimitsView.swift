@@ -10,7 +10,9 @@ struct LimitsView: View {
             ScreenScrollView {
                 if let stats = model.stats {
                     StatusBanner()
-                    LimitsList(providers: LimitProvider.sortedForDisplay(stats.limits), updatedAt: stats.limitsUpdatedAt)
+                    // The newest provider reading, not `limitsUpdatedAt`: the
+                    // Hub stamps that when it aggregates, i.e. on every read.
+                    LimitsList(providers: LimitProvider.sortedForDisplay(stats.limits), updatedAt: stats.limits.compactMap(\.updatedAt).max())
                 } else {
                     DataPlaceholder()
                 }

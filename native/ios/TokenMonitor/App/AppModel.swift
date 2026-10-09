@@ -56,6 +56,10 @@ final class AppModel {
     /// WidgetKit budgets reloads, so fresh data reloads timelines at most this
     /// often; settings changes reload immediately.
     private static let widgetReloadInterval: TimeInterval = 5 * 60
+    /// Changed stats rewrite the snapshot (a protected App Group file plus the
+    /// watch payload) at most this often, though the stream can change every
+    /// few seconds; the latest numbers are written when the window ends.
+    private static let snapshotWriteInterval: TimeInterval = 20
     /// Unchanged stats still refresh the cached snapshot's age this often.
     private static let snapshotRefreshInterval: TimeInterval = 60
 
@@ -66,7 +70,10 @@ final class AppModel {
     @ObservationIgnored private var isSceneActive = false
     @ObservationIgnored private var hasActivatedOnce = false
     @ObservationIgnored private var lastWidgetReload: Date? = nil
-    @ObservationIgnored private var lastSnapshotSave: Date? = nil
+    /// Nil until the first write since launch or the last connection change,
+    /// which therefore happens at once.
+    @ObservationIgnored private var lastSnapshotWrite: Date? = nil
+    @ObservationIgnored private var pendingSnapshotWrite: Task<Void, Never>? = nil
 
     init(store: HubConnectionStore = .shared, snapshotStore: SnapshotStore = .shared) {
         self.store = store
@@ -77,6 +84,8 @@ final class AppModel {
 
     // MARK: Lifecycle
 
+    /// Takes the app's aggregate phase (read in `TokenMonitorApp`), not one
+    /// window's: on iPad another window can still be on screen.
     func scenePhaseChanged(_ phase: ScenePhase) {
         switch phase {
         case .active:
@@ -97,6 +106,8 @@ final class AppModel {
         case .background:
             isSceneActive = false
             stopLiveUpdates()
+            // Widgets and the watch get the numbers the app last showed.
+            if pendingSnapshotWrite != nil, let connection { writeSnapshot(of: connection) }
         default:
             // `.inactive` is transient (app switcher, Control Center): keep the stream.
             break
@@ -126,11 +137,12 @@ final class AppModel {
     func save(_ newConnection: HubConnection) throws {
         let hubChanged = store.baseURL != newConnection.baseURL
         try store.save(newConnection)
+        // Numbers read through the old connection are not written for the new one.
+        resetSnapshotWrites()
         if hubChanged {
             // Another Hub's numbers must not stay on screen, in widgets or on the watch.
             stats = nil
             lastUpdated = nil
-            lastSnapshotSave = nil
             try? snapshotStore.clear()
         }
         connection = newConnection
@@ -144,13 +156,13 @@ final class AppModel {
     /// Forgets the Hub on this phone, its widgets and the watch.
     func disconnect() {
         stopLiveUpdates()
+        resetSnapshotWrites()
         try? store.clear()
         try? snapshotStore.clear()
         connection = nil
         isConfigured = store.isConfigured
         stats = nil
         lastUpdated = nil
-        lastSnapshotSave = nil
         issue = nil
         selectedTab = .overview
         PhoneSessionBridge.shared.push(connection: nil, snapshot: nil)
@@ -193,18 +205,53 @@ final class AppModel {
         if changed { stats = newStats }
         lastUpdated = now
         if issue != nil { issue = nil }
+        updateSnapshot(changed: changed, from: source, now: now)
+    }
 
-        let snapshotDue = lastSnapshotSave.map { now.timeIntervalSince($0) >= Self.snapshotRefreshInterval } ?? true
-        guard changed || snapshotDue else { return }
-        let snapshot = TokenSnapshot(stats: newStats, fetchedAt: now)
-        do {
-            try snapshotStore.save(snapshot)
-            lastSnapshotSave = now
-        } catch {
-            // Widgets keep the previous file; the next update tries again.
+    /// Writes the snapshot now, schedules the latest numbers for the end of
+    /// the write window, or does nothing.
+    private func updateSnapshot(changed: Bool, from source: HubConnection, now: Date) {
+        guard let last = lastSnapshotWrite else {
+            // First numbers since launch or a connection change.
+            writeSnapshot(of: source)
+            return
         }
+        let elapsed = now.timeIntervalSince(last)
+        // `elapsed < 0`: the clock moved back; do not wait for it to catch up.
+        let interval = changed ? Self.snapshotWriteInterval : Self.snapshotRefreshInterval
+        if elapsed < 0 || elapsed >= interval {
+            writeSnapshot(of: source)
+        } else if changed, pendingSnapshotWrite == nil {
+            let delay = Self.snapshotWriteInterval - elapsed
+            pendingSnapshotWrite = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled, let self else { return }
+                self.pendingSnapshotWrite = nil
+                self.writeSnapshot(of: source)
+            }
+        }
+    }
+
+    /// Saves the current stats as the App Group snapshot, hands it to the
+    /// watch and reloads widgets (throttled), unless `source` is no longer
+    /// the connection they came from.
+    private func writeSnapshot(of source: HubConnection) {
+        pendingSnapshotWrite?.cancel()
+        pendingSnapshotWrite = nil
+        guard source == connection, let stats else { return }
+        let now = Date()
+        lastSnapshotWrite = now
+        let snapshot = TokenSnapshot(stats: stats, fetchedAt: lastUpdated ?? now, hub: source)
+        // On failure widgets keep the previous file; the next due write tries again.
+        try? snapshotStore.save(snapshot)
         PhoneSessionBridge.shared.push(connection: source, snapshot: snapshot)
         reloadWidgets(force: false, now: now)
+    }
+
+    private func resetSnapshotWrites() {
+        pendingSnapshotWrite?.cancel()
+        pendingSnapshotWrite = nil
+        lastSnapshotWrite = nil
     }
 
     private func reloadWidgets(force: Bool, now: Date = Date()) {

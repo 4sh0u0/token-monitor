@@ -5,38 +5,16 @@ import WidgetKit
 
 /// Which limits a widget shows.
 enum LimitSelection {
-    /// Automatic order: healthy, fresh readings first; among them the least
-    /// left first (by each provider's headline window); then the snapshot's
-    /// own display order, so equal rows never swap between refreshes.
-    static func ordered(_ providers: [LimitProvider]) -> [LimitProvider] {
-        providers.enumerated().sorted { left, right in
-            let leftReady = left.element.isReady ? 0 : 1
-            let rightReady = right.element.isReady ? 0 : 1
-            if leftReady != rightReady { return leftReady < rightReady }
-            let leftRemaining = remaining(left.element)
-            let rightRemaining = remaining(right.element)
-            if leftRemaining != rightRemaining { return leftRemaining < rightRemaining }
-            return left.offset < right.offset
-        }.map { $0.element }
-    }
-
-    /// What is left of the headline window, 0...1; windows without a meter
-    /// sort after every measured one.
-    static func remaining(_ provider: LimitProvider) -> Double {
-        guard let window = provider.headlineWindow,
-              let fraction = provider.meterFraction(for: window) else { return 2 }
-        return fraction
-    }
-
     static func pinned(_ id: String?, in snapshot: TokenSnapshot) -> LimitProvider? {
         guard let id else { return nil }
         return snapshot.limits.first { $0.id == id }
     }
 
     /// The pinned provider first while it is still in the snapshot, then the
-    /// automatic order.
+    /// automatic order, `LimitProvider.sortedByUrgency` (which the watch's
+    /// Quota complication uses too).
     static func providers(in snapshot: TokenSnapshot, pinnedID: String?, limit: Int) -> [LimitProvider] {
-        let automatic = Self.ordered(snapshot.limits)
+        let automatic = LimitProvider.sortedByUrgency(snapshot.limits)
         guard let pinned = Self.pinned(pinnedID, in: snapshot) else {
             return Array(automatic.prefix(limit))
         }
@@ -81,7 +59,9 @@ private extension LimitProvider {
 }
 
 /// A capacity ring for one window: fills by what is left, the headline in the
-/// middle. `showMeter == false` draws the bare track with the value.
+/// middle. A window without a meter (`showMeter == false`, a balance with
+/// nothing to measure it against) shows its value on a plain disc instead, so
+/// it never reads as an empty ring.
 struct LimitRing: View {
     let provider: LimitProvider
     let window: LimitWindow?

@@ -8,9 +8,10 @@ struct HubIssue: Equatable {
         case notConfigured
         case invalidURL
         case unauthorized
-        /// 503: a Cloudflare Worker refuses every request until
-        /// TOKEN_MONITOR_SECRET is set.
-        case hubSecretMissing
+        /// 503: the Hub is down behind a reverse proxy or Cloudflare, or a
+        /// Cloudflare Worker refuses every request until TOKEN_MONITOR_SECRET
+        /// is set. Nothing in this app fixes either, so it is retried.
+        case hubUnavailable
         case httpStatus(Int)
         case unreachable
         case unexpectedResponse
@@ -46,7 +47,7 @@ struct HubIssue: Equatable {
             case .unauthorized:
                 self.init(kind: .unauthorized)
             case .http(let status):
-                self.init(kind: status == 503 ? .hubSecretMissing : .httpStatus(status))
+                self.init(kind: status == 503 ? .hubUnavailable : .httpStatus(status))
             case .transport(let detail):
                 self.init(kind: .unreachable, detail: detail, isLocalHub: isLocal)
             case .decoding:
@@ -80,8 +81,8 @@ struct HubIssue: Equatable {
             return String(localized: "Invalid Hub address")
         case .unauthorized:
             return String(localized: "Wrong or missing secret")
-        case .hubSecretMissing:
-            return String(localized: "The Hub has no secret configured")
+        case .hubUnavailable:
+            return String(localized: "The Hub is unavailable")
         case .httpStatus(let status):
             let code = String(status)
             return String(localized: "Hub error (HTTP \(code))")
@@ -106,8 +107,8 @@ struct HubIssue: Equatable {
             return String(localized: "Enter an address such as 192.168.1.10:17321 or https://token-monitor.example.workers.dev.")
         case .unauthorized:
             return String(localized: "The Hub rejected the secret. Enter the Hub’s TOKEN_MONITOR_SECRET, or the secret shown by the desktop widget that hosts the Hub.")
-        case .hubSecretMissing:
-            return String(localized: "This Hub refuses all requests until a secret is set. For a Cloudflare Worker, run “npx wrangler secret put TOKEN_MONITOR_SECRET”, then enter the same secret here.")
+        case .hubUnavailable:
+            return String(localized: "The Hub, or a proxy in front of it, isn’t accepting requests right now (HTTP 503). Check that the Hub is running. For a Cloudflare Worker, make sure its secret is set with “npx wrangler secret put TOKEN_MONITOR_SECRET”.")
         case .httpStatus:
             return String(localized: "Check that the address points to a Token Monitor Hub.")
         case .unreachable:
@@ -130,9 +131,9 @@ struct HubIssue: Equatable {
     /// Changing the Hub settings is what fixes it (as opposed to waiting).
     var suggestsSettings: Bool {
         switch kind {
-        case .notConfigured, .invalidURL, .unauthorized, .hubSecretMissing, .keychain:
+        case .notConfigured, .invalidURL, .unauthorized, .keychain:
             return true
-        case .httpStatus, .unreachable, .unexpectedResponse, .secretLocked, .other:
+        case .hubUnavailable, .httpStatus, .unreachable, .unexpectedResponse, .secretLocked, .other:
             return false
         }
     }

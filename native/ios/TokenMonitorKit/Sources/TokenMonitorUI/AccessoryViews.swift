@@ -1,16 +1,21 @@
 #if canImport(SwiftUI)
 import SwiftUI
 import TokenMonitorKit
+#if os(iOS) || os(watchOS)
+import WidgetKit
+#endif
 
 // Building blocks for iOS Lock Screen widgets (accessoryCircular /
 // accessoryRectangular) and watch complications. They only use SwiftUI's
-// accessory gauge styles, so the same view renders in both widget extensions
-// and in app previews. All text is passed in already formatted and localized.
+// accessory gauge styles and WidgetKit's accessory background, so the same
+// view renders in both widget extensions and in app previews. All text is
+// passed in already formatted and localized.
 
 /// accessoryCircular: a headline number (e.g. today's tokens, "1.2M").
 ///
 /// With a `fraction` it is drawn as a circular gauge (e.g. today against the
-/// trend's busiest day); without one, as the number on a plain disc.
+/// trend's busiest day); without one, as the number on the accessory
+/// background.
 public struct AccessoryTokensGauge: View {
     private let valueText: String
     private let label: String?
@@ -32,24 +37,7 @@ public struct AccessoryTokensGauge: View {
             }
             .gaugeStyle(.accessoryCircular)
         } else {
-            ZStack {
-                Circle().fill(.quaternary)
-                VStack(spacing: 0) {
-                    Text(valueText)
-                        .font(.system(.body, design: .rounded).weight(.semibold))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                    if let label {
-                        Text(label)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                    }
-                }
-                .padding(4)
-            }
+            AccessoryValueDisc(valueText: valueText, label: label)
         }
     }
 }
@@ -63,7 +51,9 @@ public struct AccessoryQuotaGauge: View {
 
     /// - Parameters:
     ///   - fraction: what is left, 0...1 (`LimitProvider.meterFraction(for:)`);
-    ///     nil draws an empty ring with the value text.
+    ///     nil (no meter, e.g. a balance-only account) draws the value and
+    ///     label on the accessory background, never an empty ring that would
+    ///     read as "0% left".
     ///   - valueText: the centre text, e.g. "58%" or "$37.50".
     ///   - label: a short provider/window name shown under the ring.
     public init(fraction: Double?, valueText: String, label: String, tint: Color = TMTheme.success) {
@@ -74,14 +64,50 @@ public struct AccessoryQuotaGauge: View {
     }
 
     public var body: some View {
-        Gauge(value: fraction ?? 0) {
-            Text(label)
-        } currentValueLabel: {
-            Text(valueText)
-                .minimumScaleFactor(0.5)
+        if let fraction {
+            Gauge(value: fraction) {
+                Text(label)
+            } currentValueLabel: {
+                Text(valueText)
+                    .minimumScaleFactor(0.5)
+            }
+            .gaugeStyle(.accessoryCircularCapacity)
+            .tint(tint)
+        } else {
+            AccessoryValueDisc(valueText: valueText, label: label)
         }
-        .gaugeStyle(.accessoryCircularCapacity)
-        .tint(tint)
+    }
+}
+
+/// accessoryCircular without a gauge: the value, and an optional caption,
+/// centred on the system's accessory background.
+struct AccessoryValueDisc: View {
+    let valueText: String
+    let label: String?
+
+    var body: some View {
+        ZStack {
+            #if os(iOS) || os(watchOS)
+            AccessoryWidgetBackground()
+            #else
+            Circle().fill(.quaternary)
+            #endif
+            VStack(spacing: 0) {
+                Text(valueText)
+                    .font(.system(.body, design: .rounded).weight(.semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                if let label {
+                    Text(label)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+            }
+            .padding(4)
+        }
     }
 }
 

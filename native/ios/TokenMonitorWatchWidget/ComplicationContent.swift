@@ -8,12 +8,6 @@ enum ComplicationContent {
     /// Older than this, the rectangular usage complication says how old.
     static let staleAge: TimeInterval = 60 * 60
 
-    /// Whether the snapshot was fetched on `date`'s day: one fetched
-    /// yesterday says nothing about today's usage.
-    static func isCurrentDay(_ snapshot: TokenSnapshot, at date: Date) -> Bool {
-        Calendar.current.isDate(snapshot.fetchedAt, inSameDayAs: date)
-    }
-
     static func trend(_ snapshot: TokenSnapshot) -> [Double] {
         snapshot.trend.suffix(trendDays).map { Double($0.tokens) }
     }
@@ -69,9 +63,11 @@ struct ComplicationQuotaRow: Identifiable {
     var tint: Color { TMTheme.quotaColor(remainingFraction: fraction) }
 
     /// Providers worth a complication: healthy readings with a headline
-    /// window, in the snapshot's order (ready providers first).
+    /// window, tightest first (`LimitProvider.sortedByUrgency`, the iOS
+    /// Limits widget's order): fresh readings before stale ones, then the
+    /// least left, then windows without a meter.
     static func headlines(in snapshot: TokenSnapshot, limit: Int) -> [ComplicationQuotaRow] {
-        let rows = snapshot.limits
+        let rows = LimitProvider.sortedByUrgency(snapshot.limits)
             .filter { $0.status == .ok }
             .compactMap { provider -> ComplicationQuotaRow? in
                 guard let window = provider.headlineWindow else { return nil }

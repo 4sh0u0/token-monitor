@@ -16,6 +16,9 @@ public struct TokenSnapshot: Sendable, Equatable {
     public var schemaVersion: Int
     /// When this device fetched the stats (the age of the cache).
     public var fetchedAt: Date
+    /// `HubConnection.snapshotKey` of the Hub the stats came from; nil in
+    /// snapshots written before it was recorded (origin unknown).
+    public var hubKey: String?
     /// The newest time the Hub heard from any device (the age of the data).
     public var sourceUpdatedAt: Date?
     /// Every device was stale when fetched.
@@ -32,6 +35,7 @@ public struct TokenSnapshot: Sendable, Equatable {
     public init(
         schemaVersion: Int = TokenSnapshot.currentSchemaVersion,
         fetchedAt: Date,
+        hubKey: String? = nil,
         sourceUpdatedAt: Date? = nil,
         isSourceStale: Bool = false,
         today: PeriodSummary,
@@ -43,6 +47,7 @@ public struct TokenSnapshot: Sendable, Equatable {
     ) {
         self.schemaVersion = schemaVersion
         self.fetchedAt = fetchedAt
+        self.hubKey = hubKey
         self.sourceUpdatedAt = sourceUpdatedAt
         self.isSourceStale = isSourceStale
         self.today = today
@@ -55,11 +60,20 @@ public struct TokenSnapshot: Sendable, Equatable {
 
     /// Projects fresh stats.
     /// - Parameters:
+    ///   - hub: the connection the stats were read from, recorded as `hubKey`
+    ///     (never the secret). Pass it wherever the Hub is known.
     ///   - trendDays: days of daily trend to keep (clamped to `maxTrendDays`).
     ///   - calendar: the calendar whose "today" ends the trend.
-    public init(stats: HubStats, fetchedAt: Date = Date(), trendDays: Int = TokenSnapshot.maxTrendDays, calendar: Calendar = .current) {
+    public init(
+        stats: HubStats,
+        fetchedAt: Date = Date(),
+        hub: HubConnection? = nil,
+        trendDays: Int = TokenSnapshot.maxTrendDays,
+        calendar: Calendar = .current
+    ) {
         self.init(
             fetchedAt: fetchedAt,
+            hubKey: hub?.snapshotKey,
             sourceUpdatedAt: stats.newestDeviceActivity,
             isSourceStale: stats.isSourceStale,
             today: PeriodSummary(kind: .today, period: stats.today),
@@ -85,6 +99,36 @@ public struct TokenSnapshot: Sendable, Equatable {
         date.timeIntervalSince(fetchedAt) > interval
     }
 
+    /// Whether this snapshot may be shown for `connection`: false without a
+    /// connection, true when the snapshot predates `hubKey` (origin unknown),
+    /// otherwise whether it came from that Hub. A cache, an in-flight fetch or
+    /// a pushed snapshot from the previous Hub fails this after a Hub switch.
+    public func belongs(to connection: HubConnection?) -> Bool {
+        belongs(toHubKey: connection?.snapshotKey)
+    }
+
+    /// `belongs(to:)` by `HubConnection.snapshotKey`, for callers that have
+    /// only the saved URL (`HubConnectionStore.snapshotKey`).
+    public func belongs(toHubKey key: String?) -> Bool {
+        guard let key else { return false }
+        guard let hubKey else { return true }
+        return hubKey == key
+    }
+
+    /// Whether `period`'s figures still describe that period at `date`: a
+    /// snapshot fetched on an earlier day (month) holds that day's (month's)
+    /// "today" ("this month"), so after midnight its totals must not be shown
+    /// as today's. Days and months are `calendar`'s — the device's, as on
+    /// every other date the widgets and complications draw. All time is
+    /// always current.
+    public func isCurrent(_ period: UsagePeriodKind, at date: Date, calendar: Calendar = .current) -> Bool {
+        switch period {
+        case .today: return calendar.isDate(fetchedAt, inSameDayAs: date)
+        case .month: return calendar.isDate(fetchedAt, equalTo: date, toGranularity: .month)
+        case .allTime: return true
+        }
+    }
+
     /// Compact JSON (no whitespace) — the form `SnapshotStore` writes and the
     /// watch bridge should send.
     public func jsonData() throws -> Data {
@@ -100,7 +144,7 @@ public struct TokenSnapshot: Sendable, Equatable {
 
 extension TokenSnapshot: Codable {
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, fetchedAt, sourceUpdatedAt, isSourceStale, today, month, allTime, limits, devices, trend
+        case schemaVersion, fetchedAt, hubKey, sourceUpdatedAt, isSourceStale, today, month, allTime, limits, devices, trend
     }
 
     // Dates are written as ISO 8601 strings by hand, so any encoder/decoder
@@ -113,6 +157,7 @@ extension TokenSnapshot: Codable {
         self.init(
             schemaVersion: container.lenientInt(.schemaVersion) ?? 0,
             fetchedAt: fetchedAt,
+            hubKey: container.lenientString(.hubKey),
             sourceUpdatedAt: container.lenientDate(.sourceUpdatedAt),
             isSourceStale: container.lenientBool(.isSourceStale) ?? false,
             today: container.lenientObject(.today, as: PeriodSummary.self) ?? PeriodSummary(kind: .today),
@@ -128,6 +173,7 @@ extension TokenSnapshot: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encodeISODate(fetchedAt, forKey: .fetchedAt)
+        try container.encodeIfPresent(hubKey, forKey: .hubKey)
         try container.encodeISODate(sourceUpdatedAt, forKey: .sourceUpdatedAt)
         if isSourceStale { try container.encode(true, forKey: .isSourceStale) }
         try container.encode(today, forKey: .today)

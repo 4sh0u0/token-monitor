@@ -125,6 +125,19 @@ final class HubConnectionTests: XCTestCase {
         let decoded = try JSONDecoder().decode(HubConnection.self, from: JSONEncoder().encode(connection))
         XCTAssertEqual(decoded, connection)
     }
+
+    func testSnapshotKeyIdentifiesTheHubNotTheSecret() throws {
+        let hub = try HubConnection(userInput: "https://hub.example.com", secret: "abc")
+        XCTAssertEqual(hub.snapshotKey, StableHash.hex("https://hub.example.com", length: 16), "a hash of the normalized URL")
+        XCTAssertEqual(hub.snapshotKey.count, 16)
+        XCTAssertEqual(try HubConnection(userInput: "HTTPS://Hub.Example.com/api/stats/", secret: "rotated").snapshotKey, hub.snapshotKey, "same Hub, any secret")
+        XCTAssertEqual(HubConnection.snapshotKey(for: try XCTUnwrap(URL(string: "https://Hub.Example.com/api/stats?secret=abc"))), hub.snapshotKey, "an unnormalized URL is normalized first")
+        XCTAssertNotEqual(try HubConnection(userInput: "https://other.example.com", secret: "abc").snapshotKey, hub.snapshotKey)
+        XCTAssertNotEqual(try HubConnection(userInput: "http://hub.example.com", secret: "abc").snapshotKey, hub.snapshotKey)
+        XCTAssertNotEqual(try HubConnection(userInput: "https://hub.example.com/tokens", secret: "abc").snapshotKey, hub.snapshotKey, "a reverse-proxy prefix is another Hub")
+        XCTAssertNotEqual(try HubConnection(userInput: "http://192.168.1.10:17321", secret: "").snapshotKey,
+                          try HubConnection(userInput: "http://192.168.1.10:17322", secret: "").snapshotKey)
+    }
 }
 
 final class HubConnectionStoreTests: XCTestCase {
@@ -147,10 +160,12 @@ final class HubConnectionStoreTests: XCTestCase {
         let store = HubConnectionStore(defaults: defaults, secrets: secrets)
         XCTAssertNil(store.load())
         XCTAssertFalse(store.isConfigured)
+        XCTAssertNil(store.snapshotKey)
 
         let connection = try HubConnection(userInput: "https://hub.example.com", secret: "abc")
         try store.save(connection)
         XCTAssertEqual(store.load(), connection)
+        XCTAssertEqual(store.snapshotKey, connection.snapshotKey)
         XCTAssertEqual(store.baseURL?.absoluteString, "https://hub.example.com")
         XCTAssertEqual(defaults.string(forKey: HubConnectionStore.baseURLKey), "https://hub.example.com")
         XCTAssertEqual(try secrets.readSecret(), "abc")
@@ -170,6 +185,8 @@ final class HubConnectionStoreTests: XCTestCase {
         let store = HubConnectionStore(defaults: defaults, secrets: LockedSecretStorage())
         XCTAssertThrowsError(try store.loadConnection())
         XCTAssertNil(store.load())
+        XCTAssertEqual(store.snapshotKey, try HubConnection(userInput: "https://hub.example.com", secret: "").snapshotKey,
+                       "the cache's Hub is known before the first unlock")
         XCTAssertThrowsError(try HubClient(store: store)) { error in
             XCTAssertEqual(error as? SecretStorageError, .keychain(status: -25308), "a locked Keychain is not \"not configured\"")
         }

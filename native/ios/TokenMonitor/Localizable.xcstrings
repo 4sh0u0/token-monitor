@@ -4721,42 +4721,42 @@
         }
       }
     },
-    "The Hub has no secret configured" : {
+    "The Hub is unavailable" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The Hub has no secret configured"
+            "value" : "The Hub is unavailable"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hub にシークレットが設定されていません"
+            "value" : "Hub を利用できません"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hub에 시크릿이 설정되지 않음"
+            "value" : "Hub를 사용할 수 없음"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Hub não tem um segredo configurado"
+            "value" : "O Hub está indisponível"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hub 未配置密钥"
+            "value" : "Hub 不可用"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hub 未設定密鑰"
+            "value" : "Hub 無法使用"
           }
         }
       }
@@ -4841,6 +4841,46 @@
         }
       }
     },
+    "The Hub, or a proxy in front of it, isn’t accepting requests right now (HTTP 503). Check that the Hub is running. For a Cloudflare Worker, make sure its secret is set with “npx wrangler secret put TOKEN_MONITOR_SECRET”." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Hub, or a proxy in front of it, isn’t accepting requests right now (HTTP 503). Check that the Hub is running. For a Cloudflare Worker, make sure its secret is set with “npx wrangler secret put TOKEN_MONITOR_SECRET”."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hub、またはその前段のプロキシが現在リクエストを受け付けていません（HTTP 503）。Hub が起動しているか確認してください。Cloudflare Worker の場合は、「npx wrangler secret put TOKEN_MONITOR_SECRET」でシークレットが設定されているか確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hub 또는 그 앞단의 프록시가 지금 요청을 받지 않습니다(HTTP 503). Hub가 실행 중인지 확인하세요. Cloudflare Worker라면 “npx wrangler secret put TOKEN_MONITOR_SECRET”으로 시크릿이 설정되어 있는지 확인하세요."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hub, ou um proxy à frente dele, não está aceitando solicitações agora (HTTP 503). Verifique se o Hub está em execução. Para um Cloudflare Worker, confirme que o segredo foi definido com “npx wrangler secret put TOKEN_MONITOR_SECRET”."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hub 或其前面的代理当前不接受请求（HTTP 503）。请检查 Hub 是否正在运行。如果是 Cloudflare Worker，请确认已使用“npx wrangler secret put TOKEN_MONITOR_SECRET”设置密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hub 或其前方的代理目前不接受請求（HTTP 503）。請檢查 Hub 是否正在執行。如果是 Cloudflare Worker，請確認已使用「npx wrangler secret put TOKEN_MONITOR_SECRET」設定密鑰。"
+          }
+        }
+      }
+    },
     "The address answered, but not with data this app understands. Make sure it is a Token Monitor Hub (not a sign-in page), and update Token Monitor on the Hub." : {
       "localizations" : {
         "en" : {
@@ -4877,46 +4917,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此位址有回應，但回傳的不是此 App 能識別的資料。請確認它是 Token Monitor Hub（而不是登入頁面），並更新 Hub 上的 Token Monitor。"
-          }
-        }
-      }
-    },
-    "This Hub refuses all requests until a secret is set. For a Cloudflare Worker, run “npx wrangler secret put TOKEN_MONITOR_SECRET”, then enter the same secret here." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This Hub refuses all requests until a secret is set. For a Cloudflare Worker, run “npx wrangler secret put TOKEN_MONITOR_SECRET”, then enter the same secret here."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "この Hub はシークレットが設定されるまですべてのリクエストを拒否します。Cloudflare Worker の場合は「npx wrangler secret put TOKEN_MONITOR_SECRET」を実行し、同じシークレットをここに入力してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 Hub는 시크릿이 설정될 때까지 모든 요청을 거부합니다. Cloudflare Worker라면 “npx wrangler secret put TOKEN_MONITOR_SECRET”을 실행한 다음 같은 시크릿을 여기에 입력하세요."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Este Hub recusa todas as solicitações até que um segredo seja definido. Para um Cloudflare Worker, execute “npx wrangler secret put TOKEN_MONITOR_SECRET” e informe o mesmo segredo aqui."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在设置密钥之前，此 Hub 会拒绝所有请求。如果是 Cloudflare Worker，请运行“npx wrangler secret put TOKEN_MONITOR_SECRET”，然后在此输入相同的密钥。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在設定密鑰之前，此 Hub 會拒絕所有請求。如果是 Cloudflare Worker，請執行「npx wrangler secret put TOKEN_MONITOR_SECRET」，然後在此輸入相同的密鑰。"
           }
         }
       }

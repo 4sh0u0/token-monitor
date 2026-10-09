@@ -30,8 +30,8 @@ extension LimitProvider {
         case .ok: return String(localized: "Available")
         case .unauthorized: return String(localized: "Sign in again")
         case .rateLimited, .sourceRateLimited: return String(localized: "Rate limited")
-        case .unavailable: return String(localized: "Temporarily unavailable")
-        case .error: return String(localized: "Unavailable")
+        case .unavailable: return String(localized: "Unavailable")
+        case .error: return String(localized: "Temporarily unavailable")
         case .disabled: return String(localized: "Disabled")
         case .notConfigured: return String(localized: "Not configured")
         }

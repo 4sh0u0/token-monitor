@@ -178,11 +178,16 @@ final class WatchSessionBridge: NSObject, @unchecked Sendable {
             defaults.set(NSNumber(value: revision), forKey: Self.appliedRevisionKey)
         }
 
-        if store.isConfigured, let data = payload[Key.snapshot] as? Data,
+        // Only a snapshot of the Hub now saved: a complication transfer or a
+        // sync reply can cross a Hub switch. Nil (no Hub) matches nothing.
+        let hubKey = store.snapshotKey
+        if let data = payload[Key.snapshot] as? Data,
            let snapshot = try? TokenSnapshot(jsonData: data),
-           snapshot.schemaVersion <= TokenSnapshot.currentSchemaVersion {
-            // The watch fetches the Hub itself too; keep whichever is newer.
-            let cached = snapshots.load()
+           snapshot.schemaVersion <= TokenSnapshot.currentSchemaVersion,
+           snapshot.belongs(toHubKey: hubKey) {
+            // The watch fetches the Hub itself too; keep whichever is newer
+            // (a cached one from another Hub never counts).
+            let cached = snapshots.load().flatMap { $0.belongs(toHubKey: hubKey) ? $0 : nil }
             if cached.map({ snapshot.fetchedAt > $0.fetchedAt }) ?? true {
                 try? snapshots.save(snapshot)
                 snapshotChanged = true

@@ -83,7 +83,7 @@ struct LimitProviderEntity: AppEntity {
     /// The providers of the cached snapshot, in the snapshot's display order.
     /// Reads only the small App Group file — never the network.
     static func available() -> [LimitProviderEntity] {
-        guard let snapshot = SnapshotStore.shared.load() else { return [] }
+        guard let snapshot = SnapshotLoader.cachedSnapshot() else { return [] }
         var countByProvider: [String: Int] = [:]
         for provider in snapshot.limits {
             countByProvider[provider.provider, default: 0] += 1

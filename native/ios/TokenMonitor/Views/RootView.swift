@@ -5,7 +5,6 @@ import TokenMonitorUI
 /// Onboarding until a Hub is saved, then the tabs.
 struct RootView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -14,9 +13,6 @@ struct RootView: View {
             } else {
                 MainTabView()
             }
-        }
-        .onChange(of: scenePhase, initial: true) { _, phase in
-            model.scenePhaseChanged(phase)
         }
     }
 }

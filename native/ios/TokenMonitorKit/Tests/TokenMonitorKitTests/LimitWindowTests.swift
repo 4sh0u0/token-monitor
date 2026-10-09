@@ -66,6 +66,41 @@ final class LimitWindowTests: XCTestCase {
         XCTAssertEqual(empty.meterFraction(for: empty.windows[0]), 0, "no money left is 0%, not full")
     }
 
+    func testSortedByUrgencyPutsTheTightestReadyQuotaFirst() {
+        func percent(_ id: String, left: Double, status: LimitStatus = .ok, stale: Bool = false) -> LimitProvider {
+            LimitProvider(id: id, provider: id, status: status, isStale: stale, windows: [
+                LimitWindow(kind: .weekly, usedPercent: 100 - left, remainingPercent: left),
+                LimitWindow(kind: .session, usedPercent: 0, remainingPercent: 100)
+            ])
+        }
+        let balanceOnly = LimitProvider(id: "claude-credits", provider: "claude", windows: [
+            LimitWindow(kind: .billing, metric: .credits, remaining: 37.5, currency: "USD", showMeter: false)
+        ])
+        let providers = [
+            balanceOnly,
+            percent("codex", left: 80),
+            percent("kimi", left: 12, stale: true),
+            percent("cursor", left: 30),
+            percent("zai", left: 5, status: .unauthorized),
+            percent("openrouter", left: 30)
+        ]
+        XCTAssertEqual(
+            LimitProvider.sortedByUrgency(providers).map(\.id),
+            ["cursor", "openrouter", "codex", "claude-credits", "zai", "kimi"],
+            "ready before stale or failing; least left first; no meter after every measured one; ties keep their order"
+        )
+        XCTAssertEqual(LimitProvider.sortedByUrgency(providers.reversed()).map(\.id).prefix(2), ["openrouter", "cursor"])
+        XCTAssertEqual(LimitProvider.sortedByUrgency([]), [])
+    }
+
+    func testSortedByUrgencyOnTheFixture() throws {
+        // Healthy: codex 39% (weekly), claude 58% (session), openrouter 69%,
+        // deepseek 79% (derived from its balance), opencode a balance without
+        // a meter. Then the failing rows: kimi has a reading, cursor none.
+        let sorted = LimitProvider.sortedByUrgency(LimitProvider.sortedForDisplay(try Fixture.stats().limits))
+        XCTAssertEqual(sorted.map(\.provider), ["codex", "claude", "openrouter", "deepseek", "opencode", "kimi", "cursor"])
+    }
+
     func testCodexAdditionalBucketsStayOutOfCompactSurfaces() throws {
         let codex = try provider("codex")
         XCTAssertEqual(codex.windows.count, 3)

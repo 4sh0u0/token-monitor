@@ -11,7 +11,7 @@ import WatchConnectivity
 /// Call `activate()` once from the app's `init` — not from a view's
 /// `onAppear` — so a background launch caused by a watch request is answered.
 /// Call `push(connection:snapshot:)` after saving or clearing the settings and
-/// after every fresh fetch; the bridge dedupes and throttles.
+/// after every snapshot write; the bridge dedupes and throttles.
 ///
 /// The payload keys are mirrored by `WatchSessionBridge` in the watch app
 /// target; change both together and bump `protocolVersion` when a key's
@@ -88,10 +88,10 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
 
     /// Sends the current state to the watch. A nil `connection` disconnects
     /// the watch (and drops its snapshot); a nil `snapshot` with the same Hub
-    /// keeps the last one sent.
+    /// keeps the last one sent, and so does one read from another Hub.
     func push(connection: HubConnection?, snapshot: TokenSnapshot?) {
         guard WCSession.isSupported() else { return }
-        let snapshotData = connection == nil ? nil : snapshot.flatMap { try? $0.jsonData() }
+        let snapshotData = Self.snapshotData(snapshot, for: connection)
         queue.async { [self] in
             var next = State(connection: connection, snapshot: snapshotData)
             if next.snapshot == nil, let connection, state?.connection?.baseURL == connection.baseURL {
@@ -184,8 +184,7 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
             // now would disconnect the watch, so say nothing yet.
             return
         }
-        let snapshot = connection == nil ? nil : SnapshotStore.shared.load().flatMap { try? $0.jsonData() }
-        state = State(connection: connection, snapshot: snapshot)
+        state = State(connection: connection, snapshot: Self.snapshotData(SnapshotStore.shared.load(), for: connection))
     }
 
     /// The answer to the watch's `["request": "sync"]`.
@@ -199,7 +198,7 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
         }
         var snapshot: Data?
         if let connection {
-            snapshot = SnapshotStore.shared.load().flatMap { try? $0.jsonData() }
+            snapshot = Self.snapshotData(SnapshotStore.shared.load(), for: connection)
             if snapshot == nil, state?.connection?.baseURL == connection.baseURL {
                 snapshot = state?.snapshot
             }
@@ -220,6 +219,14 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
     }
 
     // MARK: Payloads
+
+    /// The snapshot's payload form, when it was read from `connection`'s Hub:
+    /// the App Group file can still hold another Hub's numbers (a widget
+    /// fetch that finished after a switch), and the watch must not show them.
+    private static func snapshotData(_ snapshot: TokenSnapshot?, for connection: HubConnection?) -> Data? {
+        guard let snapshot, snapshot.belongs(to: connection) else { return nil }
+        return try? snapshot.jsonData()
+    }
 
     private static func content(of state: State) -> [String: Any]? {
         var content: [String: Any] = [Key.version: protocolVersion]

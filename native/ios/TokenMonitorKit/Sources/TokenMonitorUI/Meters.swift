@@ -3,8 +3,9 @@ import SwiftUI
 import TokenMonitorKit
 
 /// A circular meter that fills by `fraction` (0...1) clockwise from the top,
-/// with optional content in the middle. A nil fraction draws only the track
-/// (the window has no meter, e.g. `showMeter == false`).
+/// with optional content in the middle. A nil fraction (the window has no
+/// meter, e.g. `showMeter == false`) puts the content on a plain disc
+/// instead: a bare track would read as an empty ring, "nothing left".
 public struct QuotaRing<Center: View>: View {
     private let fraction: Double?
     private let color: Color
@@ -28,13 +29,21 @@ public struct QuotaRing<Center: View>: View {
 
     public var body: some View {
         ZStack {
-            Circle()
-                .stroke(trackColor, lineWidth: lineWidth)
-            if let fraction, fraction > 0 {
+            if let fraction {
                 Circle()
-                    .trim(from: 0, to: fraction)
-                    .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+                    .stroke(trackColor, lineWidth: lineWidth)
+                if fraction > 0 {
+                    Circle()
+                        .trim(from: 0, to: fraction)
+                        .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+            } else {
+                // The ring's full footprint: a stroke reaches half its width
+                // past the path.
+                Circle()
+                    .fill(trackColor)
+                    .padding(-lineWidth / 2)
             }
             center
         }

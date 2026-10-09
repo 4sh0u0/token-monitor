@@ -72,13 +72,13 @@ struct RefreshButton: View {
     }
 }
 
-/// The headline token count.
+/// The headline token count; `WidgetText.noValue` when it is unknown.
 struct TotalTokensText: View {
-    let tokens: Int
+    let tokens: Int?
     let size: CGFloat
 
     var body: some View {
-        Text(WidgetText.tokens(tokens))
+        Text(tokens.map(WidgetText.tokens) ?? WidgetText.noValue)
             .font(.system(size: size, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(TMTheme.number)

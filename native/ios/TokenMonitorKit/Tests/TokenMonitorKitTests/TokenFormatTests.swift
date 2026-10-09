@@ -164,6 +164,13 @@ final class VendorCatalogTests: XCTestCase {
         }
     }
 
+    func testEveryGeneratedModelVendorPatternCompiles() {
+        // The resolver drops a pattern NSRegularExpression rejects; a JavaScript
+        // construct it does not support must fail here, not misattribute models.
+        XCTAssertFalse(VendorCatalog.generatedModelVendorRules.isEmpty)
+        XCTAssertEqual(VendorCatalog.modelVendorExpressions.count, VendorCatalog.generatedModelVendorRules.count)
+    }
+
     func testFallbackModelColoursMatchTheDesktopHash() {
         XCTAssertEqual(VendorCatalog.fallbackModelColorHex(for: "mystery-model-x"), "#f0d66a")
         XCTAssertEqual(VendorCatalog.fallbackModelColorHex(for: "foo"), "#6ab4f0")

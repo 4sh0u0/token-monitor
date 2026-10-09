@@ -37,6 +37,15 @@ enum WidgetText {
         usd >= 100_000 ? TokenFormat.compactUSD(usd) : TokenFormat.usd(usd)
     }
 
+    /// The period's cost, or `noValue` when its figures are unknown.
+    static func cost(_ summary: PeriodSummary?) -> String {
+        summary.map { cost($0.costUsd) } ?? noValue
+    }
+
+    /// In place of a figure that is not known, e.g. today's total while the
+    /// cache is still yesterday's.
+    static let noValue = "—"
+
     static func tokenCount(_ value: Int) -> String {
         let count = tokens(value)
         return String(localized: "\(count) tokens")

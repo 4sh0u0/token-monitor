@@ -61,7 +61,8 @@ enum UsageTrend {
 /// Header, coloured share bar and the top rows of a Tools/Models breakdown.
 struct BreakdownList: View {
     let title: String
-    let shares: [UsageShare]
+    /// Nil when the period's figures are unknown (`TokenEntry.periodSummary`).
+    let shares: [UsageShare]?
     let total: Int
     let maxRows: Int
     let showsRefresh: Bool
@@ -73,23 +74,27 @@ struct BreakdownList: View {
                 Spacer(minLength: 0)
                 if showsRefresh { RefreshButton() }
             }
-            if shares.isEmpty || total <= 0 {
-                Text("No usage yet")
-                    .font(.caption)
-                    .foregroundStyle(TMTheme.muted)
-            } else {
-                UsageBar(segments: segments, total: Double(total), height: 6)
+            if let shares, !shares.isEmpty, total > 0 {
+                UsageBar(segments: segments(shares), total: Double(total), height: 6)
                     .widgetAccentable()
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(shares.prefix(maxRows))) { share in
                         ShareRow(share: share, total: total)
                     }
                 }
+            } else if shares == nil {
+                Text(verbatim: WidgetText.noValue)
+                    .font(.caption)
+                    .foregroundStyle(TMTheme.muted)
+            } else {
+                Text("No usage yet")
+                    .font(.caption)
+                    .foregroundStyle(TMTheme.muted)
             }
         }
     }
 
-    private var segments: [UsageBar.Segment] {
+    private func segments(_ shares: [UsageShare]) -> [UsageBar.Segment] {
         shares.map { UsageBar.Segment(id: $0.id, value: Double($0.tokens), color: UsageTrend.color($0)) }
     }
 }
@@ -129,17 +134,17 @@ struct UsageSummaryColumn: View {
     let snapshot: TokenSnapshot
 
     var body: some View {
-        let summary = snapshot[entry.period]
+        let summary = entry.periodSummary
         VStack(alignment: .leading, spacing: 0) {
             PeriodHeader(period: entry.period, isStale: entry.isStale)
-            TotalTokensText(tokens: summary.totalTokens, size: 30)
+            TotalTokensText(tokens: summary?.totalTokens, size: 30)
                 .padding(.top, 3)
-            Text(WidgetText.cost(summary.costUsd))
+            Text(WidgetText.cost(summary))
                 .font(.subheadline.weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(TMTheme.muted)
                 .lineLimit(1)
-            if let rate = UsageTrend.rateText(summary) {
+            if let summary, let rate = UsageTrend.rateText(summary) {
                 Text(rate)
                     .font(.caption2)
                     .monospacedDigit()
@@ -164,12 +169,12 @@ struct UsageSmallView: View {
     let snapshot: TokenSnapshot
 
     var body: some View {
-        let summary = snapshot[entry.period]
+        let summary = entry.periodSummary
         VStack(alignment: .leading, spacing: 0) {
             PeriodHeader(period: entry.period, isStale: entry.isStale)
-            TotalTokensText(tokens: summary.totalTokens, size: 34)
+            TotalTokensText(tokens: summary?.totalTokens, size: 34)
                 .padding(.top, 2)
-            Text(WidgetText.cost(summary.costUsd))
+            Text(WidgetText.cost(summary))
                 .font(.subheadline.weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(TMTheme.muted)
@@ -190,7 +195,7 @@ struct UsageMediumView: View {
     let snapshot: TokenSnapshot
 
     var body: some View {
-        let summary = snapshot[entry.period]
+        let summary = entry.periodSummary
         GeometryReader { proxy in
             HStack(alignment: .top, spacing: 14) {
                 UsageSummaryColumn(entry: entry, snapshot: snapshot)
@@ -198,8 +203,8 @@ struct UsageMediumView: View {
                     .frame(maxHeight: .infinity, alignment: .topLeading)
                 BreakdownList(
                     title: WidgetText.breakdownTitle(entry.breakdown),
-                    shares: UsageTrend.shares(summary, breakdown: entry.breakdown),
-                    total: summary.totalTokens,
+                    shares: summary.map { UsageTrend.shares($0, breakdown: entry.breakdown) },
+                    total: summary?.totalTokens ?? 0,
                     maxRows: 4,
                     showsRefresh: true
                 )
@@ -223,7 +228,7 @@ struct UsageLargeView: View {
     }
 
     private func content(height: CGFloat) -> some View {
-        let summary = snapshot[entry.period]
+        let summary = entry.periodSummary
         // Large widgets range from ~290 pt (4.7") to ~350 pt (6.7") of
         // content height; trade rows for fit instead of clipping.
         let limitRows = snapshot.limits.isEmpty ? 0 : (height >= 340 ? 3 : 2)
@@ -238,8 +243,8 @@ struct UsageLargeView: View {
             }
             HStack(alignment: .bottom, spacing: 14) {
                 VStack(alignment: .leading, spacing: 1) {
-                    TotalTokensText(tokens: summary.totalTokens, size: 36)
-                    Text(UsageTrend.costLine(summary))
+                    TotalTokensText(tokens: summary?.totalTokens, size: 36)
+                    Text(summary.map(UsageTrend.costLine) ?? WidgetText.noValue)
                         .font(.subheadline.weight(.medium))
                         .monospacedDigit()
                         .foregroundStyle(TMTheme.muted)
@@ -254,8 +259,8 @@ struct UsageLargeView: View {
             Hairline()
             BreakdownList(
                 title: WidgetText.breakdownTitle(entry.breakdown),
-                shares: UsageTrend.shares(summary, breakdown: entry.breakdown),
-                total: summary.totalTokens,
+                shares: summary.map { UsageTrend.shares($0, breakdown: entry.breakdown) },
+                total: summary?.totalTokens ?? 0,
                 maxRows: shareRows,
                 showsRefresh: false
             )
@@ -282,10 +287,11 @@ struct UsageCircularView: View {
     let snapshot: TokenSnapshot
 
     var body: some View {
+        let summary = entry.periodSummary
         AccessoryTokensGauge(
-            valueText: WidgetText.tokens(snapshot[entry.period].totalTokens),
+            valueText: summary.map { WidgetText.tokens($0.totalTokens) } ?? WidgetText.noValue,
             label: WidgetText.shortPeriod(entry.period),
-            fraction: entry.period == .today ? UsageTrend.todayFraction(snapshot) : nil
+            fraction: entry.period == .today && summary != nil ? UsageTrend.todayFraction(snapshot) : nil
         )
     }
 }
@@ -297,25 +303,32 @@ struct UsageRectangularView: View {
     let snapshot: TokenSnapshot
 
     var body: some View {
-        let summary = snapshot[entry.period]
+        let summary = entry.periodSummary
         AccessorySummaryView(
             title: WidgetText.period(entry.period),
-            value: WidgetText.tokenCount(summary.totalTokens),
-            detail: entry.isStale ? WidgetText.updated(snapshot.fetchedAt, now: entry.date) : WidgetText.cost(summary.costUsd),
+            value: summary.map { WidgetText.tokenCount($0.totalTokens) } ?? WidgetText.noValue,
+            detail: entry.isStale || summary == nil
+                ? WidgetText.updated(snapshot.fetchedAt, now: entry.date)
+                : WidgetText.cost(summary),
             trend: Array(UsageTrend.values(snapshot, period: entry.period).suffix(14))
         )
     }
 }
 
-/// accessoryInline: "18.4M tokens · $31.84".
+/// accessoryInline: "18.4M tokens · $31.84"; once the period has rolled
+/// over since the fetch, when the numbers were last read instead (the line
+/// has no room for a stale mark).
 struct UsageInlineView: View {
     let entry: TokenEntry
     let snapshot: TokenSnapshot
 
     var body: some View {
-        let summary = snapshot[entry.period]
-        let tokens = WidgetText.tokens(summary.totalTokens)
-        let cost = WidgetText.cost(summary.costUsd)
-        Text("\(tokens) tokens · \(cost)")
+        if let summary = entry.periodSummary {
+            let tokens = WidgetText.tokens(summary.totalTokens)
+            let cost = WidgetText.cost(summary.costUsd)
+            Text("\(tokens) tokens · \(cost)")
+        } else {
+            Text(WidgetText.updated(snapshot.fetchedAt, now: entry.date))
+        }
     }
 }

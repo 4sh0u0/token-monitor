@@ -30,7 +30,8 @@ struct UsageComplicationView: View {
 
     @ViewBuilder
     private func content(_ snapshot: TokenSnapshot) -> some View {
-        let isCurrentDay = ComplicationContent.isCurrentDay(snapshot, at: entry.date)
+        // A snapshot fetched yesterday says nothing about today's usage.
+        let isCurrentDay = snapshot.isCurrent(.today, at: entry.date)
         let tokens = isCurrentDay ? TokenFormat.compactTokens(snapshot.today.totalTokens) : "—"
         let cost = isCurrentDay ? TokenFormat.usd(snapshot.today.costUsd) : "—"
         switch family {
