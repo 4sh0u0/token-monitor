@@ -2,54 +2,49 @@ import Foundation
 
 /// Number, money and time formatting shared by every surface.
 ///
-/// Functions return values only (`1.23M`, `$0.42`, `2h 30m`, `42%`); the UI
-/// targets localize the sentence around them ("%@ left", "Resets in %@").
-/// Everything takes an explicit `Locale` (and reference `Date` where relevant)
-/// so widget timelines and tests are deterministic.
+/// Functions return values only (`1.2M`, `$0.42`, `2h 30m`, `42%`), and the
+/// UI targets localize the sentence around them ("%@ left", "Resets in %@").
+/// Everything takes an explicit `Locale` (and a reference `Date` where
+/// relevant), so widget timelines and tests are deterministic.
+///
+/// The compact and full token counts follow the desktop
+/// (`CompactNumberFormat`). Prefer `DisplayFormatter`, which also applies the
+/// user's units, currency and rates. The money and percent helpers here are
+/// the round-1 Foundation formatters, kept for compatibility. The desktop's
+/// money rules are in `CurrencyFormat` and `BalanceFormat`.
 public enum TokenFormat {
-    /// Unit system for compact numbers.
-    public enum CompactUnits: Sendable {
-        /// K / M / B / T.
-        case western
-        /// 万/億 (ja), 万/亿 (zh-Hans), 萬/億 (zh-Hant), 만/억 (ko) — the
-        /// desktop's "localized" option. Falls back to western for other
-        /// languages.
-        case localized
-    }
+    /// Unit system for compact numbers: the `compactTokenUnits` setting.
+    /// `.western` is K/M/B. `.localized` is 万/亿 (zh-Hans), 萬/億
+    /// (zh-Hant), 万/億 (ja) or 만/억 (ko), and falls back to western for
+    /// other languages.
+    public typealias CompactUnits = CompactTokenUnits
 
     // MARK: Tokens
 
-    /// `999`, `1.2K`, `12.3K`, `1.23M`, `45.6M`, `4.5B`.
+    /// The desktop's `formatCompactTokens`: `999`, `1.2K`, `12.3K`, `1.2M`,
+    /// `45.6M`, `4.5B`.
     ///
-    /// Thousands keep one decimal (the desktop's rule); millions and above
-    /// keep three significant digits so a headline stays short. Trailing zeros
-    /// are dropped; the decimal separator follows `locale`.
+    /// Western units keep one decimal and have no T. Localized units keep
+    /// two decimals below 10 and one above. Trailing zeros are dropped, and
+    /// the separator is always `.`. The locale's language picks the
+    /// localized units, and its region is ignored.
+    /// `DisplayFormatter.compactTokens` is the preference-aware form.
     public static func compactTokens(_ value: Int, units: CompactUnits = .western, locale: Locale = .autoupdatingCurrent) -> String {
-        compactNumber(Double(value), units: units, locale: locale)
+        CompactNumberFormat.tokens(value, units: units, language: locale.identifier)
     }
 
-    /// `compactTokens` for any number (rates, money amounts).
+    /// The desktop's `formatCompactValue` for any number (rates, money
+    /// amounts). Unlike `compactTokens` it keeps a fraction below the first
+    /// unit (`999.5`). A non-finite value is `—`.
     public static func compactNumber(_ value: Double, units: CompactUnits = .western, locale: Locale = .autoupdatingCurrent) -> String {
         guard value.isFinite else { return "—" }
-        let scale = compactScale(units: units, locale: locale)
-        let magnitude = abs(value)
-        guard var index = scale.lastIndex(where: { magnitude >= $0.divisor }) else {
-            return plainInteger(value.rounded(), locale: locale)
-        }
-        var digits = fractionDigits(value / scale[index].divisor, unitIndex: index, localized: scale.isLocalized)
-        var display = fixed(value / scale[index].divisor, digits: digits)
-        // 999,950 rounds to "1000.0K": promote to the next unit instead.
-        if abs(Double(display) ?? 0) >= scale.promotionBoundary, index < scale.units.count - 1 {
-            index += 1
-            digits = fractionDigits(value / scale[index].divisor, unitIndex: index, localized: scale.isLocalized)
-            display = fixed(value / scale[index].divisor, digits: digits)
-        }
-        return localizedDecimal(trimmingZeros(display), locale: locale) + scale[index].suffix
+        return CompactNumberFormat.format(value, units: units, language: locale.identifier)
     }
 
-    /// `1,234,567` with the locale's grouping.
+    /// `1,234,567`: the desktop's `formatNumber`, always with en-US grouping.
+    /// `locale` is ignored and kept only for source compatibility.
     public static func fullTokens(_ value: Int, locale: Locale = .autoupdatingCurrent) -> String {
-        value.formatted(.number.grouping(.automatic).locale(locale))
+        DisplayFormatter.groupedInteger(value)
     }
 
     // MARK: Money
@@ -174,76 +169,6 @@ public enum TokenFormat {
     }
 
     // MARK: Helpers
-
-    private struct CompactScale {
-        let units: [(divisor: Double, suffix: String)]
-        let isLocalized: Bool
-        var promotionBoundary: Double { isLocalized ? 10_000 : 1000 }
-
-        subscript(index: Int) -> (divisor: Double, suffix: String) { units[index] }
-
-        func lastIndex(where predicate: ((divisor: Double, suffix: String)) -> Bool) -> Int? {
-            units.lastIndex(where: predicate)
-        }
-    }
-
-    private static func compactScale(units: CompactUnits, locale: Locale) -> CompactScale {
-        if units == .localized, let suffixes = localizedSuffixes(locale) {
-            return CompactScale(units: [(1e4, suffixes.0), (1e8, suffixes.1)], isLocalized: true)
-        }
-        return CompactScale(units: [(1e3, "K"), (1e6, "M"), (1e9, "B"), (1e12, "T")], isLocalized: false)
-    }
-
-    // Port of `localizedSuffixes()` in src/shared/compactTokens.js.
-    private static func localizedSuffixes(_ locale: Locale) -> (String, String)? {
-        let identifier = locale.identifier.replacingOccurrences(of: "_", with: "-").lowercased()
-        if identifier.hasPrefix("ko") { return ("만", "억") }
-        if identifier.hasPrefix("ja") { return ("万", "億") }
-        guard identifier.hasPrefix("zh") else { return nil }
-        let simplified = identifier.hasPrefix("zh-hans")
-            || identifier.range(of: #"^zh(?:-[a-z0-9]+)*-(?:cn|sg|my)(?:-|$)"#, options: .regularExpression) != nil
-        return simplified ? ("万", "亿") : ("萬", "億")
-    }
-
-    private static func fractionDigits(_ scaled: Double, unitIndex: Int, localized: Bool) -> Int {
-        let magnitude = abs(scaled)
-        if localized { return magnitude < 10 ? 2 : 1 }
-        if unitIndex == 0 { return 1 }
-        if magnitude < 10 { return 2 }
-        return magnitude < 100 ? 1 : 0
-    }
-
-    private static func fixed(_ value: Double, digits: Int) -> String {
-        let factor = pow(10, Double(digits))
-        let rounded = (value * factor).rounded() / factor
-        var text = String(rounded)
-        // String(Double) may use exponent notation for large values; the
-        // scaled values here are below 10,000, so it never does.
-        if let dot = text.firstIndex(of: ".") {
-            let decimals = text.distance(from: text.index(after: dot), to: text.endIndex)
-            if decimals < digits { text += String(repeating: "0", count: digits - decimals) }
-        } else if digits > 0 {
-            text += "." + String(repeating: "0", count: digits)
-        }
-        return text
-    }
-
-    private static func trimmingZeros(_ text: String) -> String {
-        guard text.contains(".") else { return text }
-        var trimmed = text
-        while trimmed.hasSuffix("0") { trimmed.removeLast() }
-        if trimmed.hasSuffix(".") { trimmed.removeLast() }
-        return trimmed
-    }
-
-    private static func localizedDecimal(_ text: String, locale: Locale) -> String {
-        let separator = locale.decimalSeparator ?? "."
-        return separator == "." ? text : text.replacingOccurrences(of: ".", with: separator)
-    }
-
-    private static func plainInteger(_ value: Double, locale: Locale) -> String {
-        clampedInt(value).formatted(.number.grouping(.never).locale(locale))
-    }
 
     private static func normalizedCurrency(_ value: String?) -> String {
         let code = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()

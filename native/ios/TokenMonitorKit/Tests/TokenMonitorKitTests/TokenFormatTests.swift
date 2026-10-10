@@ -15,17 +15,20 @@ final class TokenFormatTests: XCTestCase {
             (12_345, "12.3K"),
             (123_456, "123.5K"),
             (999_999, "1M"),
-            (1_234_567, "1.23M"),
+            (1_234_567, "1.2M"),
             (45_600_000, "45.6M"),
-            (123_456_789, "123M"),
+            (123_456_789, "123.5M"),
             (4_500_000_000, "4.5B"),
-            (4_233_100_000, "4.23B"),
+            (4_233_100_000, "4.2B"),
+            (1_000_000_000_000, "1000B"),
             (-1234, "-1.2K")
         ]
         for (value, expected) in cases {
             XCTAssertEqual(TokenFormat.compactTokens(value, locale: en), expected, "\(value)")
         }
-        XCTAssertEqual(TokenFormat.compactTokens(1_234_567, locale: Locale(identifier: "de_DE")), "1,23M")
+        XCTAssertEqual(TokenFormat.compactTokens(1_234_567, locale: Locale(identifier: "de_DE")), "1.2M", "the desktop always uses a dot")
+        XCTAssertEqual(TokenFormat.compactNumber(999.5, locale: en), "999.5", "formatCompactValue keeps fractions below 1K")
+        XCTAssertEqual(TokenFormat.compactNumber(.nan, locale: en), "—")
     }
 
     func testLocalizedCompactUnits() {
@@ -40,6 +43,8 @@ final class TokenFormatTests: XCTestCase {
 
     func testFullTokens() {
         XCTAssertEqual(TokenFormat.fullTokens(1_234_567, locale: en), "1,234,567")
+        XCTAssertEqual(TokenFormat.fullTokens(1_234_567, locale: Locale(identifier: "de_DE")), "1,234,567", "always en-US grouping")
+        XCTAssertEqual(TokenFormat.fullTokens(-1000, locale: en), "-1,000")
     }
 
     func testUSD() {
@@ -50,7 +55,7 @@ final class TokenFormatTests: XCTestCase {
         XCTAssertEqual(TokenFormat.usd(0.0042, locale: en), "$0.0042", "sub-cent costs stay visible")
         XCTAssertEqual(TokenFormat.compactUSD(999, locale: en), "$999.00")
         XCTAssertEqual(TokenFormat.compactUSD(1234.5, locale: en), "$1.2K")
-        XCTAssertEqual(TokenFormat.compactUSD(3_450_000, locale: en), "$3.45M")
+        XCTAssertEqual(TokenFormat.compactUSD(3_450_000, locale: en), "$3.5M")
         XCTAssertEqual(TokenFormat.compactUSD(-1234.5, locale: en), "-$1.2K")
     }
 
