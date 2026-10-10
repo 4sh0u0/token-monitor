@@ -225,9 +225,12 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
             connection = try HubConnectionStore.shared.loadConnection()
         } catch {
             // No connection state rather than a false "disconnected"; the
-            // preferences do not depend on it.
+            // preferences do not depend on it. The revision keeps the watch
+            // from dropping the reply as older than the state it holds (it
+            // only records a revision as applied when `connected` is there).
             var reply: [String: Any] = [Key.version: Self.protocolVersion]
             if let preferences { reply[Key.prefs] = preferences }
+            reply[Key.revision] = NSNumber(value: nextRevision())
             return reply
         }
         var snapshot: Data?
