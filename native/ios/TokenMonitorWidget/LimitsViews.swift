@@ -247,6 +247,8 @@ struct LimitsSmallView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
+        // One VoiceOver element: provider, value, mode and countdown.
+        .accessibilityElement(children: .combine)
     }
 
     /// "Session · Reset in 2 hr, 13 min": which window the ring shows, and
@@ -378,6 +380,7 @@ struct LimitsRectangularView: View {
                 .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     private func title(_ window: LimitWindow?) -> String {
