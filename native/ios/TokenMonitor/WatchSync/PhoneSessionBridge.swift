@@ -2,16 +2,20 @@ import Foundation
 import TokenMonitorKit
 import WatchConnectivity
 
-/// Hands the Hub connection and the latest snapshot to the watch app.
+/// Hands the Hub connection, the latest snapshot and the display preferences
+/// to the watch app.
 ///
 /// The watch cannot read the iPhone's Keychain or App Group, so it keeps its
-/// own copy of both (which is also what its complications read). The secret
-/// crosses only WatchConnectivity's encrypted channel.
+/// own copy of all three (which is also what its complications read). The
+/// secret crosses only WatchConnectivity's encrypted channel.
 ///
 /// Call `activate()` once from the app's `init` — not from a view's
 /// `onAppear` — so a background launch caused by a watch request is answered.
-/// Call `push(connection:snapshot:)` after saving or clearing the settings and
-/// after every snapshot write; the bridge dedupes and throttles.
+/// Call `push(connection:snapshot:preferences:)` after saving or clearing the
+/// settings and after every snapshot write, and `push(preferences:)` when only
+/// the preferences or exchange rates changed; the bridge dedupes and
+/// throttles. A connection or preferences change goes out at once; a
+/// snapshot-only change waits for `minimumSnapshotInterval`.
 ///
 /// The payload keys are mirrored by `WatchSessionBridge` in the watch app
 /// target; change both together and bump `protocolVersion` when a key's
@@ -35,6 +39,11 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
         static let hub = "hub"
         /// `TokenSnapshot.jsonData()`.
         static let snapshot = "snapshot"
+        /// `PreferencesPayload.encoded()` (`{v, preferences, rateCacheData}`
+        /// JSON, at most 8 KB): the display preferences and the phone's
+        /// exchange-rate cache. In the application context and the sync
+        /// reply, never in complication transfers. An old watch ignores it.
+        static let prefs = PreferencesPayload.contextKey
         static let request = "request"
         static let syncRequest = "sync"
     }
@@ -64,6 +73,9 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
     private let defaults = UserDefaults.standard
     /// Nil until the first `push` (or a load from the stores) this launch.
     private var state: State?
+    /// The encoded `PreferencesPayload`; independent of the connection, so
+    /// it is kept while `state` is still unknown.
+    private var preferences: Data?
     private var lastContextSentAt: Date?
     private var trailingFlush: DispatchWorkItem?
     /// Resend even when `applicationContext` already holds the same content:
@@ -88,20 +100,36 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
 
     /// Sends the current state to the watch. A nil `connection` disconnects
     /// the watch (and drops its snapshot); a nil `snapshot` with the same Hub
-    /// keeps the last one sent, and so does one read from another Hub.
-    func push(connection: HubConnection?, snapshot: TokenSnapshot?) {
+    /// keeps the last one sent, and so does one read from another Hub. A nil
+    /// `preferences` keeps the last ones (or the stored ones).
+    func push(connection: HubConnection?, snapshot: TokenSnapshot?, preferences: PreferencesPayload? = nil) {
         guard WCSession.isSupported() else { return }
         let snapshotData = Self.snapshotData(snapshot, for: connection)
+        let preferencesData = preferences.flatMap(Self.preferencesData)
         queue.async { [self] in
             var next = State(connection: connection, snapshot: snapshotData)
             if next.snapshot == nil, let connection, state?.connection?.baseURL == connection.baseURL {
                 next.snapshot = state?.snapshot
             }
             state = next
+            if let preferencesData { self.preferences = preferencesData }
             flush()
             if let snapshotData, connection != nil {
                 transferComplicationIfDue(snapshotData)
             }
+        }
+    }
+
+    /// Sends new preferences (or a new exchange-rate cache) without stating
+    /// the connection: it is read from the stores when nothing was pushed
+    /// yet this launch, and while the Keychain is still locked the
+    /// preferences wait for the next connection state.
+    func push(preferences: PreferencesPayload) {
+        guard WCSession.isSupported(), let data = Self.preferencesData(preferences) else { return }
+        queue.async { [self] in
+            self.preferences = data
+            loadStateIfNeeded()
+            flush()
         }
     }
 
@@ -116,7 +144,7 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
     }
 
     private func flush() {
-        guard let session = readySession(), let state, let content = Self.content(of: state) else { return }
+        guard let session = readySession(), let state, let content = Self.content(of: state, preferences: preferences) else { return }
         let lastSent = session.applicationContext
         if !bypassDedupe, Self.sameContent(content, lastSent) {
             return
@@ -185,16 +213,22 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
             return
         }
         state = State(connection: connection, snapshot: Self.snapshotData(SnapshotStore.shared.load(), for: connection))
+        if preferences == nil { preferences = Self.storedPreferencesData() }
     }
 
     /// The answer to the watch's `["request": "sync"]`.
     private func syncReply() -> [String: Any] {
+        // The stored copy: the exchange rates can be newer than the last push.
+        let preferences = Self.storedPreferencesData() ?? self.preferences
         let connection: HubConnection?
         do {
             connection = try HubConnectionStore.shared.loadConnection()
         } catch {
-            // No connection state rather than a false "disconnected".
-            return [Key.version: Self.protocolVersion]
+            // No connection state rather than a false "disconnected"; the
+            // preferences do not depend on it.
+            var reply: [String: Any] = [Key.version: Self.protocolVersion]
+            if let preferences { reply[Key.prefs] = preferences }
+            return reply
         }
         var snapshot: Data?
         if let connection {
@@ -203,7 +237,7 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
                 snapshot = state?.snapshot
             }
         }
-        guard var reply = Self.content(of: State(connection: connection, snapshot: snapshot)) else {
+        guard var reply = Self.content(of: State(connection: connection, snapshot: snapshot), preferences: preferences) else {
             return [Key.version: Self.protocolVersion]
         }
         reply[Key.revision] = NSNumber(value: nextRevision())
@@ -228,8 +262,25 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
         return try? snapshot.jsonData()
     }
 
-    private static func content(of state: State) -> [String: Any]? {
+    /// The payload form of the preferences, nil when they cannot be encoded
+    /// within the 8 KB budget (the watch then keeps what it has).
+    private static func preferencesData(_ payload: PreferencesPayload) -> Data? {
+        try? payload.encoded()
+    }
+
+    /// The preferences and exchange rates as stored in the App Group.
+    private static func storedPreferencesData() -> Data? {
+        preferencesData(PreferencesPayload(
+            preferences: PreferencesStore.shared.load(),
+            rateCacheData: ExchangeRateStore.shared.data()
+        ))
+    }
+
+    private static func content(of state: State, preferences: Data?) -> [String: Any]? {
         var content: [String: Any] = [Key.version: protocolVersion]
+        if let preferences {
+            content[Key.prefs] = preferences
+        }
         guard let connection = state.connection else {
             content[Key.connected] = false
             return content
@@ -246,10 +297,14 @@ final class PhoneSessionBridge: NSObject, @unchecked Sendable {
         return content
     }
 
+    /// Connection-level content: a difference here is sent at once. The
+    /// preferences count, so a settings change reaches the watch without the
+    /// snapshot throttle.
     private static func sameConnection(_ left: [String: Any], _ right: [String: Any]) -> Bool {
         (left[Key.version] as? Int) == (right[Key.version] as? Int)
             && (left[Key.connected] as? Bool) == (right[Key.connected] as? Bool)
             && (left[Key.hub] as? Data) == (right[Key.hub] as? Data)
+            && (left[Key.prefs] as? Data) == (right[Key.prefs] as? Data)
     }
 
     private static func sameContent(_ left: [String: Any], _ right: [String: Any]) -> Bool {

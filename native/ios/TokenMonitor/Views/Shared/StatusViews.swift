@@ -2,7 +2,8 @@ import SwiftUI
 import TokenMonitorKit
 import TokenMonitorUI
 
-/// The toolbar's live-update state: a coloured dot and a word.
+/// The toolbar's live-update state: a coloured dot and a word ("Live", or
+/// "Every 5 min" in an interval refresh mode).
 struct LiveStatusIndicator: View {
     @Environment(AppModel.self) private var model
 
@@ -12,27 +13,30 @@ struct LiveStatusIndicator: View {
                 .fill(color)
                 .frame(width: 8, height: 8)
                 .accessibilityHidden(true)
-            Text(title)
+            title
                 .font(.caption.weight(.medium))
                 .foregroundStyle(TMTheme.muted)
         }
         .accessibilityElement(children: .combine)
     }
 
-    private var title: LocalizedStringKey {
-        if model.issue != nil, model.liveState != .streaming { return "Offline" }
+    private var title: Text {
+        if model.issue != nil, model.liveState != .streaming { return Text("Offline") }
         switch model.liveState {
-        case .streaming: return "Live"
-        case .polling: return "Polling"
-        case .connecting: return "Connecting"
-        case .idle: return "Paused"
+        case .streaming: return Text("Live")
+        case .polling: return Text("Polling")
+        case .periodic:
+            let minutes = Int(((model.pollInterval ?? 60) / 60).rounded())
+            return Text("Every \(minutes) min")
+        case .connecting: return Text("Connecting")
+        case .idle: return Text("Paused")
         }
     }
 
     private var color: Color {
         if model.issue != nil, model.liveState != .streaming { return TMTheme.critical }
         switch model.liveState {
-        case .streaming: return TMTheme.success
+        case .streaming, .periodic: return TMTheme.success
         case .polling: return TMTheme.warning
         case .connecting, .idle: return TMTheme.muted
         }

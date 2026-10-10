@@ -1,19 +1,36 @@
 import Foundation
 import TokenMonitorKit
 
-enum AppTab: String, Hashable, CaseIterable {
+/// The app's tabs, in tab-bar order. Status shows only when the
+/// `showStatusTab` preference is on (hidden by default, as on the desktop).
+enum AppTab: String, Hashable, CaseIterable, Identifiable {
     case overview
     case limits
     case devices
+    case status
     case settings
+
+    var id: String { rawValue }
+
+    /// The tabs the tab bar shows for these preferences.
+    static func visible(showStatusTab: Bool) -> [AppTab] {
+        allCases.filter { $0 != .status || showStatusTab }
+    }
 }
 
 /// `tokenmonitor://` links opened by the widgets and complications:
-/// `dashboard?period=today|month|allTime`, `limits`, `devices`, `settings`.
+/// - `dashboard?period=today|month|week|last7|last30|allTime` (also `overview`
+///   or no route): the Overview tab, optionally on that period;
+/// - `trends`: the Trends screen, pushed on the Overview tab;
+/// - `limits`, `devices`, `settings`;
+/// - `status`: the Status tab, or the service-status screen in Settings when
+///   that tab is hidden.
 enum DeepLink: Equatable {
-    case dashboard(period: UsagePeriodKind?)
+    case dashboard(period: PeriodSelection?)
+    case trends
     case limits
     case devices
+    case status
     case settings
 
     static let scheme = "tokenmonitor"
@@ -31,10 +48,14 @@ enum DeepLink: Equatable {
         case "", "dashboard", "overview":
             let rawPeriod = components.queryItems?.first(where: { $0.name == "period" })?.value
             self = .dashboard(period: rawPeriod.flatMap(Self.period(from:)))
+        case "trends":
+            self = .trends
         case "limits":
             self = .limits
         case "devices":
             self = .devices
+        case "status":
+            self = .status
         case "settings":
             self = .settings
         default:
@@ -42,8 +63,9 @@ enum DeepLink: Equatable {
         }
     }
 
-    private static func period(from raw: String) -> UsagePeriodKind? {
-        let folded = raw.lowercased()
-        return UsagePeriodKind.allCases.first { $0.rawValue.lowercased() == folded }
+    /// A `period` value, case-insensitive (`allTime`, `alltime`, `last7`).
+    static func period(from raw: String) -> PeriodSelection? {
+        let folded = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return PeriodSelection.allCases.first { $0.rawValue.lowercased() == folded }
     }
 }
