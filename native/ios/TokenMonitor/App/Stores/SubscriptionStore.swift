@@ -177,9 +177,7 @@ final class SubscriptionStore {
                 self.phase = .ready
                 self.lastError = nil
                 self.loadedAt = Date()
-                Task.detached(priority: .utility) {
-                    cache.save(body: body, hubKey: hubKey, revision: document.updatedAt)
-                }
+                cache.saveInBackground(body: body, hubKey: hubKey, revision: document.updatedAt)
             case .failure(let error):
                 if error is CancellationError { break }
                 let hubError = (error as? HubClientError) ?? .transport(error.localizedDescription)

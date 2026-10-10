@@ -43,6 +43,9 @@ final class ServiceStatusStore {
     @ObservationIgnored private var explicitInterval: TimeInterval??
     @ObservationIgnored private var timerTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    /// Bumped by every check and by `reset()`; a check that finishes after a
+    /// newer one started (or after a reset) changes nothing.
+    @ObservationIgnored private var refreshGeneration = 0
     @ObservationIgnored private var preferencesTask: Task<Void, Never>?
 
     init(
@@ -85,9 +88,11 @@ final class ServiceStatusStore {
         }
         isLoading = true
         let client = self.client
+        refreshGeneration += 1
+        let generation = refreshGeneration
         let task = Task { [weak self] in
             let report = await client.statuses(force: force, providerIDs: ids)
-            guard let self else { return }
+            guard let self, generation == self.refreshGeneration else { return }
             self.refreshTask = nil
             self.isLoading = false
             // A cancelled check returns what it had; keep the previous one.
@@ -148,8 +153,10 @@ final class ServiceStatusStore {
         }
     }
 
-    /// Forgets the last check (disconnect). The timer keeps its state.
+    /// Forgets the last check (Hub switch or disconnect); a check still
+    /// running is dropped. The timer keeps its state.
     func reset() {
+        refreshGeneration += 1
         refreshTask?.cancel()
         refreshTask = nil
         report = nil

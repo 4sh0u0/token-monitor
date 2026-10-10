@@ -645,9 +645,7 @@ final class HistoryStore {
                 aggregate.failed = false
                 aggregate.clearRetries()
                 lastError = nil
-                Task.detached(priority: .utility) {
-                    cache.save(body: body, hubKey: hubKey, revision: signature)
-                }
+                cache.saveInBackground(body: body, hubKey: hubKey, revision: signature)
                 reproject()
             } else {
                 aggregate.failed = true
@@ -683,9 +681,7 @@ final class HistoryStore {
             records.loadedAt = Date()
             records.failed = false
             lastError = nil
-            Task.detached(priority: .utility) {
-                cache.save(body: body, hubKey: hubKey, revision: signature)
-            }
+            cache.saveInBackground(body: body, hubKey: hubKey, revision: signature)
             reproject()
             // `shouldRetryFixedPeriodHistory`: a device list that does not
             // match the stats' (a record still being written) is retried.

@@ -53,6 +53,19 @@ struct HubResponseCache: Sendable {
         return Entry(header: header, body: Data(data[data.index(after: newline)...]))
     }
 
+    /// Saves and removals run one at a time, in the order they were asked
+    /// for, so a removal (Hub switch, disconnect) is never overtaken by a
+    /// body whose save was asked for just before it.
+    private static let queue = DispatchQueue(label: "TokenMonitor.HubResponseCache", qos: .utility)
+
+    /// `save` on the cache's own queue (a History body can be megabytes),
+    /// after every save or removal asked for earlier.
+    func saveInBackground(body: Data, hubKey: String, revision: String?, savedAt: Date = Date()) {
+        Self.queue.async {
+            self.save(body: body, hubKey: hubKey, revision: revision, savedAt: savedAt)
+        }
+    }
+
     /// Replaces the file. Failures are ignored: the cache only saves a fetch.
     func save(body: Data, hubKey: String, revision: String?, savedAt: Date = Date()) {
         let encoder = JSONEncoder()
@@ -69,12 +82,11 @@ struct HubResponseCache: Sendable {
         }
     }
 
+    /// Removes the file, after any save asked for earlier.
     func clear() {
-        try? FileManager.default.removeItem(at: fileURL)
-    }
-
-    /// Removes every cached Hub response (disconnect).
-    static func clearAll(directory: URL = HubResponseCache.defaultDirectory) {
-        try? FileManager.default.removeItem(at: directory)
+        let url = fileURL
+        Self.queue.async {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }
