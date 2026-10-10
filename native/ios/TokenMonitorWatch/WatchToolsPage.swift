@@ -11,40 +11,44 @@ struct WatchToolsPage: View {
     @Environment(\.tmPresentation) private var presentation
 
     var body: some View {
-        let summary = snapshot[period]
-        // Snapshots built by `SnapshotBuilder` are already in this order;
-        // applying it again also covers one from an older iPhone app.
-        let tools = ClientDisplayOrder.apply(
-            summary.tools,
-            id: \.id,
-            preferences: presentation.preferences,
-            known: VendorCatalog.trackedClientIDs
-        )
-        let other = max(0, summary.totalTokens - tools.reduce(0) { $0 + $1.tokens })
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(WatchText.periodTitle(period))
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(TMTheme.accent)
-                    WatchScopeLabel(scope: snapshot.scope)
-                }
-                if tools.isEmpty || summary.totalTokens <= 0 {
-                    Text("No data")
-                        .font(.footnote)
-                        .foregroundStyle(TMTheme.muted)
-                } else {
-                    UsageBar(segments: segments(tools, other: other), total: Double(summary.totalTokens), height: 6)
-                        .padding(.bottom, 2)
-                    ForEach(tools) { share in
-                        WatchToolRow(share: share, total: summary.totalTokens)
+            // A period that has rolled over since the fetch (today after
+            // midnight) has no tools to list until the next fetch.
+            TimelineView(.everyMinute) { timeline in
+                let summary = snapshot.isCurrent(period, at: timeline.date) ? snapshot[period] : PeriodSummary(kind: period)
+                // Snapshots built by `SnapshotBuilder` are already in this order;
+                // applying it again also covers one from an older iPhone app.
+                let tools = ClientDisplayOrder.apply(
+                    summary.tools,
+                    id: \.id,
+                    preferences: presentation.preferences,
+                    known: VendorCatalog.trackedClientIDs
+                )
+                let other = max(0, summary.totalTokens - tools.reduce(0) { $0 + $1.tokens })
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(WatchText.periodTitle(period))
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(TMTheme.accent)
+                        WatchScopeLabel(scope: snapshot.scope)
                     }
-                    if other > 0 {
-                        WatchOtherToolsRow(tokens: other, total: summary.totalTokens, color: otherColor)
+                    if tools.isEmpty || summary.totalTokens <= 0 {
+                        Text("No data")
+                            .font(.footnote)
+                            .foregroundStyle(TMTheme.muted)
+                    } else {
+                        UsageBar(segments: segments(tools, other: other), total: Double(summary.totalTokens), height: 6)
+                            .padding(.bottom, 2)
+                        ForEach(tools) { share in
+                            WatchToolRow(share: share, total: summary.totalTokens)
+                        }
+                        if other > 0 {
+                            WatchOtherToolsRow(tokens: other, total: summary.totalTokens, color: otherColor)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle("Tools")
         .containerBackground(for: .tabView) { TMBackground() }
