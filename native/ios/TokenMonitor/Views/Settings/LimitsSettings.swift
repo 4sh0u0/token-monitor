@@ -450,58 +450,13 @@ enum LimitsSettingsLogic {
         for record in records {
             for item in LimitPresentation.usageItems(for: record, showCodexAdditional: prefs.showCodexAdditionalLimits)
             where seen.insert(item.id).inserted {
-                rows.append(ChecklistRow(id: item.id, label: itemLabel(item.label), hidden: hiddenSet.contains(item.id), available: true))
+                rows.append(ChecklistRow(id: item.id, label: LimitText.usageItemLabel(item.label), hidden: hiddenSet.contains(item.id), available: true))
             }
         }
         for id in hidden where !seen.contains(id) {
-            let label = LimitUsageItems.fallbackLabel(provider: providerID, itemID: id).map(itemLabel) ?? id
+            let label = LimitUsageItems.fallbackLabel(provider: providerID, itemID: id).map(LimitText.usageItemLabel) ?? id
             rows.append(ChecklistRow(id: id, label: label, hidden: true, available: false))
         }
         return rows
-    }
-
-    // MARK: Item names
-
-    /// A checklist item's name: fixed rows and kind names localized,
-    /// provider text as is.
-    static func itemLabel(_ label: LimitUsageItemLabel) -> String {
-        switch label {
-        case .fixed(let item):
-            return fixedName(item)
-        case .window(let title):
-            return windowTitle(title)
-        case let .additional(limitID, title):
-            return "\(limitID) · \(windowTitle(title))"
-        }
-    }
-
-    static func fixedName(_ item: LimitUsageFixedItem) -> String {
-        switch item {
-        case .credits: return String(localized: "Balance")
-        case .spend: return String(localized: "Spend")
-        case .resets: return String(localized: "Resets")
-        }
-    }
-
-    static func windowTitle(_ title: LimitWindowTitle) -> String {
-        switch title {
-        case .label(let text):
-            // The Kit's English name of an unnamed additional pool.
-            return text == LimitWindowName.additionalLimit.desktopText ? String(localized: "Additional limit") : text
-        case .rawKind(let text):
-            return text
-        case .kind(let name):
-            return kindName(name)
-        }
-    }
-
-    static func kindName(_ name: LimitWindowKindName) -> String {
-        switch name {
-        case .session: return String(localized: "Session")
-        case .fiveHour: return String(localized: "5-hour")
-        case .daily: return String(localized: "Daily")
-        case .weekly: return String(localized: "Weekly")
-        case .monthly: return String(localized: "Monthly")
-        }
     }
 }
