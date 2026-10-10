@@ -140,7 +140,6 @@ final class AppModel {
     private let snapshotStore: SnapshotStore
     private let preferencesStore: PreferencesStore
     private let rateStore: ExchangeRateStore
-    private let aliasCache: ModelAliasCache
     @ObservationIgnored private var liveTask: Task<Void, Never>? = nil
     @ObservationIgnored private var liveGeneration = 0
     @ObservationIgnored private var isSceneActive = false
@@ -158,19 +157,20 @@ final class AppModel {
     @ObservationIgnored private var lastAliasSyncKey: String? = nil
     @ObservationIgnored private var aliasSyncRetryAt: Date? = nil
     @ObservationIgnored private var rateRefresh: Task<Void, Never>? = nil
+    /// The Status tab's re-check timer ran when the app went to the
+    /// background; it restarts on return.
+    @ObservationIgnored private var resumeServiceStatus = false
 
     init(
         store: HubConnectionStore = .shared,
         snapshotStore: SnapshotStore = .shared,
         preferencesStore: PreferencesStore = .shared,
-        rateStore: ExchangeRateStore = .shared,
-        aliasCache: ModelAliasCache = .shared
+        rateStore: ExchangeRateStore = .shared
     ) {
         self.store = store
         self.snapshotStore = snapshotStore
         self.preferencesStore = preferencesStore
         self.rateStore = rateStore
-        self.aliasCache = aliasCache
         let preferences = preferencesStore.load()
         self.preferences = preferences
         self.context = Self.makeContext(preferences, rateStore: rateStore)
@@ -211,10 +211,16 @@ final class AppModel {
                 }
             }
             refreshExchangeRatesIfStale()
+            if resumeServiceStatus {
+                resumeServiceStatus = false
+                serviceStatus.start()
+            }
             startLiveUpdates()
         case .background:
             isSceneActive = false
             stopLiveUpdates()
+            resumeServiceStatus = serviceStatus.isRunning
+            serviceStatus.stop()
             // Widgets and the watch get the numbers the app last showed.
             if pendingSnapshotWrite != nil, let connection { writeSnapshot(of: connection) }
         default:
@@ -281,7 +287,10 @@ final class AppModel {
     func usage(for selection: PeriodSelection) -> PeriodUsageState {
         guard let presented else { return .loading }
         if let kind = selection.nativeKind { return .ready(presented.stats[kind], nil) }
-        let snapshot = history.fixedRange(selection, today: presented.stats.today, now: Date())
+        // No `today`: the store patches its latest stats' today, projected
+        // with the same aliases as the History rows (a scoped device uses
+        // its own live today).
+        let snapshot = history.fixedRange(selection, now: Date())
         switch snapshot.status {
         case .ready:
             return .ready(snapshot.period ?? .empty, snapshot)
@@ -327,9 +336,9 @@ final class AppModel {
         resetSnapshotWrites()
         if hubChanged {
             // Another Hub's numbers must not stay on screen, in widgets or on the watch.
+            // (The History store's reset also removes the Activity file.)
             resetHubState()
             try? snapshotStore.clear()
-            try? ActivitySnapshotStore.shared.clear()
             // Device ids are per Hub.
             if !preferences.deviceScope.isAll {
                 var next = preferences
@@ -340,7 +349,7 @@ final class AppModel {
         connection = newConnection
         isConfigured = true
         issue = nil
-        if hubChanged { aliasDocument = aliasCache.load(hubKey: newConnection.snapshotKey) }
+        if hubChanged { aliasDocument = AliasSync.cachedDocument(for: newConnection) }
         updatePresented()
         PhoneSessionBridge.shared.push(
             connection: newConnection,
@@ -356,10 +365,10 @@ final class AppModel {
         stopLiveUpdates()
         resetSnapshotWrites()
         resetHubState()
+        // Widgets must not keep this Hub's model names either.
+        AliasSync.reset(clearingCache: true)
         try? store.clear()
         try? snapshotStore.clear()
-        try? ActivitySnapshotStore.shared.clear()
-        try? aliasCache.clear()
         if !preferences.deviceScope.isAll {
             var next = preferences
             next.deviceScope = .all
@@ -396,7 +405,7 @@ final class AppModel {
         do {
             let loaded = try store.loadConnection()
             if loaded?.baseURL != connection?.baseURL || aliasDocument == nil {
-                aliasDocument = loaded.flatMap { aliasCache.load(hubKey: $0.snapshotKey) }
+                aliasDocument = AliasSync.cachedDocument(for: loaded)
             }
             connection = loaded
             if issue?.kind == .secretLocked { issue = nil }
@@ -407,7 +416,8 @@ final class AppModel {
     }
 
     /// Drops everything read from the current Hub (numbers, aliases, the
-    /// live rate, the stores' caches and the tabs' stacks).
+    /// live rate, the stores and their caches, exported files and the tabs'
+    /// stacks).
     private func resetHubState() {
         stats = nil
         presented = nil
@@ -419,9 +429,12 @@ final class AppModel {
         storeSync = nil
         storeSyncPending = false
         clearLiveRate()
+        AliasSync.reset()
         history.reset()
         subscriptions.reset()
         hubInfo.reset()
+        serviceStatus.reset()
+        exporter.clear()
         navigation = AppNavigation()
     }
 
@@ -435,6 +448,9 @@ final class AppModel {
 
     private func preferencesDidChange(from previous: DisplayPreferences) {
         if previous.deviceScope != preferences.deviceScope { updatePresented() }
+        // The store also follows saves itself; this applies the order,
+        // hidden providers and re-check interval without waiting for it.
+        serviceStatus.apply(preferences: preferences)
         if selectedTab == .status, !preferences.showStatusTab { selectedTab = .overview }
         if selectedPeriod.monthMode != nil, selectedPeriod != middleSelection {
             selectedPeriod = middleSelection
@@ -511,10 +527,10 @@ final class AppModel {
     private func refreshExchangeRatesIfStale() {
         guard rateRefresh == nil else { return }
         rateRefresh = Task { [weak self] in
-            await ExchangeRateRefresher.refreshIfStale()
+            let stored = await ExchangeRateRefresher.refreshIfStale()
             guard let self else { return }
             self.rateRefresh = nil
-            self.ratesMayHaveChanged()
+            if stored { self.ratesMayHaveChanged() }
         }
     }
 
@@ -569,9 +585,7 @@ final class AppModel {
 
     private func requestHistory() {
         guard connection != nil else { return }
-        Task { [history] in
-            await history.ensureLoaded()
-        }
+        history.ensureLoaded()
     }
 
     /// After new stats: model aliases (when the Hub advertises a new
@@ -615,9 +629,10 @@ final class AppModel {
             }
         }
         guard !Task.isCancelled, source == connection, let latest = self.stats else { return }
-        await history.update(stats: latest, scope: preferences.deviceScope, connection: source, resolver: aliasDocument)
-        guard !Task.isCancelled, source == connection, let latest = self.stats else { return }
-        await subscriptions.update(stats: latest, connection: source)
+        // Raw stats: the store projects History and the live today with a
+        // resolver built from this document over the loaded History.
+        history.update(stats: latest, scope: preferences.deviceScope, connection: source, resolver: aliasDocument)
+        subscriptions.update(stats: latest, connection: source)
     }
 
     /// New aliases change every model row, the snapshot's projection and the
