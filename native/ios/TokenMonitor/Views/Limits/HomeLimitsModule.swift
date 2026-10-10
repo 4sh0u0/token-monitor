@@ -20,7 +20,7 @@ struct HomeLimitsModule: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let rows = LimitPresentation.homeRows(model.stats?.limits ?? [], prefs: model.preferences)
+        let rows = Self.rows(model)
         if rows.isEmpty {
             EmptyView()
         } else {
@@ -37,6 +37,11 @@ struct HomeLimitsModule: View {
                 }
             }
         }
+    }
+
+    /// The accounts the module lists; none: it draws nothing.
+    static func rows(_ model: AppModel) -> [LimitPresentation.HomeLimitRow] {
+        LimitPresentation.homeRows(model.stats?.limits ?? [], prefs: model.preferences)
     }
 
     private var header: some View {

@@ -56,12 +56,14 @@ private struct OverviewContent: View {
     }
 
     /// One column on iPhone. On a regular width, consecutive modules share a
-    /// row, except the Activity mosaic, which keeps the full width.
+    /// row, except the Activity mosaic, which keeps the full width; only the
+    /// modules that draw something now are paired, so no card sits beside a
+    /// blank half.
     @ViewBuilder
     private var modules: some View {
         let visible = HomeModuleLayout.visible(model.preferences)
         if sizeClass == .regular {
-            ForEach(Self.rows(visible), id: \.self) { row in
+            ForEach(Self.rows(visible.filter(draws)), id: \.self) { row in
                 if row.count == 2 {
                     HStack(alignment: .top, spacing: 16) {
                         OverviewModule(module: row[0])
@@ -77,6 +79,21 @@ private struct OverviewContent: View {
             ForEach(visible) { module in
                 OverviewModule(module: module)
             }
+        }
+    }
+
+    /// Whether `module` draws anything now (each module draws nothing while
+    /// it has nothing to show; see `OverviewModule`).
+    private func draws(_ module: HomeModule) -> Bool {
+        switch module {
+        case .components, .tool, .model:
+            return model.selectedUsage.usage != nil
+        case .limits:
+            return !HomeLimitsModule.rows(model).isEmpty
+        case .device:
+            return DevicesModule.draws(model)
+        case .session, .trends:
+            return true
         }
     }
 

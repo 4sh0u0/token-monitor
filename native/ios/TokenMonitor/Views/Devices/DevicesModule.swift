@@ -20,7 +20,7 @@ struct DevicesModule: View {
             let selection = model.selectedPeriod
             let content = DevicePeriods.homeRows(devices: presented.stats.devices, selection: selection, history: model.history)
             Group {
-                if content.state != nil || !content.rows.isEmpty {
+                if Self.draws(content) {
                     CardContainer {
                         VStack(alignment: .leading, spacing: 10) {
                             ModuleHeader(title: "Devices") {
@@ -59,6 +59,21 @@ struct DevicesModule: View {
                 DevicePeriods.requestRecordsIfNeeded(for: next, history: model.history)
             }
         }
+    }
+}
+
+extension DevicesModule {
+    /// The module has something to show: its rows, or the note of a fixed
+    /// range that is loading or unavailable.
+    static func draws(_ content: DeviceHomeRows) -> Bool {
+        content.state != nil || !content.rows.isEmpty
+    }
+
+    /// Whether the module draws anything for the current stats and period.
+    @MainActor
+    static func draws(_ model: AppModel) -> Bool {
+        guard let devices = model.presented?.stats.devices, !devices.isEmpty else { return false }
+        return draws(DevicePeriods.homeRows(devices: devices, selection: model.selectedPeriod, history: model.history))
     }
 }
 
