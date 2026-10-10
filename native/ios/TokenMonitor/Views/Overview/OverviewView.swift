@@ -2,77 +2,136 @@ import SwiftUI
 import TokenMonitorKit
 import TokenMonitorUI
 
+/// The Overview tab (the desktop's Home): the device scope, the period
+/// picker, the period's headline, the Overview modules in the user's order
+/// (`HomeModuleLayout.visible`), and links to the full views.
+///
+/// It is a tab root, so it adds no `NavigationStack`: `RootView` owns one per
+/// tab and resolves the `AppRoute` links.
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        NavigationStack {
-            ScreenScrollView {
-                if let stats = model.stats {
-                    OverviewDashboard(stats: stats)
-                } else {
-                    DataPlaceholder()
-                }
-            }
-            .navigationTitle("Overview")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    LiveStatusIndicator()
-                }
+        ScreenScrollView {
+            if model.presented != nil {
+                OverviewContent()
+            } else {
+                DataPlaceholder()
             }
         }
+        .navigationTitle("Overview")
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                DeviceScopeMenu()
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                LiveStatusIndicator()
+            }
+        }
+        .task(id: model.selectedPeriod) {
+            // WEEK / 7D / 30D are derived from History.
+            if model.selectedPeriod.isDerived { model.history.ensureLoaded() }
+        }
+        .onChange(of: model.middleSelection, initial: true) { _, middle in
+            followMiddleSegment(middle)
+        }
+    }
+
+    /// The desktop's Settings rule: a new `periodMonthMode` replaces the
+    /// shown period when the middle segment is the one selected.
+    private func followMiddleSegment(_ middle: PeriodSelection) {
+        let selected = model.selectedPeriod
+        guard selected.monthMode != nil, selected != middle else { return }
+        model.selectPeriod(middle)
     }
 }
 
-private struct OverviewDashboard: View {
+/// Everything below the toolbar once stats have arrived.
+private struct OverviewContent: View {
     @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
-    let stats: HubStats
 
     var body: some View {
-        @Bindable var model = model
-        let usage = stats[model.selectedPeriod]
-        VStack(alignment: .leading, spacing: 16) {
-            StatusBanner()
-            if stats.isSourceStale {
-                SourceStaleNotice()
-            }
-            Picker("Period", selection: $model.selectedPeriod) {
-                ForEach(UsagePeriodKind.allCases) { kind in
-                    Text(kind.shortTitle).tag(kind)
+        let selection = model.selectedPeriod
+        StatusBanner()
+        ScopeNotice()
+        if let presented = model.presented, presented.device == nil, presented.isSourceStale {
+            SourceStaleNotice()
+        }
+        OverviewPeriodPicker()
+        HeroCard(selection: selection, state: model.usage(for: selection))
+        modules
+        OverviewViewsSection()
+    }
+
+    /// One column on iPhone. On a regular width, consecutive modules share a
+    /// row, except the Activity mosaic, which keeps the full width.
+    @ViewBuilder
+    private var modules: some View {
+        let visible = HomeModuleLayout.visible(model.preferences)
+        if sizeClass == .regular {
+            ForEach(Self.rows(visible), id: \.self) { row in
+                if row.count == 2 {
+                    HStack(alignment: .top, spacing: 16) {
+                        OverviewModule(module: row[0])
+                            .frame(maxWidth: .infinity, alignment: .top)
+                        OverviewModule(module: row[1])
+                            .frame(maxWidth: .infinity, alignment: .top)
+                    }
+                } else if let module = row.first {
+                    OverviewModule(module: module)
                 }
             }
-            .pickerStyle(.segmented)
-            HeroCard(period: model.selectedPeriod, usage: usage)
-            TokenComponentsCard(usage: usage)
-            TrendChartCard(stats: stats)
-            breakdowns(usage)
+        } else {
+            ForEach(visible) { module in
+                OverviewModule(module: module)
+            }
         }
     }
 
-    @ViewBuilder
-    private func breakdowns(_ usage: UsagePeriod) -> some View {
-        let unclassified = String(localized: "Unclassified")
-        let tools = BreakdownCard(
-            title: "Tools",
-            rows: usage.clients(remainderLabel: unclassified),
-            total: usage.totalTokens,
-            emptyMessage: "No tool usage in this period."
-        )
-        let models = BreakdownCard(
-            title: "Models",
-            rows: usage.models(remainderLabel: unclassified),
-            total: usage.totalTokens,
-            emptyMessage: "No model usage in this period."
-        )
-        if sizeClass == .regular {
-            HStack(alignment: .top, spacing: 16) {
-                tools
-                models
+    /// Pairs consecutive modules into rows, keeping the user's order; the
+    /// Activity mosaic always gets a row of its own.
+    static func rows(_ modules: [HomeModule]) -> [[HomeModule]] {
+        var rows: [[HomeModule]] = []
+        var pending: HomeModule?
+        for module in modules {
+            if module == .trends {
+                if let waiting = pending { rows.append([waiting]) }
+                pending = nil
+                rows.append([module])
+            } else if let waiting = pending {
+                rows.append([waiting, module])
+                pending = nil
+            } else {
+                pending = module
             }
-        } else {
-            tools
-            models
+        }
+        if let waiting = pending { rows.append([waiting]) }
+        return rows
+    }
+}
+
+/// One Overview module. Every module takes no parameters, reads the app
+/// model and draws its own card; one with nothing to show draws nothing.
+private struct OverviewModule: View {
+    let module: HomeModule
+
+    var body: some View {
+        switch module {
+        case .components:
+            TokenComponentsCard()
+        case .limits:
+            HomeLimitsModule()
+        case .tool:
+            ToolsModule()
+        case .model:
+            ModelsModule()
+        case .session:
+            SessionsModule()
+        case .device:
+            DevicesModule()
+        case .trends:
+            ActivityModule()
         }
     }
 }
@@ -84,9 +143,11 @@ private struct SourceStaleNotice: View {
             Text("All devices are offline. These are the last numbers they reported.")
                 .font(.footnote)
                 .foregroundStyle(TMTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: "moon.zzz")
                 .foregroundStyle(TMTheme.muted)
         }
+        .accessibilityElement(children: .combine)
     }
 }

@@ -2,15 +2,29 @@ import SwiftUI
 import TokenMonitorKit
 import TokenMonitorUI
 
-/// Cache hit / cache miss / output / unclassified, as on the desktop: the
-/// unclassified remainder is its own part, never folded into cache miss.
+/// The `components` Overview module (iOS only): the selected period's cache
+/// hit / cache miss / output / unclassified split, as the desktop's tool
+/// details show it. The unclassified remainder is its own part, never folded
+/// into cache miss. Draws nothing while the period is not ready (the hero
+/// says why).
 struct TokenComponentsCard: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let usage = model.selectedUsage.usage {
+            TokenComponentsContent(usage: usage)
+        }
+    }
+}
+
+private struct TokenComponentsContent: View {
     let usage: UsagePeriod
+    @Environment(\.tmFormatter) private var formatter
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private struct Part: Identifiable {
         let id: String
-        let title: String
+        let title: Text
         let tokens: Int
         let color: Color
     }
@@ -18,12 +32,12 @@ struct TokenComponentsCard: View {
     private var parts: [Part] {
         let components = usage.components
         var parts = [
-            Part(id: "cacheRead", title: String(localized: "Input (cache hit)"), tokens: components.cacheRead, color: TMTheme.chartBlue),
-            Part(id: "cacheMiss", title: String(localized: "Input (cache miss)"), tokens: components.cacheMiss, color: TMTheme.purple),
-            Part(id: "output", title: String(localized: "Output"), tokens: components.output, color: TMTheme.accent)
+            Part(id: "cacheRead", title: Text("Input (cache hit)"), tokens: components.cacheRead, color: TMTheme.chartBlue),
+            Part(id: "cacheMiss", title: Text("Input (cache miss)"), tokens: components.cacheMiss, color: TMTheme.purple),
+            Part(id: "output", title: Text("Output"), tokens: components.output, color: TMTheme.accent)
         ]
         if components.unclassified > 0 {
-            parts.append(Part(id: "unclassified", title: String(localized: "Unclassified"), tokens: components.unclassified, color: TMTheme.muted))
+            parts.append(Part(id: "unclassified", title: Text("Unclassified"), tokens: components.unclassified, color: TMTheme.muted))
         }
         return parts
     }
@@ -37,11 +51,9 @@ struct TokenComponentsCard: View {
         let components = usage.components
         CardContainer {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    CardTitle("Token components")
-                    Spacer(minLength: 8)
-                    if let hitRate = components.cacheHitFraction {
-                        Text("Cache hit rate \(AppFormat.share(hitRate))")
+                ModuleHeader(title: "Token components") {
+                    if components.input > 0 {
+                        Text("Cache hit rate \(hitRate(components))")
                             .font(.caption.weight(.medium))
                             .monospacedDigit()
                             .foregroundStyle(TMTheme.muted)
@@ -56,6 +68,7 @@ struct TokenComponentsCard: View {
                         segments: parts.map { UsageBar.Segment(id: $0.id, value: Double($0.tokens), color: $0.color) },
                         height: 10
                     )
+                    .accessibilityHidden(true)
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                         ForEach(parts) { part in
                             legendRow(part, total: components.total)
@@ -72,16 +85,21 @@ struct TokenComponentsCard: View {
         }
     }
 
+    /// `tokenInputPercentages`' rounded hit share (`hitPct`).
+    private func hitRate(_ components: TokenComponents) -> String {
+        "\(AttributionRows.inputPercentages(components).roundedHit)%"
+    }
+
     private func legendRow(_ part: Part, total: Int) -> some View {
-        let fraction = total > 0 ? Double(part.tokens) / Double(total) : 0
+        let percent = total > 0 ? Double(part.tokens) / Double(total) * 100 : 0
         return HStack(alignment: .top, spacing: 8) {
             MarkDot(color: part.color)
                 .padding(.top, 4)
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: part.title)
+                part.title
                     .font(.caption)
                     .foregroundStyle(TMTheme.muted)
-                Text(verbatim: "\(TokenFormat.compactTokens(part.tokens)) · \(AppFormat.share(fraction))")
+                Text(verbatim: "\(formatter.compactTokens(part.tokens)) · \(AttributionRows.detailPercentLabel(percent))")
                     .font(.subheadline.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(TMTheme.text)
