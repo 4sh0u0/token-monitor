@@ -292,33 +292,12 @@ struct TrendsAreaLinePlot: View {
                 curve: true
             )
             ZStack {
-                Self.path(geometry.area)
+                Path(trendElements: geometry.area)
                     .fill(LinearGradient(colors: [color.opacity(0.22), color.opacity(0)], startPoint: .top, endPoint: .bottom))
-                Self.path(geometry.line)
+                Path(trendElements: geometry.line)
                     .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             }
         }
         .accessibilityHidden(true)
-    }
-
-    static func path(_ elements: [TrendPathElement]) -> Path {
-        var path = Path()
-        for element in elements {
-            switch element {
-            case .move(let point):
-                path.move(to: CGPoint(x: point.x, y: point.y))
-            case .line(let point):
-                path.addLine(to: CGPoint(x: point.x, y: point.y))
-            case let .curve(to, control1, control2):
-                path.addCurve(
-                    to: CGPoint(x: to.x, y: to.y),
-                    control1: CGPoint(x: control1.x, y: control1.y),
-                    control2: CGPoint(x: control2.x, y: control2.y)
-                )
-            case .close:
-                path.closeSubpath()
-            }
-        }
-        return path
     }
 }
