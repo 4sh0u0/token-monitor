@@ -70,7 +70,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 点数"
+            "value" : "%@ 积分"
           }
         },
         "zh-Hant" : {
@@ -921,12 +921,12 @@
         }
       }
     },
-    "Can't reach the Hub" : {
+    "Can’t reach the Hub" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Can't reach the Hub"
+            "value" : "Can’t reach the Hub"
           }
         },
         "ja" : {
@@ -938,7 +938,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hub에 연결할 수 없습니다"
+            "value" : "Hub에 연결할 수 없음"
           }
         },
         "pt-BR" : {
@@ -3258,7 +3258,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hub에서 예기치 않은 응답을 받았습니다"
+            "value" : "Hub에서 예기치 않은 응답"
           }
         },
         "pt-BR" : {

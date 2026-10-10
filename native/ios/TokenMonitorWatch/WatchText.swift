@@ -20,7 +20,7 @@ enum WatchText {
         case .invalidURL: return String(localized: "Check the Hub URL on your iPhone")
         case .unauthorized: return String(localized: "Wrong or missing secret")
         case .http: return String(localized: "Hub returned an error")
-        case .transport: return String(localized: "Can't reach the Hub")
+        case .transport: return String(localized: "Can’t reach the Hub")
         case .decoding: return String(localized: "Unexpected response from the Hub")
         }
     }

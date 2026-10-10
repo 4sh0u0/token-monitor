@@ -212,8 +212,8 @@ struct WidgetMessage {
         WidgetMessage(
             symbol: "wifi.exclamationmark",
             title: String(localized: "Waiting for data"),
-            detail: String(localized: "Can't reach the Hub"),
-            short: String(localized: "Can't reach the Hub"),
+            detail: String(localized: "Can’t reach the Hub"),
+            short: String(localized: "Can’t reach the Hub"),
             offersRefresh: true
         )
     }

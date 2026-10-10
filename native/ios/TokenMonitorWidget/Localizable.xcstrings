@@ -135,7 +135,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "支出 %@"
+            "value" : "%@ 利用済み"
           }
         },
         "ko" : {
@@ -884,12 +884,12 @@
         }
       }
     },
-    "Can't reach the Hub" : {
+    "Can’t reach the Hub" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Can't reach the Hub"
+            "value" : "Can’t reach the Hub"
           }
         },
         "ja" : {
@@ -907,7 +907,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Não é possível acessar o Hub"
+            "value" : "Não foi possível acessar o Hub"
           }
         },
         "zh-Hans" : {
@@ -1004,12 +1004,12 @@
         }
       }
     },
-    "Choose what the heatmap's colors measure." : {
+    "Choose what the heatmap’s colors measure." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose what the heatmap's colors measure."
+            "value" : "Choose what the heatmap’s colors measure."
           }
         },
         "ja" : {
@@ -2947,19 +2947,19 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gastos"
+            "value" : "Gasto"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "支出"
+            "value" : "花费"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "支出"
+            "value" : "花費"
           }
         }
       }

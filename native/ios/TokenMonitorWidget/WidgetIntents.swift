@@ -76,7 +76,7 @@ enum ActivityMetricOption: String, AppEnum, CaseIterable {
 
 struct ActivityWidgetIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Activity"
-    static let description = IntentDescription("Choose what the heatmap's colors measure.")
+    static let description = IntentDescription("Choose what the heatmap’s colors measure.")
 
     @Parameter(title: "Metric", default: .automatic)
     var metric: ActivityMetricOption
