@@ -10,12 +10,27 @@ public enum VendorPaint: Sendable, Hashable {
     case ink
 }
 
-/// Labels, colours and the model→vendor resolver shared with the desktop app.
+/// Which of the desktop's two mark tables an icon comes from.
+public enum VendorIconContext: Sendable, Hashable {
+    /// Usage rows (tools, model vendors, sessions, Overview modules, widget and
+    /// watch tool rows). Only marks with a brand colour carry an icon, as the
+    /// desktop's `clientsWithIcon`; the rest draw a dot.
+    case usage
+    /// AI Tool Limits rows. Every mark carries an icon, and a few providers
+    /// draw other artwork there (grok draws grok.svg, while its usage rows
+    /// share xAI's mark).
+    case limits
+}
+
+/// Labels, colours, icon asset names and the model→vendor resolver shared with
+/// the desktop app.
 ///
 /// The data lives in `VendorCatalog+Generated.swift`, written by
 /// `npm run sync:ios-vendors` from `src/shared/vendorPresentation.js`,
-/// `src/shared/clientCatalog.js`, `src/shared/limits/providers.js` and
-/// `modelVendorFor()`; never edit that file by hand.
+/// `src/shared/clientCatalog.js`, `src/shared/limits/providers.js`,
+/// `modelVendorFor()` and the mask rules in `styles.css`; never edit that file
+/// by hand. The same command writes the artwork into `VendorIcons.xcassets` in
+/// the app, widget and watch targets as template images.
 ///
 /// A *mark id* is a tracked client (`claude`), a model vendor (`gemini`) or a
 /// limits provider (`openrouter`): the three domains share one string and one
@@ -55,6 +70,23 @@ public enum VendorCatalog {
 
     /// AI Tool Limits providers in the desktop's default display order.
     public static let limitProviders: [LimitProviderInfo] = generatedLimitProviders
+
+    /// Tracked-client ids in the desktop catalog's order.
+    public static let trackedClientIDs: [String] = generatedTrackedClientIDs
+
+    /// The asset-catalog image of each device platform's mark, as the desktop's
+    /// `osIconFor()` picks it. `.other` has none and draws a dot.
+    public static let osIconAssetNames: [DevicePlatformFamily: String] = {
+        let keys: [(DevicePlatformFamily, String)] = [(.macOS, "apple"), (.windows, "windows"), (.linux, "linux")]
+        var names: [DevicePlatformFamily: String] = [:]
+        for (family, key) in keys {
+            names[family] = generatedOSIconAssets[key]
+        }
+        return names
+    }()
+
+    /// The asset-catalog image of project rows (the desktop's folder glyph).
+    public static let projectIconAssetName: String = generatedProjectIconAsset
 
     private static let marksByID: [String: Mark] = Dictionary(
         generatedMarks.map { ($0.id, $0) },
@@ -111,6 +143,24 @@ public enum VendorCatalog {
     /// providers sort last.
     public static func limitProviderSortIndex(_ id: String) -> Int {
         limitProviderOrder[id] ?? Int.max
+    }
+
+    /// The template image (`VendorIcons.xcassets`) that draws a mark, e.g.
+    /// `"vendor-claude"`; nil when the row draws a dot instead: an unknown id,
+    /// a usage row whose mark has no brand colour (`factory`, `newapi`,
+    /// `sub2api`), or artwork the generator could not ship.
+    ///
+    /// Model rows pass `modelVendor(for:)`; the desktop draws its Σ mark (SF
+    /// Symbol `sum` here) for a model whose vendor has no icon.
+    public static func iconAssetName(for markID: String, context: VendorIconContext = .usage) -> String? {
+        guard let mark = marksByID[markID] else { return nil }
+        switch context {
+        case .usage:
+            guard mark.brandColorHex != nil else { return nil }
+            return generatedIconAssets[markID]
+        case .limits:
+            return generatedLimitIconOverrides[markID] ?? generatedIconAssets[markID]
+        }
     }
 
     /// The brand colour (for light surfaces and settings swatches).
