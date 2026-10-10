@@ -193,6 +193,9 @@ final class WatchSessionBridge: NSObject, @unchecked Sendable {
             } else if store.isConfigured || FileManager.default.fileExists(atPath: snapshots.fileURL.path) {
                 try? store.clear()
                 try? snapshots.clear()
+                // As on the iPhone: nothing of the forgotten Hub stays behind,
+                // its model names included.
+                try? ModelAliasCache.shared.clear()
                 connectionChanged = true
             }
             defaults.set(NSNumber(value: revision), forKey: Self.appliedRevisionKey)
