@@ -7,7 +7,7 @@ import TokenMonitorUI
 // switch, the device mark, and the wording of the Kit's device enums
 // (`DevicePresentation`, `ClientHealthPresentation`).
 //
-// The device screens never follow the device scope (desktop rule, plan F4):
+// The device screens never follow the device scope (the desktop rule):
 // they read `presented.stats.devices`, which has the model aliases folded but
 // lists every device.
 
@@ -31,7 +31,7 @@ struct DevicePeriodFigures: Equatable {
     /// Tools (with the Unclassified remainder) and their models.
     var breakdown: DeviceToolBreakdown
     /// The device's day or month ended before it uploaded again, so the Hub
-    /// no longer counts it and it reads 0 (plan D-SCOPE).
+    /// no longer counts it and it reads 0 (the Hub's period expiry rule).
     var isExpired: Bool
     /// A fixed range: its tools carry no per-model split, as on the desktop
     /// (`derivePeriod` sets `clientModels: false`).

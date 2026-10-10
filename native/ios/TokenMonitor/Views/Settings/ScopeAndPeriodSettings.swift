@@ -2,9 +2,9 @@ import SwiftUI
 import TokenMonitorKit
 import TokenMonitorUI
 
-/// Settings › Device scope and periods: the device scope (D-SCOPE), the
-/// Overview's middle period (`periodMonthMode`) and the live token rate
-/// (on/off, speed or burn, all devices or the selected device; D-LIVESCOPE).
+/// Settings › Device scope and periods: the device scope, the Overview's
+/// middle period (`periodMonthMode`) and the live token rate (on/off, speed
+/// or burn, all devices or the selected device).
 struct ScopeAndPeriodSettingsView: View {
     @Environment(AppModel.self) private var model
 

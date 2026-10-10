@@ -9,7 +9,7 @@ import TokenMonitorUI
 /// until with the days left, months subscribed and paid to date; for a
 /// top-up ledger the last top-up, this month's and the total, and — when
 /// the record matches a provider account with a balance (by email, profile
-/// name or the sole account; D-TOPUP) — the balance, burn rate and when it
+/// name or the sole account) — the balance, burn rate and when it
 /// runs out. Records are edited on a computer; there is no binding UI.
 struct SubscriptionsView: View {
     @Environment(AppModel.self) private var model

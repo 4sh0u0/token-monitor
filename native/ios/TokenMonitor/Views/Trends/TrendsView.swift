@@ -9,10 +9,10 @@ import TokenMonitorUI
 /// over the chart's range.
 ///
 /// Everything follows the device scope through `model.history`. Chart
-/// choices are app-local `@AppStorage` (plan D-TRENDMODES; the desktop
-/// keeps them in memory). On the stats' 30-day preview (a Hub without
-/// `/api/history`, or while a first load fails) only 7 and 30 days are
-/// offered and bars do not stack.
+/// choices are app-local `@AppStorage` (the desktop keeps them in memory,
+/// so they are not shared preferences). On the stats' 30-day preview (a
+/// Hub without `/api/history`, or while a first load fails) only 7 and 30
+/// days are offered and bars do not stack.
 struct TrendsView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("trends.mode") private var mode: TrendChartMode = .bars

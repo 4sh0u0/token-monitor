@@ -14,8 +14,9 @@ import TokenMonitorUI
 /// - K-line buckets days into candles sized to the plot width
 ///   (`TrendSeriesBuilder.klineBucketDays`), green up, red down.
 ///
-/// Every range is calendar days ending today, zero-filled (plan
-/// D-RANGEFILL), with live today patched in (D-TODAYPATCH).
+/// Every range is calendar days ending today, zero-filled (the desktop
+/// slices the last N History rows, but an axis with missing days misreads),
+/// with live today patched in.
 struct TrendChartSection: View {
     @Environment(\.tmPresentation) private var presentation
     @Environment(\.tmFormatter) private var formatter
@@ -349,7 +350,9 @@ struct TrendChartSection: View {
     // MARK: Legend
 
     /// The stack keys over the range, biggest first (the dashboard's legend
-    /// without its values; the top lists below carry those).
+    /// without its values; the top lists below carry those). Each key wears
+    /// a colour swatch, as the dashboard's (`.dash-legend-swatch`): it keys
+    /// the bars' colours, so it is no vendor mark and ignores Tool Icons.
     private func legend(_ bars: TrendBarsModel) -> some View {
         var totals: [String: Double] = [:]
         for bar in bars.bars {

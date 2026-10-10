@@ -30,8 +30,9 @@ final class HubInfoStore {
     private(set) var isLoading = false
     private(set) var loadedAt: Date?
 
-    /// The Hub answered health without `hubBuild` (plan D-HUBBUILD:
-    /// "Legacy Hub"; no comparison with the build registry).
+    /// The Hub answered health without `hubBuild` revisions: "Legacy Hub"
+    /// (the app has no copy of the desktop's build registry to compare a
+    /// newer Hub with).
     var isLegacyHub: Bool {
         guard let health else { return false }
         return health.coreRevision == nil && health.runtimeRevision == nil

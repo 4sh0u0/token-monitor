@@ -8,7 +8,7 @@ import TokenMonitorUI
 /// stats and History by `ExportService` and handed to the share sheet.
 ///
 /// As on the desktop the export covers every device, model ids stay raw and
-/// costs stay in USD whatever the display currency (D-EXPORT). The files are
+/// costs stay in USD whatever the display currency. The files are
 /// temporary: the next export, or the next visit to this screen, removes
 /// them. They are not removed when the screen goes away, because the share
 /// sheet may still be reading them.

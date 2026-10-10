@@ -4,9 +4,9 @@ import TokenMonitorKit
 /// The words around the Kit's session values (`SessionRows`, `SessionLive`).
 ///
 /// As on the desktop, "N call(s)", "N tok/s" and "N models" stay untranslated
-/// literals (D-UNLOCALIZED, `sessionRows.js:101-109, 205-238`): they are
-/// billing units, printed with en-US grouping in every language, so screens
-/// show them with `Text(verbatim:)`. So does the English "Session" the
+/// literals (`sessionRows.js:101-109, 205-238`): they are billing units,
+/// printed with en-US grouping in every language, so screens show them with
+/// `Text(verbatim:)`. So does the English "Session" the
 /// desktop names a session without a client by (`sessionTitleParts`).
 /// Everything else is localized here.
 enum SessionText {

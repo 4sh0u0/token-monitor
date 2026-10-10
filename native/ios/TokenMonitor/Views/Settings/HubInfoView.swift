@@ -5,7 +5,7 @@ import TokenMonitorUI
 /// Settings › Hub: what the connected Hub is and what it shares, read-only.
 /// - `GET /api/health`: the runtime, the device count and the `hubBuild`
 ///   core and runtime revisions, or "Legacy Hub" when the Hub predates them
-///   (D-HUBBUILD; no comparison with the desktop's build registry).
+///   (no comparison with the desktop's build registry).
 /// - `GET /api/sync/content`: whether the Hub accepts session titles and
 ///   stores the shared settings groups.
 /// - The model aliases the app applies (`AppModel.aliasDocument`): how many,

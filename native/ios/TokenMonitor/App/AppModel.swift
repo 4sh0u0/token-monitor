@@ -484,8 +484,8 @@ final class AppModel {
         if selectedPeriod.isDerived { requestHistory() }
     }
 
-    /// `preferences` with the app-only settings (§3.3 surface "A" alone) at
-    /// their defaults: what widgets, the watch and complications can see.
+    /// `preferences` with the settings only the app reads at their
+    /// defaults: what widgets, the watch and complications can see.
     private static func sharedPart(_ preferences: DisplayPreferences) -> DisplayPreferences {
         let defaults = DisplayPreferences.defaults
         var shared = preferences

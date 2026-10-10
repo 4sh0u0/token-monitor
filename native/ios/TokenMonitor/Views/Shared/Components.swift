@@ -203,7 +203,7 @@ struct FlowLayout: Layout {
     }
 }
 
-// MARK: Round-2 shared components
+// MARK: Cost, scope, period and module components
 
 /// A cost in the display currency that may leave out unpriced tokens, as the
 /// desktop labels it (`usageCostLabel` / `compactUsageCostLabel`):

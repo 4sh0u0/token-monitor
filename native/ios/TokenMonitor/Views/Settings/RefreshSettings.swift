@@ -2,7 +2,7 @@ import SwiftUI
 import TokenMonitorKit
 import TokenMonitorUI
 
-/// Settings › Refresh intervals (§3.10): how often the app, the widgets, the
+/// Settings › Refresh intervals: how often the app, the widgets, the
 /// watch app and the complications read the Hub. The desktop has no such
 /// setting; the wording follows its interval menus
 /// (`settings.sync.uploadInterval.*`, `settings.collection.interval.*`).

@@ -83,8 +83,7 @@ final class ExchangeRateRefresher {
     /// The app's refresher (App Group store, shared session).
     static let shared = ExchangeRateRefresher()
 
-    /// `shared.refreshIfStale(force:)`: the plan's
-    /// `ExchangeRateRefresher.refreshIfStale() async`, run at activation.
+    /// `shared.refreshIfStale(force:)`, which the app runs at activation.
     @discardableResult
     static func refreshIfStale(force: Bool = false) async -> Bool {
         await shared.refreshIfStale(force: force)

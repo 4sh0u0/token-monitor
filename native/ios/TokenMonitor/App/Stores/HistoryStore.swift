@@ -7,8 +7,9 @@ import WidgetKit
 /// fixed ranges WEEK / 7D / 30D, for the current device scope.
 ///
 /// - All devices read `GET /api/history`; a scoped device reads its record
-///   from `GET /api/devices` (plan D-SCOPEDHISTORY). Records are also loaded
-///   on demand for the device screens (`ensureDeviceRecordsLoaded()`).
+///   from `GET /api/devices`, as the desktop's fixed ranges do (a device's
+///   History is not in `/api/stats`). Records are also loaded on demand for
+///   the device screens (`ensureDeviceRecordsLoaded()`).
 /// - Nothing is fetched until a view asks (`ensureLoaded()`). After that each
 ///   stats update refetches only when the Hub's `historyRevision` (all
 ///   devices) or `deviceHistoryRevision` (records) moves, or the scope needs
@@ -26,10 +27,10 @@ import WidgetKit
 /// - Bodies are cached on disk per Hub (`HubResponseCache`), so a relaunch
 ///   shows the last History at once and refetches only on a new revision.
 /// - After every load the current scope's activity is written to the App
-///   Group for the Activity widget (`ActivitySnapshot`, amendment A1), and
-///   again as live today moves (at most once a minute). The widget kind is
-///   reloaded at most every 5 minutes, except right after a scope or Hub
-///   change.
+///   Group for the Activity widget (`ActivitySnapshot`: the widget never
+///   decodes History itself), and again as live today moves (at most once
+///   a minute). The widget kind is reloaded at most every 5 minutes, except
+///   right after a scope or Hub change.
 @MainActor
 @Observable
 final class HistoryStore {
@@ -321,10 +322,11 @@ final class HistoryStore {
     /// A fixed range (WEEK / 7D / 30D) of the current scope; `.native` for a
     /// Hub period. All devices: `/api/history` plus the live `today`
     /// (`today`, else the latest stats' aggregate today) on the phone's day
-    /// (plan D-FIXEDRANGE). A scoped device: its record on its own day, with
-    /// its live today from the stats (`today` is not used). Unavailable while
-    /// History is not loaded (check `phase`), on the preview fallback, and
-    /// for a device that does not share History.
+    /// (the desktop merges per-device days instead, which differs only for
+    /// devices in other time zones). A scoped device: its record on its own
+    /// day, with its live today from the stats (`today` is not used).
+    /// Unavailable while History is not loaded (check `phase`), on the
+    /// preview fallback, and for a device that does not share History.
     func fixedRange(_ selection: PeriodSelection, today: UsagePeriod? = nil, now: Date = Date()) -> FixedRangeSnapshot {
         guard selection.isDerived else { return FixedRangeSnapshot(status: .native, selection: selection) }
         if let deviceID = effectiveScope.deviceID {
@@ -930,7 +932,7 @@ final class HistoryStore {
         }
     }
 
-    // MARK: Activity widget (amendment A1)
+    // MARK: Activity widget
 
     /// Writes the scope's activity for the Activity widget when it changed
     /// (at most every `activityWriteInterval` while live today moves, at once

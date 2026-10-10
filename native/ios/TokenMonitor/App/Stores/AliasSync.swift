@@ -82,10 +82,9 @@ final class AliasSync {
     /// The app's alias sync (App Group cache, shared session).
     static let shared = AliasSync()
 
-    /// `shared.update(stats:connection:)`: the plan's
-    /// `AliasSync.update(stats:connection:) async -> ModelAliasDocument?`.
-    /// Nil when nothing is known for the Hub (no cache and the fetch
-    /// failed); a Hub without shared settings gives `.uninitialized`.
+    /// `shared.update(stats:connection:)`, after each stats update. Nil when
+    /// nothing is known for the Hub (no cache and the fetch failed); a Hub
+    /// without shared settings gives `.uninitialized`.
     static func update(stats: HubStats, connection: HubConnection?) async -> ModelAliasDocument? {
         await shared.update(stats: stats, connection: connection)
     }
