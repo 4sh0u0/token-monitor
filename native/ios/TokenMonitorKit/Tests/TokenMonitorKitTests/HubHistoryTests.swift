@@ -5,7 +5,7 @@ import FoundationNetworking
 import XCTest
 @testable import TokenMonitorKit
 
-/// Round-2 captures (`Fixtures/v2`, see its README.txt): a real Node Hub's
+/// The `Fixtures/v2` captures (see its README.txt): a real Node Hub's
 /// `GET /api/history` and `GET /api/devices` under a frozen clock
 /// (now 2026-10-10T16:30:00Z, Hub today 2026-10-10).
 private enum HistoryFixtures {
@@ -527,6 +527,31 @@ final class HubHistoryTests: XCTestCase {
         XCTAssertEqual(DayKey.adding(days: 0, to: "2026-03-08"), "2026-03-08")
         XCTAssertNil(DayKey.adding(days: 1, to: "2026-02-30"))
         XCTAssertNil(DayKey.adding(days: 1, to: ""))
+        XCTAssertEqual(DayKey.adding(days: 36_500, to: "2000-03-01"), "2100-02-05", "node: Date.UTC(2000, 2, 1) + 36500 days")
+        XCTAssertNil(DayKey.adding(days: Int.max, to: "2026-10-10"), "no overflow trap")
+        XCTAssertNil(DayKey.adding(days: Int.min, to: "2026-10-10"))
+        XCTAssertNil(DayKey.adding(days: 1, to: "9999-12-31"), "keys stay four-digit years")
+        XCTAssertTrue(HistoryMath.rollingWindow([HubHistoryDay(date: "2026-10-10")], todayKey: "2026-10-10", capDays: .max).isEmpty)
+    }
+
+    /// The integer day keys agree with a UTC Gregorian `Calendar` on every
+    /// day of 1999–2101, and reject what it rejects.
+    func testDayKeyValidationMatchesTheCalendar() {
+        var day = DayKey.date(from: "1999-01-01", calendar: DayKey.utcCalendar)!
+        let end = DayKey.date(from: "2101-12-31", calendar: DayKey.utcCalendar)!
+        var previous: String?
+        while day <= end {
+            let key = DayKey.string(from: day, calendar: DayKey.utcCalendar)
+            XCTAssertTrue(DayKey.isValid(key), key)
+            if let previous { XCTAssertEqual(DayKey.adding(days: 1, to: previous), key) }
+            previous = key
+            day = DayKey.utcCalendar.date(byAdding: .day, value: 1, to: day)!
+        }
+        for bad in ["2026-02-29", "2100-02-29", "2026-13-01", "2026-00-10", "2026-1-01", "2026-01-1", "26-01-01", "2026/01/01", "２０２６-01-01", "2026-01-01T"] {
+            XCTAssertFalse(DayKey.isValid(bad), bad)
+        }
+        XCTAssertEqual(DayKey.normalized(" 2026-10-10T08:00:00Z"), "2026-10-10")
+        XCTAssertNil(DayKey.normalized("2026-10-32"))
     }
 
     // MARK: HubClient

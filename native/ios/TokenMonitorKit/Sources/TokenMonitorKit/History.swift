@@ -122,23 +122,25 @@ public enum DayKey {
         return date
     }
 
+    /// A strict `yyyy-MM-dd` key of a real date. Integer arithmetic
+    /// (`CivilDay`) rather than `Calendar`: History decoding validates every
+    /// row, and streaks step through every active day.
     static func isValid(_ key: String) -> Bool {
-        date(from: key, calendar: utcCalendar) != nil
+        CivilDay.parts(key) != nil
     }
 
     /// The key `days` calendar days after `key` (negative: before), stepped
-    /// in UTC like the desktop's `dayKeyAddDays`; nil for an invalid key.
+    /// in UTC like the desktop's `dayKeyAddDays` (proleptic Gregorian, as
+    /// JavaScript dates are); nil for an invalid key or a result outside
+    /// years 0000–9999.
     public static func adding(days: Int, to key: String) -> String? {
-        guard let day = date(from: key, calendar: utcCalendar),
-              let moved = utcCalendar.date(byAdding: .day, value: days, to: day) else { return nil }
-        return string(from: moved, calendar: utcCalendar)
+        CivilDay.adding(days, to: key)
     }
 
     /// The valid `yyyy-MM-dd` prefix of `value` (the desktop's
     /// `String(date).slice(0, 10)` plus validation), else nil.
     static func normalized(_ value: String) -> String? {
-        let key = String(value.trimmingCharacters(in: .whitespacesAndNewlines).prefix(10))
-        return isValid(key) ? key : nil
+        CivilDay.normalized(value)
     }
 
     static let utcCalendar: Calendar = {

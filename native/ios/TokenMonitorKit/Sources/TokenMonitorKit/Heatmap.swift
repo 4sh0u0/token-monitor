@@ -372,9 +372,18 @@ enum CivilDay {
         ((number + 4) % 7 + 7) % 7
     }
 
-    /// The key `days` after `key` (negative: before), nil for a bad key.
+    /// The day numbers of 0000-01-01 and 9999-12-31: the keys that stay
+    /// four-digit years.
+    static let firstNumber = number(year: 0, month: 1, day: 1)
+    static let lastNumber = number(year: 9999, month: 12, day: 31)
+
+    /// The key `days` after `key` (negative: before), nil for a bad key or a
+    /// result outside years 0000–9999 (which also rules out overflow).
     static func adding(_ days: Int, to key: String) -> String? {
-        number(key).map { self.key($0 + days) }
+        guard let start = number(key) else { return nil }
+        let (moved, overflow) = start.addingReportingOverflow(days)
+        guard !overflow, moved >= firstNumber, moved <= lastNumber else { return nil }
+        return self.key(moved)
     }
 
     /// Whole days from `start` to `end` (negative when `end` is earlier).
