@@ -127,6 +127,64 @@ public struct TokenComponents: Sendable, Hashable, Codable {
     }
 }
 
+/// One key of a period's attribution maps (`clients`/`clientCosts`/
+/// `clientUnpricedTokens`/`clientCacheReads`/… or the `model*` family).
+///
+/// Unlike `UsageShare`, nothing is filtered or sorted: every key present in
+/// the token, cost or unpriced map has an entry, so the desktop's
+/// `attributionRows()` can be ported over it unchanged. A component is nil
+/// when its map does not carry the key (the desktop reads that as 0, or as
+/// "no explicit value" for unclassified tokens; see `UnclassifiedPresence`).
+public struct UsageBreakdownEntry: Sendable, Hashable {
+    public var tokens: Int
+    /// The known (priced) subtotal in USD.
+    public var costUsd: Double
+    public var unpricedTokens: Int?
+    public var cacheReadTokens: Int?
+    public var cacheWriteTokens: Int?
+    public var outputTokens: Int?
+    public var unclassifiedTokens: Int?
+
+    public init(
+        tokens: Int = 0,
+        costUsd: Double = 0,
+        unpricedTokens: Int? = nil,
+        cacheReadTokens: Int? = nil,
+        cacheWriteTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        unclassifiedTokens: Int? = nil
+    ) {
+        self.tokens = tokens
+        self.costUsd = costUsd
+        self.unpricedTokens = unpricedTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.cacheWriteTokens = cacheWriteTokens
+        self.outputTokens = outputTokens
+        self.unclassifiedTokens = unclassifiedTokens
+    }
+}
+
+/// Which unclassified-token fields the wire carried at all
+/// (`hasOwnProperty`), independent of their values. The desktop treats a
+/// present map as explicit (a missing key is 0) and an absent one as "derive
+/// the remainder" (`fixedPeriodRanges.js` `liveComponentValues`).
+public struct UnclassifiedPresence: OptionSet, Sendable, Hashable {
+    public let rawValue: Int
+
+    public init(rawValue: Int) {
+        self.rawValue = rawValue
+    }
+
+    /// `unclassifiedTokens` on the period.
+    public static let period = UnclassifiedPresence(rawValue: 1 << 0)
+    /// `clientUnclassifiedTokens`.
+    public static let clients = UnclassifiedPresence(rawValue: 1 << 1)
+    /// `modelUnclassifiedTokens`.
+    public static let models = UnclassifiedPresence(rawValue: 1 << 2)
+
+    public static let all: UnclassifiedPresence = [.period, .clients, .models]
+}
+
 /// One aggregated period of `GET /api/stats` (`periods.today|month|allTime`).
 ///
 /// The Hub sums every non-expired device into these totals; costs are the
@@ -159,8 +217,33 @@ public struct UsagePeriod: Sendable, Equatable {
     public var clients: [UsageShare]
     /// Models, sorted by tokens descending.
     public var models: [UsageShare]
-    /// Number of sessions in this period's session map (today/month only).
+    /// Number of sessions in this period's session map (today/month only),
+    /// whatever the decoding options.
     public var sessionCount: Int
+    /// Every key of `clients`/`clientCosts`/`clientUnpricedTokens` with its
+    /// components. Always decoded.
+    public var clientBreakdown: [String: UsageBreakdownEntry]
+    /// Every key of `models`/`modelCosts`/`modelUnpricedTokens` with its
+    /// components. Always decoded.
+    public var modelBreakdown: [String: UsageBreakdownEntry]
+    /// Per client, its models (`clientModels`/`clientModelCosts`/
+    /// `clientModelUnpricedTokens`). A client is present when either its
+    /// token or cost map is an object; components are always nil.
+    public var clientModels: [String: [String: UsageBreakdownEntry]]
+    /// Per-model throughput counters; nil when the wire has no
+    /// `modelThroughput` (aggregate month/allTime, older producers).
+    public var modelThroughput: [String: ThroughputCounters]?
+    /// The wire carried `clientModels` or `clientModelCosts` (an older Hub
+    /// has neither, so tool rows cannot list their models).
+    public var hasClientModels: Bool
+    /// Which unclassified-token fields the wire carried.
+    public var explicitUnclassified: UnclassifiedPresence
+    /// The session rows, newest first. Only with
+    /// `HubDecodingOptions.includeSessions`; empty otherwise.
+    public var sessions: [HubSession]
+    /// The project rollup, tokens descending. Only with
+    /// `HubDecodingOptions.includeProjects`; empty otherwise.
+    public var projects: [ProjectRollup]
 
     public init(
         totalTokens: Int = 0,
@@ -179,7 +262,15 @@ public struct UsagePeriod: Sendable, Equatable {
         hasCompleteThroughput: Bool = true,
         clients: [UsageShare] = [],
         models: [UsageShare] = [],
-        sessionCount: Int = 0
+        sessionCount: Int = 0,
+        clientBreakdown: [String: UsageBreakdownEntry] = [:],
+        modelBreakdown: [String: UsageBreakdownEntry] = [:],
+        clientModels: [String: [String: UsageBreakdownEntry]] = [:],
+        modelThroughput: [String: ThroughputCounters]? = nil,
+        hasClientModels: Bool = false,
+        explicitUnclassified: UnclassifiedPresence = [],
+        sessions: [HubSession] = [],
+        projects: [ProjectRollup] = []
     ) {
         self.totalTokens = totalTokens
         self.costUsd = costUsd
@@ -198,9 +289,26 @@ public struct UsagePeriod: Sendable, Equatable {
         self.clients = clients
         self.models = models
         self.sessionCount = sessionCount
+        self.clientBreakdown = clientBreakdown
+        self.modelBreakdown = modelBreakdown
+        self.clientModels = clientModels
+        self.modelThroughput = modelThroughput
+        self.hasClientModels = hasClientModels
+        self.explicitUnclassified = explicitUnclassified
+        self.sessions = sessions
+        self.projects = projects
     }
 
     public static let empty = UsagePeriod()
+
+    /// The period's throughput counters as one value.
+    public var throughput: ThroughputCounters {
+        ThroughputCounters(
+            timedTokens: Double(timedTokens),
+            timedOutputTokens: Double(timedOutputTokens),
+            timedDurationMs: timedDurationMs
+        )
+    }
 
     /// Output tokens per second over the timed entries (the desktop's
     /// `tokenRatePerSecond`), nil when nothing was timed.
@@ -251,6 +359,9 @@ extension UsagePeriod: Decodable {
         case capabilities, totalTokens, costUsd, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens
         case unclassifiedTokens, reasoningTokens, unpricedTokens, timedTokens, timedOutputTokens, timedDurationMs
         case clients, clientCosts, models, modelCosts, sessions
+        case clientUnpricedTokens, clientCacheReads, clientCacheWrites, clientOutputs, clientUnclassifiedTokens
+        case modelUnpricedTokens, modelCacheReads, modelCacheWrites, modelOutputs, modelUnclassifiedTokens
+        case clientModels, clientModelCosts, clientModelUnpricedTokens, modelThroughput, projects
     }
 
     private enum CapabilityKeys: String, CodingKey {
@@ -276,15 +387,87 @@ extension UsagePeriod: Decodable {
         // "not known to be exact".
         hasExactTokenComponents = capabilities?.lenientBool(.tokenComponents) ?? false
         hasCompleteThroughput = capabilities?.lenientBool(.throughput) ?? false
-        clients = Self.shares(
-            tokens: container.lenientNumberMap(.clients),
-            costs: container.lenientNumberMap(.clientCosts)
-        ) { id, tokens, cost in UsageShare.client(id, tokens: tokens, costUsd: cost) }
-        models = Self.shares(
-            tokens: container.lenientNumberMap(.models),
-            costs: container.lenientNumberMap(.modelCosts)
-        ) { name, tokens, cost in UsageShare.model(name, tokens: tokens, costUsd: cost) }
+        let clientTokens = container.lenientNumberMap(.clients)
+        let clientCosts = container.lenientNumberMap(.clientCosts)
+        let modelTokens = container.lenientNumberMap(.models)
+        let modelCosts = container.lenientNumberMap(.modelCosts)
+        clients = Self.shares(tokens: clientTokens, costs: clientCosts) { id, tokens, cost in
+            UsageShare.client(id, tokens: tokens, costUsd: cost)
+        }
+        models = Self.shares(tokens: modelTokens, costs: modelCosts) { name, tokens, cost in
+            UsageShare.model(name, tokens: tokens, costUsd: cost)
+        }
         sessionCount = container.lenientKeyCount(.sessions)
+
+        clientBreakdown = Self.breakdown(
+            tokens: clientTokens,
+            costs: clientCosts,
+            unpriced: container.lenientNumberMap(.clientUnpricedTokens),
+            cacheReads: container.lenientNumberMap(.clientCacheReads),
+            cacheWrites: container.lenientNumberMap(.clientCacheWrites),
+            outputs: container.lenientNumberMap(.clientOutputs),
+            unclassified: container.lenientNumberMap(.clientUnclassifiedTokens)
+        )
+        modelBreakdown = Self.breakdown(
+            tokens: modelTokens,
+            costs: modelCosts,
+            unpriced: container.lenientNumberMap(.modelUnpricedTokens),
+            cacheReads: container.lenientNumberMap(.modelCacheReads),
+            cacheWrites: container.lenientNumberMap(.modelCacheWrites),
+            outputs: container.lenientNumberMap(.modelOutputs),
+            unclassified: container.lenientNumberMap(.modelUnclassifiedTokens)
+        )
+        let perClientTokens = container.lenientNestedNumberMaps(.clientModels)
+        let perClientCosts = container.lenientNestedNumberMaps(.clientModelCosts)
+        let perClientUnpriced = container.lenientNestedNumberMaps(.clientModelUnpricedTokens)
+        var clientModels: [String: [String: UsageBreakdownEntry]] = [:]
+        for client in Set(perClientTokens.keys).union(perClientCosts.keys) {
+            clientModels[client] = Self.breakdown(
+                tokens: perClientTokens[client] ?? [:],
+                costs: perClientCosts[client] ?? [:],
+                unpriced: perClientUnpriced[client] ?? [:]
+            )
+        }
+        self.clientModels = clientModels
+        hasClientModels = container.isObject(.clientModels) || container.isObject(.clientModelCosts)
+        modelThroughput = ThroughputCounters.modelMap(in: container, forKey: .modelThroughput)
+        var presence: UnclassifiedPresence = []
+        if container.contains(.unclassifiedTokens) { presence.insert(.period) }
+        if container.contains(.clientUnclassifiedTokens) { presence.insert(.clients) }
+        if container.contains(.modelUnclassifiedTokens) { presence.insert(.models) }
+        explicitUnclassified = presence
+
+        let options = decoder.hubDecodingOptions
+        sessions = options.includeSessions ? HubSession.sessions(in: container, forKey: .sessions) : []
+        projects = options.includeProjects ? ProjectRollup.rollups(in: container, forKey: .projects) : []
+    }
+
+    /// One entry per key of the token, cost and unpriced maps (the desktop's
+    /// `attributionRows()` key set), with whatever components carry that key.
+    static func breakdown(
+        tokens: [String: Double],
+        costs: [String: Double],
+        unpriced: [String: Double],
+        cacheReads: [String: Double] = [:],
+        cacheWrites: [String: Double] = [:],
+        outputs: [String: Double] = [:],
+        unclassified: [String: Double] = [:]
+    ) -> [String: UsageBreakdownEntry] {
+        func count(_ value: Double?) -> Int? { value.map { nonNegative(clampedInt($0)) } }
+        var result: [String: UsageBreakdownEntry] = [:]
+        result.reserveCapacity(tokens.count)
+        for key in Set(tokens.keys).union(costs.keys).union(unpriced.keys) where !key.isEmpty {
+            result[key] = UsageBreakdownEntry(
+                tokens: count(tokens[key]) ?? 0,
+                costUsd: nonNegative(costs[key] ?? 0),
+                unpricedTokens: count(unpriced[key]),
+                cacheReadTokens: count(cacheReads[key]),
+                cacheWriteTokens: count(cacheWrites[key]),
+                outputTokens: count(outputs[key]),
+                unclassifiedTokens: count(unclassified[key])
+            )
+        }
+        return result
     }
 
     static func shares(

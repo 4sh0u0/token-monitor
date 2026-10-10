@@ -147,10 +147,12 @@ public struct HubClient: @unchecked Sendable {
         }
     }
 
+    /// - Parameter options: what to build beyond the totals; `.compact` for
+    ///   widgets, the watch and complications, `.app` for the app.
     /// - Throws: `HubClientError`, or `CancellationError` when the calling
     ///   task was cancelled.
-    public func stats() async throws -> HubStats {
-        try HubStats.decode(from: try await fetch(.stats))
+    public func stats(options: HubDecodingOptions = .compact) async throws -> HubStats {
+        try HubStats.decode(from: try await fetch(.stats), options: options)
     }
 
     /// The raw stats body, for callers that cache the response themselves.
@@ -209,8 +211,9 @@ public struct HubClient: @unchecked Sendable {
     /// sequence finishes when the Hub closes the connection and throws a
     /// `HubClientError` when it fails; reconnect with backoff (each new
     /// connection starts with a full snapshot, so nothing is lost). Cancelling
-    /// the consuming task closes the connection.
-    public func statsStream() -> AsyncThrowingStream<HubStats, Error> {
+    /// the consuming task closes the connection. `options` applies to every
+    /// frame's stats.
+    public func statsStream(options: HubDecodingOptions = .compact) -> AsyncThrowingStream<HubStats, Error> {
         let request = self.request(for: .statsStream)
         let session = self.session
         return AsyncThrowingStream { continuation in
@@ -219,7 +222,7 @@ public struct HubClient: @unchecked Sendable {
                     let (bytes, response) = try await session.bytes(for: request)
                     try Self.validate(response)
                     var parser = ServerSentEventParser()
-                    let decoder = HubStreamDecoder()
+                    let decoder = HubStreamDecoder(options: options)
                     // Bytes, not `bytes.lines`: AsyncLineSequence drops the
                     // blank lines that delimit SSE events.
                     for try await byte in bytes {

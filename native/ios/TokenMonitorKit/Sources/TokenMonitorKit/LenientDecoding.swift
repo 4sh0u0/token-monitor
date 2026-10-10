@@ -133,6 +133,75 @@ extension KeyedDecodingContainer {
         return result
     }
 
+    /// The value is a JSON object (of any content).
+    func isObject(_ key: Key) -> Bool {
+        guard !isNullOrMissing(key) else { return false }
+        return (try? nestedContainer(keyedBy: AnyCodingKey.self, forKey: key)) != nil
+    }
+
+    /// A JSON boolean only: the desktop's `=== true` / `=== false` checks, so
+    /// a string or number never reads as a flag. Nil otherwise.
+    func strictBool(_ key: Key) -> Bool? {
+        guard !isNullOrMissing(key) else { return nil }
+        return try? decode(Bool.self, forKey: key)
+    }
+
+    /// A string trimmed but kept when empty (`""` can be a value of its own,
+    /// such as "never written"). Nil when missing, null or not a string.
+    func lenientRawString(_ key: Key) -> String? {
+        guard !isNullOrMissing(key), let raw = try? decode(String.self, forKey: key) else { return nil }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// A `{ key: count }` object as non-negative integers; non-numeric values
+    /// are skipped.
+    func lenientCountMap(_ key: Key) -> [String: Int] {
+        lenientNumberMap(key).mapValues { nonNegative(clampedInt($0)) }
+    }
+
+    /// A `{ key: string }` object with trimmed, non-empty values.
+    func lenientStringMap(_ key: Key) -> [String: String] {
+        guard !isNullOrMissing(key),
+              let nested = try? nestedContainer(keyedBy: AnyCodingKey.self, forKey: key) else { return [:] }
+        var result: [String: String] = [:]
+        for nestedKey in nested.allKeys {
+            if let value = nested.lenientString(nestedKey) { result[nestedKey.stringValue] = value }
+        }
+        return result
+    }
+
+    /// A `{ outer: { inner: number } }` object (`clientModels`); outer values
+    /// that are not objects are skipped, so the result's keys are exactly the
+    /// outer keys whose value is an object.
+    func lenientNestedNumberMaps(_ key: Key) -> [String: [String: Double]] {
+        guard !isNullOrMissing(key),
+              let nested = try? nestedContainer(keyedBy: AnyCodingKey.self, forKey: key) else { return [:] }
+        var result: [String: [String: Double]] = [:]
+        for outer in nested.allKeys {
+            guard let inner = try? nested.nestedContainer(keyedBy: AnyCodingKey.self, forKey: outer) else { continue }
+            var values: [String: Double] = [:]
+            for innerKey in inner.allKeys {
+                if let value = inner.lenientDouble(innerKey) { values[innerKey.stringValue] = value }
+            }
+            result[outer.stringValue] = values
+        }
+        return result
+    }
+
+    /// A `{ today?, month?, allTime? }` count object (`sessionDetailsOmitted`,
+    /// `periodProjectsOmitted`), keeping positive counts only.
+    func lenientPeriodCounts(_ key: Key) -> [UsagePeriodKind: Int] {
+        guard !isNullOrMissing(key),
+              let nested = try? nestedContainer(keyedBy: AnyCodingKey.self, forKey: key) else { return [:] }
+        var result: [UsagePeriodKind: Int] = [:]
+        for nestedKey in nested.allKeys {
+            guard let period = UsagePeriodKind(rawValue: nestedKey.stringValue),
+                  let count = nested.lenientInt(nestedKey), count > 0 else { continue }
+            result[period] = count
+        }
+        return result
+    }
+
     /// The number of keys in an object, without decoding its values.
     func lenientKeyCount(_ key: Key) -> Int {
         guard !isNullOrMissing(key),

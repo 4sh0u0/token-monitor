@@ -5,8 +5,9 @@ import Foundation
 ///
 /// Decoding is lenient: a missing or malformed field becomes its empty value
 /// instead of failing the response. Only a body that is not a JSON object
-/// throws. Session, project and per-device History detail on the wire is not
-/// decoded.
+/// throws. How much of the session, project and per-device detail is built
+/// is up to `HubDecodingOptions` (passed through `decoder.userInfo`; `.compact`
+/// when absent). Per-device History is never part of stats.
 public struct HubStats: Sendable, Equatable {
     /// When the Hub built this aggregate (Hub clock).
     public var updatedAt: Date?
@@ -28,6 +29,26 @@ public struct HubStats: Sendable, Equatable {
     public var historyMonths: [HistoryMonth]
     /// Some device omitted or could not attribute its project rollup.
     public var projectsIncomplete: Bool
+    /// `historyPreview.summary`: the Hub's summary of the full aggregate
+    /// History (not just the preview rows). Nil when the Hub sends none.
+    public var historyPreviewSummary: HistoryPreviewSummary?
+    /// Content hash of the aggregate History; refetch `/api/history` when it
+    /// changes. Nil from Hubs that predate it.
+    public var historyRevision: String?
+    /// Identity-aware hash of every device's History; refetch
+    /// `/api/devices` when it changes.
+    public var deviceHistoryRevision: String?
+    /// The shared subscription list's version: nil when the Hub predates the
+    /// field, `""` when no list was ever written, otherwise a timestamp.
+    public var subscriptionsUpdatedAt: String?
+    /// Revision per shared settings kind (`modelAliases`, `customPricing`);
+    /// nil when the Hub predates the field.
+    public var syncSettingsRevisions: [String: Int]?
+    /// Session rows devices dropped, per live period (aggregate of
+    /// non-expired devices).
+    public var sessionDetailsOmitted: [UsagePeriodKind: Int]
+    /// Project rows devices dropped, per live period.
+    public var periodProjectsOmitted: [UsagePeriodKind: Int]
 
     public init(
         updatedAt: Date? = nil,
@@ -40,7 +61,14 @@ public struct HubStats: Sendable, Equatable {
         devices: [DeviceSummary] = [],
         history: [HistoryDay] = [],
         historyMonths: [HistoryMonth] = [],
-        projectsIncomplete: Bool = false
+        projectsIncomplete: Bool = false,
+        historyPreviewSummary: HistoryPreviewSummary? = nil,
+        historyRevision: String? = nil,
+        deviceHistoryRevision: String? = nil,
+        subscriptionsUpdatedAt: String? = nil,
+        syncSettingsRevisions: [String: Int]? = nil,
+        sessionDetailsOmitted: [UsagePeriodKind: Int] = [:],
+        periodProjectsOmitted: [UsagePeriodKind: Int] = [:]
     ) {
         self.updatedAt = updatedAt
         self.staleAfter = staleAfter
@@ -53,6 +81,13 @@ public struct HubStats: Sendable, Equatable {
         self.history = history
         self.historyMonths = historyMonths
         self.projectsIncomplete = projectsIncomplete
+        self.historyPreviewSummary = historyPreviewSummary
+        self.historyRevision = historyRevision
+        self.deviceHistoryRevision = deviceHistoryRevision
+        self.subscriptionsUpdatedAt = subscriptionsUpdatedAt
+        self.syncSettingsRevisions = syncSettingsRevisions
+        self.sessionDetailsOmitted = sessionDetailsOmitted
+        self.periodProjectsOmitted = periodProjectsOmitted
     }
 
     public subscript(period: UsagePeriodKind) -> UsagePeriod {
@@ -89,19 +124,108 @@ public struct HubStats: Sendable, Equatable {
         TrendBuilder.daily(history: history, liveToday: today, days: days, endingAt: endingAt, calendar: calendar)
     }
 
+    /// The device with this Hub id.
+    public func device(id: String) -> DeviceSummary? {
+        devices.first { $0.id == id }
+    }
+
     /// Decodes a stats body, mapping failures to `HubClientError.decoding`.
-    public static func decode(from data: Data) throws -> HubStats {
+    /// `.compact` (the default) is what widgets, the watch and complications
+    /// need; the app passes `.app`.
+    public static func decode(from data: Data, options: HubDecodingOptions = .compact) throws -> HubStats {
         do {
-            return try JSONDecoder().decode(HubStats.self, from: data)
+            return try options.makeDecoder().decode(HubStats.self, from: data)
         } catch {
             throw HubClientError.decoding(String(describing: error))
         }
+    }
+
+    /// Numbers limits rows without an account key (or sharing one) in Hub
+    /// order, so ids stay unique and stable.
+    static func assignUniqueIDs(_ providers: inout [LimitProvider]) {
+        var seen: [String: Int] = [:]
+        for index in providers.indices {
+            let base = providers[index].id
+            let count = (seen[base] ?? 0) + 1
+            seen[base] = count
+            if base.hasSuffix("-anonymous") || count > 1 {
+                providers[index].id = "\(base)-\(count)"
+            }
+        }
+    }
+}
+
+/// `historyPreview.summary` of `GET /api/stats`: the Hub's summary of the
+/// full aggregate History (`history.js` `mergeHistories`), the same object
+/// `GET /api/history` returns as `summary`.
+public struct HistoryPreviewSummary: Sendable, Hashable {
+    public var totalTokens: Int
+    /// The known (priced) subtotal in USD.
+    public var totalCost: Double
+    public var activeDays: Int
+    public var currentStreak: Int
+    public var longestStreak: Int
+    public var peakDayTokens: Int
+    public var favoriteModel: String?
+    public var messages: Int
+    public var activeTimeMs: Double
+    /// Tokens the cost excludes; nil when absent.
+    public var unpricedTokens: Int?
+
+    public init(
+        totalTokens: Int = 0,
+        totalCost: Double = 0,
+        activeDays: Int = 0,
+        currentStreak: Int = 0,
+        longestStreak: Int = 0,
+        peakDayTokens: Int = 0,
+        favoriteModel: String? = nil,
+        messages: Int = 0,
+        activeTimeMs: Double = 0,
+        unpricedTokens: Int? = nil
+    ) {
+        self.totalTokens = totalTokens
+        self.totalCost = totalCost
+        self.activeDays = activeDays
+        self.currentStreak = currentStreak
+        self.longestStreak = longestStreak
+        self.peakDayTokens = peakDayTokens
+        self.favoriteModel = favoriteModel
+        self.messages = messages
+        self.activeTimeMs = activeTimeMs
+        self.unpricedTokens = unpricedTokens
+    }
+}
+
+extension HistoryPreviewSummary: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case totalTokens, totalCost, activeDays, currentStreak, longestStreak, peakDayTokens
+        case favoriteModel, messages, activeTimeMs, unpricedTokens
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        func count(_ key: CodingKeys) -> Int { nonNegative(container.lenientInt(key) ?? 0) }
+        self.init(
+            totalTokens: count(.totalTokens),
+            totalCost: nonNegative(container.lenientDouble(.totalCost) ?? 0),
+            activeDays: count(.activeDays),
+            currentStreak: count(.currentStreak),
+            longestStreak: count(.longestStreak),
+            peakDayTokens: count(.peakDayTokens),
+            favoriteModel: container.lenientString(.favoriteModel),
+            messages: count(.messages),
+            activeTimeMs: nonNegative(container.lenientDouble(.activeTimeMs) ?? 0),
+            unpricedTokens: container.lenientInt(.unpricedTokens).map(nonNegative)
+        )
     }
 }
 
 extension HubStats: Decodable {
     private enum CodingKeys: String, CodingKey {
         case updatedAt, staleAfterMs, periods, limits, devices, historyPreview, projectsIncomplete
+        case historyRevision, deviceHistoryRevision, subscriptionsUpdatedAt, syncSettingsRevisions
+        case sessionDetailsOmitted, periodProjectsOmitted
     }
 
     private enum PeriodKeys: String, CodingKey {
@@ -113,7 +237,7 @@ extension HubStats: Decodable {
     }
 
     private enum HistoryKeys: String, CodingKey {
-        case daily, monthly
+        case daily, monthly, summary
     }
 
     public init(from decoder: Decoder) throws {
@@ -124,17 +248,7 @@ extension HubStats: Decodable {
         let updatedAt = container.lenientDate(.updatedAt)
 
         var providers = limits?.lenientArray(.providers, of: LimitProvider.self) ?? []
-        // Rows without an account key (or sharing one) get ordinals, so ids
-        // stay unique and stable in Hub order.
-        var seen: [String: Int] = [:]
-        for index in providers.indices {
-            let base = providers[index].id
-            let count = (seen[base] ?? 0) + 1
-            seen[base] = count
-            if base.hasSuffix("-anonymous") || count > 1 {
-                providers[index].id = "\(base)-\(count)"
-            }
-        }
+        Self.assignUniqueIDs(&providers)
 
         var devices = container.lenientArray(.devices, of: DeviceSummary.self)
         let reference = updatedAt ?? Date()
@@ -151,7 +265,16 @@ extension HubStats: Decodable {
             devices: devices,
             history: (history?.lenientArray(.daily, of: HistoryDay.self) ?? []).sorted { $0.date < $1.date },
             historyMonths: (history?.lenientArray(.monthly, of: HistoryMonth.self) ?? []).sorted { $0.month < $1.month },
-            projectsIncomplete: container.lenientBool(.projectsIncomplete) ?? false
+            projectsIncomplete: container.lenientBool(.projectsIncomplete) ?? false,
+            historyPreviewSummary: history?.lenientObject(.summary, as: HistoryPreviewSummary.self),
+            historyRevision: container.lenientString(.historyRevision),
+            deviceHistoryRevision: container.lenientString(.deviceHistoryRevision),
+            subscriptionsUpdatedAt: container.lenientRawString(.subscriptionsUpdatedAt),
+            syncSettingsRevisions: container.isObject(.syncSettingsRevisions)
+                ? container.lenientNumberMap(.syncSettingsRevisions).mapValues(clampedInt)
+                : nil,
+            sessionDetailsOmitted: container.lenientPeriodCounts(.sessionDetailsOmitted),
+            periodProjectsOmitted: container.lenientPeriodCounts(.periodProjectsOmitted)
         )
     }
 }

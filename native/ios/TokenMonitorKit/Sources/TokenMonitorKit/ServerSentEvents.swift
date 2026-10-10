@@ -158,14 +158,19 @@ public struct HubStreamDecoder: Sendable {
     /// Kit does not.
     public static let statsEvents: Set<String> = ["snapshot", "stats"]
 
-    public init() {}
+    /// What each frame's stats decode builds (see `HubDecodingOptions`).
+    public var options: HubDecodingOptions
+
+    public init(options: HubDecodingOptions = .compact) {
+        self.options = options
+    }
 
     /// The update an event carries, or nil for heartbeats, other events and
     /// frames that are not JSON objects (one bad frame must not end a live
     /// stream; the next one is complete again).
     public func update(from event: ServerSentEvent) -> HubStreamUpdate? {
         guard Self.statsEvents.contains(event.event), let data = event.data.data(using: .utf8) else { return nil }
-        guard let frame = try? JSONDecoder().decode(Frame.self, from: data) else { return nil }
+        guard let frame = try? options.makeDecoder().decode(Frame.self, from: data) else { return nil }
         return HubStreamUpdate(event: event.event, reason: frame.reason, stats: frame.stats, at: frame.at)
     }
 

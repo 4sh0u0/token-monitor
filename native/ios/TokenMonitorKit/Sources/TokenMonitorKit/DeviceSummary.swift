@@ -28,12 +28,35 @@ public struct DeviceUsage: Sendable, Equatable {
     /// midnight / month end). The Hub no longer counts it in the aggregate,
     /// so the Kit reports zero instead of yesterday's numbers.
     public var isExpired: Bool
+    /// Tokens the cost excludes; nil when absent.
+    public var unpricedTokens: Int?
+    /// The period's throughput counters, nil when the device marked its
+    /// throughput incomplete (`capabilities.throughput === false`) or did not
+    /// send all three (`usageCounters()` in `tokenRatePresentation.js`).
+    public var throughput: ThroughputCounters?
+    /// `capabilities.throughput`.
+    public var hasThroughput: Bool
+    /// Per-model counters; nil when the wire has no `modelThroughput`.
+    public var modelThroughput: [String: ThroughputCounters]?
 
-    public init(tokens: Int = 0, costUsd: Double = 0, clients: [UsageShare] = [], isExpired: Bool = false) {
+    public init(
+        tokens: Int = 0,
+        costUsd: Double = 0,
+        clients: [UsageShare] = [],
+        isExpired: Bool = false,
+        unpricedTokens: Int? = nil,
+        throughput: ThroughputCounters? = nil,
+        hasThroughput: Bool = false,
+        modelThroughput: [String: ThroughputCounters]? = nil
+    ) {
         self.tokens = tokens
         self.costUsd = costUsd
         self.clients = clients
         self.isExpired = isExpired
+        self.unpricedTokens = unpricedTokens
+        self.throughput = throughput
+        self.hasThroughput = hasThroughput
+        self.modelThroughput = modelThroughput
     }
 
     public static let empty = DeviceUsage()
@@ -67,6 +90,47 @@ public struct DeviceSummary: Sendable, Equatable, Identifiable {
     public var month: DeviceUsage
     public var allTime: DeviceUsage
 
+    /// `syncUploadIntervalMs` in seconds: 0 uploads live, otherwise the
+    /// interval between uploads. Nil when the device does not say.
+    public var syncUploadInterval: TimeInterval?
+    /// `projectsEnabled`; nil when the device does not say (treated as on).
+    public var projectsEnabled: Bool?
+    /// Per-client diagnostics, when the device sends them.
+    public var clientHealth: ClientHealthReport?
+    /// `clientStatus`: `active`, `waiting` or `missing` per client id.
+    public var clientStatus: [String: String]
+    /// Session rows the device dropped to fit its upload budget, per live
+    /// period. Expired periods are removed.
+    public var sessionDetailsOmitted: [UsagePeriodKind: Int]
+    /// Project rows the device dropped, per live period. Expired periods are
+    /// removed.
+    public var periodProjectsOmitted: [UsagePeriodKind: Int]
+    /// The device omitted its all-time project rollup (a wire boolean).
+    public var allTimeProjectsOmitted: Bool
+    /// The device's all-time project rollup is known to be partial.
+    public var allTimeProjectsIncomplete: Bool
+    /// `periodWindows.timeZone`: the device's IANA time zone.
+    public var periodTimeZone: String?
+    /// `periodWindows.today.key`: the device-local day (`yyyy-MM-dd`).
+    public var todayWindowKey: String?
+    /// `periodWindows.month.key`: the device-local month (`yyyy-MM`).
+    public var monthWindowKey: String?
+    /// `periodWindows.today.endsAt`: the device's next local midnight.
+    public var todayEndsAt: Date?
+    /// `periodWindows.month.endsAt`: the device's next local month start.
+    public var monthEndsAt: Date?
+    /// The device's full periods, only for devices `HubDecodingOptions`
+    /// selects (`deviceDetail`), with sessions and projects per the same
+    /// options. Expired periods are removed.
+    public var details: [UsagePeriodKind: UsagePeriod]
+    /// The device's own limits rows (`limits.providers`), only for devices
+    /// with details. A row is marked stale when the device is stale.
+    public var limits: [LimitProvider]
+    /// `limits.updatedAt`, only for devices with details.
+    public var limitsUpdatedAt: Date?
+    /// `limits.refreshMs` in seconds, only for devices with details.
+    public var limitsRefreshInterval: TimeInterval?
+
     public init(
         id: String,
         displayName: String? = nil,
@@ -82,7 +146,24 @@ public struct DeviceSummary: Sendable, Equatable, Identifiable {
         trackedClients: [String] = [],
         today: DeviceUsage = .empty,
         month: DeviceUsage = .empty,
-        allTime: DeviceUsage = .empty
+        allTime: DeviceUsage = .empty,
+        syncUploadInterval: TimeInterval? = nil,
+        projectsEnabled: Bool? = nil,
+        clientHealth: ClientHealthReport? = nil,
+        clientStatus: [String: String] = [:],
+        sessionDetailsOmitted: [UsagePeriodKind: Int] = [:],
+        periodProjectsOmitted: [UsagePeriodKind: Int] = [:],
+        allTimeProjectsOmitted: Bool = false,
+        allTimeProjectsIncomplete: Bool = false,
+        periodTimeZone: String? = nil,
+        todayWindowKey: String? = nil,
+        monthWindowKey: String? = nil,
+        todayEndsAt: Date? = nil,
+        monthEndsAt: Date? = nil,
+        details: [UsagePeriodKind: UsagePeriod] = [:],
+        limits: [LimitProvider] = [],
+        limitsUpdatedAt: Date? = nil,
+        limitsRefreshInterval: TimeInterval? = nil
     ) {
         self.id = id
         self.displayName = Self.resolveName(displayName: displayName, deviceId: id, hostname: hostname)
@@ -99,7 +180,33 @@ public struct DeviceSummary: Sendable, Equatable, Identifiable {
         self.today = today
         self.month = month
         self.allTime = allTime
+        self.syncUploadInterval = syncUploadInterval
+        self.projectsEnabled = projectsEnabled
+        self.clientHealth = clientHealth
+        self.clientStatus = clientStatus
+        self.sessionDetailsOmitted = sessionDetailsOmitted
+        self.periodProjectsOmitted = periodProjectsOmitted
+        self.allTimeProjectsOmitted = allTimeProjectsOmitted
+        self.allTimeProjectsIncomplete = allTimeProjectsIncomplete
+        self.periodTimeZone = periodTimeZone
+        self.todayWindowKey = todayWindowKey
+        self.monthWindowKey = monthWindowKey
+        self.todayEndsAt = todayEndsAt
+        self.monthEndsAt = monthEndsAt
+        self.details = details
+        self.limits = limits
+        self.limitsUpdatedAt = limitsUpdatedAt
+        self.limitsRefreshInterval = limitsRefreshInterval
     }
+
+    /// The device's full period, nil when it was not decoded (see
+    /// `HubDecodingOptions.deviceDetail`) or has expired.
+    public func detail(_ period: UsagePeriodKind) -> UsagePeriod? {
+        details[period]
+    }
+
+    /// `periodTimeZone` as a `TimeZone`, nil when absent or unknown.
+    public var timeZone: TimeZone? { periodTimeZone.flatMap(TimeZone.init(identifier:)) }
 
     public var isOnline: Bool { !isStale }
 
@@ -137,20 +244,29 @@ public struct DeviceSummary: Sendable, Equatable, Identifiable {
         return "device"
     }
 
-    // Raw period windows, kept only until `HubStats` applies the expiry.
-    var todayEndsAt: Date?
-    var monthEndsAt: Date?
-
     /// Port of the Hub's `isPeriodExpired()`: a `today`/`month` snapshot whose
     /// device-local window has ended is not live any more. Without
-    /// `periodWindows` the Hub compares UTC day/month of `updatedAt`.
+    /// `periodWindows` the Hub compares UTC day/month of `updatedAt`. An
+    /// expired period is zeroed in the totals and removed from `details` and
+    /// the omission counts.
     mutating func applyPeriodExpiry(now: Date) {
         if Self.isExpired(endsAt: todayEndsAt, recordedAt: updatedAt ?? lastSeen, now: now, components: [.year, .month, .day]) {
-            today = DeviceUsage(isExpired: true)
+            expire(.today)
         }
         if Self.isExpired(endsAt: monthEndsAt, recordedAt: updatedAt ?? lastSeen, now: now, components: [.year, .month]) {
-            month = DeviceUsage(isExpired: true)
+            expire(.month)
         }
+    }
+
+    private mutating func expire(_ period: UsagePeriodKind) {
+        switch period {
+        case .today: today = DeviceUsage(isExpired: true)
+        case .month: month = DeviceUsage(isExpired: true)
+        case .allTime: return
+        }
+        details[period] = nil
+        sessionDetailsOmitted[period] = nil
+        periodProjectsOmitted[period] = nil
     }
 
     private static func isExpired(endsAt: Date?, recordedAt: Date?, now: Date, components: Set<Calendar.Component>) -> Bool {
@@ -167,6 +283,9 @@ extension DeviceSummary: Decodable {
         case deviceId, id, displayName, hostname, platform, osName, osVersion, agentRuntime, agentVersion
         case stale, receivedAt, updatedAt, trackedClients, periods, periodWindows
         case today, month, allTime
+        case syncUploadIntervalMs, projectsEnabled, clientHealth, clientStatus
+        case sessionDetailsOmitted, periodProjectsOmitted, allTimeProjectsOmitted, allTimeProjectsIncomplete
+        case limits
     }
 
     private enum PeriodKeys: String, CodingKey {
@@ -174,29 +293,46 @@ extension DeviceSummary: Decodable {
     }
 
     private enum WindowKeys: String, CodingKey {
-        case today, month
+        case today, month, timeZone
     }
 
     private enum WindowFieldKeys: String, CodingKey {
-        case endsAt
+        case endsAt, key
+    }
+
+    private enum LimitsKeys: String, CodingKey {
+        case updatedAt, refreshMs, providers
     }
 
     private struct PeriodTotals: Decodable {
         let usage: DeviceUsage
 
         private enum Keys: String, CodingKey {
-            case totalTokens, costUsd, clients, clientCosts
+            case capabilities, totalTokens, costUsd, clients, clientCosts, unpricedTokens
+            case timedTokens, timedOutputTokens, timedDurationMs, modelThroughput
+        }
+
+        private enum CapabilityKeys: String, CodingKey {
+            case throughput
         }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: Keys.self)
+            let capabilities = try? container.nestedContainer(keyedBy: CapabilityKeys.self, forKey: .capabilities)
+            let throughputFlag = capabilities?.strictBool(.throughput)
+            let counters = (try? decoder.container(keyedBy: ThroughputCounters.WireKeys.self))
+                .flatMap(ThroughputCounters.init(wire:))
             usage = DeviceUsage(
                 tokens: nonNegative(container.lenientInt(.totalTokens) ?? 0),
                 costUsd: nonNegative(container.lenientDouble(.costUsd) ?? 0),
                 clients: UsagePeriod.shares(
                     tokens: container.lenientNumberMap(.clients),
                     costs: container.lenientNumberMap(.clientCosts)
-                ) { id, tokens, cost in UsageShare.client(id, tokens: tokens, costUsd: cost) }
+                ) { id, tokens, cost in UsageShare.client(id, tokens: tokens, costUsd: cost) },
+                unpricedTokens: container.lenientInt(.unpricedTokens).map(nonNegative),
+                throughput: throughputFlag == false ? nil : counters,
+                hasThroughput: capabilities?.lenientBool(.throughput) ?? false,
+                modelThroughput: ThroughputCounters.modelMap(in: container, forKey: .modelThroughput)
             )
         }
     }
@@ -205,6 +341,7 @@ extension DeviceSummary: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let deviceId = container.lenientString(.deviceId) ?? container.lenientString(.id)
         let hostname = container.lenientString(.hostname)
+        let id = deviceId ?? hostname ?? "device"
         let periods = try? container.nestedContainer(keyedBy: PeriodKeys.self, forKey: .periods)
         func usage(_ key: PeriodKeys, legacy: CodingKeys) -> DeviceUsage {
             periods?.lenientObject(key, as: PeriodTotals.self)?.usage
@@ -213,8 +350,38 @@ extension DeviceSummary: Decodable {
         }
         let receivedAt = container.lenientDate(.receivedAt)
         let updatedAt = container.lenientDate(.updatedAt)
+        let isStale = container.lenientBool(.stale) ?? false
+        let windows = try? container.nestedContainer(keyedBy: WindowKeys.self, forKey: .periodWindows)
+        let todayWindow = try? windows?.nestedContainer(keyedBy: WindowFieldKeys.self, forKey: .today)
+        let monthWindow = try? windows?.nestedContainer(keyedBy: WindowFieldKeys.self, forKey: .month)
+
+        var details: [UsagePeriodKind: UsagePeriod] = [:]
+        var limits: [LimitProvider] = []
+        var limitsUpdatedAt: Date?
+        var limitsRefreshInterval: TimeInterval?
+        if decoder.hubDecodingOptions.deviceDetail.includes(id) {
+            let pairs: [(UsagePeriodKind, PeriodKeys, CodingKeys)] = [
+                (.today, .today, .today), (.month, .month, .month), (.allTime, .allTime, .allTime)
+            ]
+            for (kind, key, legacy) in pairs {
+                if let period = periods?.lenientObject(key, as: UsagePeriod.self)
+                    ?? container.lenientObject(legacy, as: UsagePeriod.self) {
+                    details[kind] = period
+                }
+            }
+            if let limitsContainer = try? container.nestedContainer(keyedBy: LimitsKeys.self, forKey: .limits) {
+                limits = limitsContainer.lenientArray(.providers, of: LimitProvider.self)
+                HubStats.assignUniqueIDs(&limits)
+                if isStale {
+                    for index in limits.indices { limits[index].isStale = true }
+                }
+                limitsUpdatedAt = limitsContainer.lenientDate(.updatedAt)
+                limitsRefreshInterval = limitsContainer.lenientDouble(.refreshMs).map { max(0, $0) / 1000 }
+            }
+        }
+
         self.init(
-            id: deviceId ?? hostname ?? "device",
+            id: id,
             displayName: Self.resolveName(
                 displayName: container.lenientString(.displayName),
                 deviceId: deviceId,
@@ -226,17 +393,30 @@ extension DeviceSummary: Decodable {
             osVersion: container.lenientString(.osVersion),
             agentRuntime: container.lenientString(.agentRuntime),
             agentVersion: container.lenientString(.agentVersion),
-            isStale: container.lenientBool(.stale) ?? false,
+            isStale: isStale,
             lastSeen: receivedAt ?? updatedAt,
             updatedAt: updatedAt,
             trackedClients: container.lenientStringArray(.trackedClients),
             today: usage(.today, legacy: .today),
             month: usage(.month, legacy: .month),
-            allTime: usage(.allTime, legacy: .allTime)
+            allTime: usage(.allTime, legacy: .allTime),
+            syncUploadInterval: container.lenientDouble(.syncUploadIntervalMs).map { max(0, $0) / 1000 },
+            projectsEnabled: container.strictBool(.projectsEnabled),
+            clientHealth: container.lenientObject(.clientHealth, as: ClientHealthReport.self),
+            clientStatus: container.lenientStringMap(.clientStatus),
+            sessionDetailsOmitted: container.lenientPeriodCounts(.sessionDetailsOmitted),
+            periodProjectsOmitted: container.lenientPeriodCounts(.periodProjectsOmitted),
+            allTimeProjectsOmitted: container.strictBool(.allTimeProjectsOmitted) == true,
+            allTimeProjectsIncomplete: container.strictBool(.allTimeProjectsIncomplete) == true,
+            periodTimeZone: windows?.lenientString(.timeZone),
+            todayWindowKey: todayWindow?.lenientString(.key),
+            monthWindowKey: monthWindow?.lenientString(.key),
+            todayEndsAt: todayWindow?.lenientDate(.endsAt),
+            monthEndsAt: monthWindow?.lenientDate(.endsAt),
+            details: details,
+            limits: limits,
+            limitsUpdatedAt: limitsUpdatedAt,
+            limitsRefreshInterval: limitsRefreshInterval
         )
-        if let windows = try? container.nestedContainer(keyedBy: WindowKeys.self, forKey: .periodWindows) {
-            todayEndsAt = (try? windows.nestedContainer(keyedBy: WindowFieldKeys.self, forKey: .today))?.lenientDate(.endsAt)
-            monthEndsAt = (try? windows.nestedContainer(keyedBy: WindowFieldKeys.self, forKey: .month))?.lenientDate(.endsAt)
-        }
     }
 }

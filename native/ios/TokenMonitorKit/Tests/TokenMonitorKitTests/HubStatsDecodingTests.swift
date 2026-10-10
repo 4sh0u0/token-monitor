@@ -216,6 +216,36 @@ final class HubStatsDecodingTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.provider), ["claude", "codex", "opencode", "deepseek", "openrouter", "cursor", "kimi"])
     }
 
+    func testRoundOneFixtureUnderAppOptions() throws {
+        let compact = try Fixture.stats()
+        let app = try HubStats.decode(from: Fixture.data("stats.json"), options: .app)
+        XCTAssertEqual(app.today.sessions.map(\.id), ["claude:7f3c2a90-session"])
+        XCTAssertEqual(app.today.sessions.count, app.today.sessionCount)
+        XCTAssertEqual(app.today.projects.map(\.id), ["token-monitor"])
+        XCTAssertEqual(compact.today.sessions, [])
+        XCTAssertEqual(compact.today.projects, [])
+        for kind in UsagePeriodKind.allCases {
+            var stripped = app[kind]
+            stripped.sessions = []
+            stripped.projects = []
+            XCTAssertEqual(stripped, compact[kind], kind.rawValue)
+        }
+        XCTAssertEqual(app.devices.map(\.id), compact.devices.map(\.id))
+        for (full, plain) in zip(app.devices, compact.devices) {
+            XCTAssertEqual(full.today, plain.today, full.id)
+            XCTAssertEqual(full.allTime, plain.allTime, full.id)
+            XCTAssertEqual(plain.details, [:], plain.id)
+            XCTAssertEqual(full.detail(.allTime)?.totalTokens, full.allTime.tokens, full.id)
+        }
+        XCTAssertEqual(app.device(id: "studio-mac")?.detail(.today)?.sessions.count, 1)
+    }
+
+    func testDecodeErrorsMapToHubClientError() {
+        XCTAssertThrowsError(try HubStats.decode(from: Data("[1]".utf8), options: .app)) { error in
+            guard case HubClientError.decoding = error else { return XCTFail("\(error)") }
+        }
+    }
+
     func testStatusMapping() {
         XCTAssertEqual(LimitStatus(wire: "sourceRateLimited").category, .rateLimited)
         XCTAssertEqual(LimitStatus(wire: "notConfigured").category, .inactive)

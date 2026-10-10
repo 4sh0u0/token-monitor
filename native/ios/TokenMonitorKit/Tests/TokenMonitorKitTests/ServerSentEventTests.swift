@@ -95,6 +95,25 @@ final class ServerSentEventTests: XCTestCase {
         XCTAssertEqual(parser.consume(text: "data: next\n\n"), [ServerSentEvent(event: "message", data: "next")])
     }
 
+    func testStreamDecoderPassesOptionsToEveryFrame() throws {
+        let bytes = try Fixture.data("stats-stream.txt")
+        var parser = ServerSentEventParser()
+        let events = parser.consume(bytes)
+        let compact = try XCTUnwrap(HubStreamDecoder().update(from: events[1]))
+        let app = try XCTUnwrap(HubStreamDecoder(options: .app).update(from: events[1]))
+        XCTAssertEqual(compact.stats.today.sessions, [])
+        XCTAssertEqual(app.stats.today.sessions.count, app.stats.today.sessionCount)
+        XCTAssertTrue(compact.stats.devices.allSatisfy { $0.details.isEmpty })
+        XCTAssertTrue(app.stats.devices.allSatisfy { !$0.details.isEmpty })
+        XCTAssertEqual(app.stats.today.totalTokens, compact.stats.today.totalTokens)
+
+        // A bare (unwrapped) frame sees the options too.
+        let frame = #"{"periods":{"today":{"totalTokens":6,"sessions":{"a:1":{"client":"a","totalTokens":6}}}}}"#
+        let bare = HubStreamDecoder(options: .app).stats(from: ServerSentEvent(event: "snapshot", data: frame))
+        XCTAssertEqual(bare?.today.sessions.map(\.id), ["a:1"])
+        XCTAssertEqual(HubStreamDecoder().stats(from: ServerSentEvent(event: "snapshot", data: frame))?.today.sessions, [])
+    }
+
     func testStreamDecoderIgnoresOtherEventsAndBadFrames() {
         let decoder = HubStreamDecoder()
         XCTAssertNil(decoder.stats(from: ServerSentEvent(event: "freshness", data: #"{"limits":{}}"#)))
