@@ -1,0 +1,101 @@
+{
+  "page": {
+    "id": "cursor",
+    "name": "Cursor",
+    "url": "https://status.example.com/cursor",
+    "time_zone": "Etc/UTC",
+    "updated_at": "2026-10-10T16:12:03.512Z"
+  },
+  "components": [
+    {
+      "id": "chat",
+      "name": "Chat",
+      "status": "major_outage",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-10-10T16:00:00.000Z",
+      "position": 1,
+      "description": null,
+      "showcase": true,
+      "group_id": null,
+      "group": false,
+      "only_show_if_degraded": false
+    },
+    {
+      "id": "tab",
+      "name": "Tab",
+      "status": "partial_outage",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-10-10T16:00:00.000Z",
+      "position": 1,
+      "description": null,
+      "showcase": true,
+      "group_id": null,
+      "group": false,
+      "only_show_if_degraded": false
+    },
+    {
+      "id": "background-agents",
+      "name": "Background Agents",
+      "status": "major_outage",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-10-10T16:00:00.000Z",
+      "position": 1,
+      "description": null,
+      "showcase": true,
+      "group_id": null,
+      "group": false,
+      "only_show_if_degraded": false
+    },
+    {
+      "id": "dashboard",
+      "name": "Dashboard",
+      "status": "operational",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-10-10T16:00:00.000Z",
+      "position": 1,
+      "description": null,
+      "showcase": true,
+      "group_id": null,
+      "group": false,
+      "only_show_if_degraded": false
+    },
+    {
+      "id": "",
+      "name": "",
+      "status": "major_outage",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-10-10T16:00:00.000Z",
+      "position": 1,
+      "description": null,
+      "showcase": true,
+      "group_id": null,
+      "group": false,
+      "only_show_if_degraded": false
+    }
+  ],
+  "incidents": [
+    {
+      "id": "inc2",
+      "name": "  Chat and agents unavailable  ",
+      "status": "identified",
+      "impact": "major",
+      "created_at": "2026-10-10T16:01:00.000Z",
+      "updated_at": "2026-10-10T16:10:00.000Z",
+      "incident_updates": []
+    },
+    {
+      "id": "inc3",
+      "name": "Tab latency",
+      "status": "monitoring",
+      "impact": "minor",
+      "created_at": "2026-10-10T15:01:00.000Z",
+      "updated_at": "2026-10-10T16:10:00.000Z",
+      "incident_updates": []
+    }
+  ],
+  "scheduled_maintenances": [],
+  "status": {
+    "indicator": "major",
+    "description": "Major Service Outage"
+  }
+}

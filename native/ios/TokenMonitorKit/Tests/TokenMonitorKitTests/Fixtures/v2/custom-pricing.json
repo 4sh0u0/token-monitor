@@ -1,0 +1,1 @@
+{"ok":true,"version":1,"revision":1,"updatedAt":"2026-10-10T16:29:55.000Z","value":[{"modelId":"big-pickle","inputPerM":0,"outputPerM":0},{"modelId":"glm-4.6","inputPerM":0.6,"outputPerM":2.2,"cacheReadPerM":0.11},{"modelId":"mystery-model-x","inputPerM":0.5,"outputPerM":2}]}

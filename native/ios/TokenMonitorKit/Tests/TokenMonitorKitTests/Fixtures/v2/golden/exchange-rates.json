@@ -1,0 +1,99 @@
+{
+  "source": "src/shared/exchangeRates.js: parseUsdRates(json), isCacheStale(cache, nowMs), todayUtc(nowMs), SOURCES; src/shared/currency.js: resolveEffectiveRates(fetched, overrides)",
+  "sources": ["https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json","https://latest.currency-api.pages.dev/v1/currencies/usd.json"],
+  "builtInFloors": {
+    "USD": 1,
+    "TWD": 31.5,
+    "HKD": 7.8,
+    "CNY": 6.8
+  },
+  "todayUtc": "2026-10-10",
+  "parse": {
+    "cdn": {
+      "payload": {"date":"2026-10-10","usd":{"eur":0.8611,"twd":30.4821,"hkd":7.7712,"cny":7.1234,"jpy":151.2,"krw":1389.4}},
+      "rates": {"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234},
+      "date": "2026-10-10"
+    },
+    "stringValues": {
+      "payload": {"date":"2026-10-09","usd":{"twd":"31.2","hkd":"7.79","cny":"7.2"}},
+      "rates": {"USD":1,"TWD":31.2,"HKD":7.79,"CNY":7.2},
+      "date": "2026-10-09"
+    },
+    "partial": {
+      "payload": {"date":"2026-10-10","usd":{"cny":7.1}},
+      "rates": null,
+      "date": "2026-10-10"
+    },
+    "zero": {
+      "payload": {"date":"2026-10-10","usd":{"twd":0,"hkd":7.7,"cny":7.1}},
+      "rates": null,
+      "date": "2026-10-10"
+    },
+    "negative": {
+      "payload": {"usd":{"twd":-30,"hkd":7.7,"cny":7.1}},
+      "rates": null,
+      "date": null
+    },
+    "noUsd": {
+      "payload": {"date":"2026-10-10","eur":{"usd":1.16}},
+      "rates": null,
+      "date": "2026-10-10"
+    },
+    "usdNotObject": {
+      "payload": {"usd":"nope"},
+      "rates": null,
+      "date": null
+    },
+    "upperCaseKeys": {
+      "payload": {"usd":{"TWD":30,"HKD":7.7,"CNY":7.1}},
+      "rates": null,
+      "date": null
+    },
+    "notObject": {
+      "payload": "garbage",
+      "rates": null,
+      "date": null
+    },
+    "nullPayload": {
+      "payload": null,
+      "rates": null,
+      "date": null
+    }
+  },
+  "resolve": [
+    {"fetched":{},"overrides":{},"output":{"USD":1,"TWD":31.5,"HKD":7.8,"CNY":6.8}},
+    {"fetched":{"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234},"overrides":{},"output":{"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234}},
+    {"fetched":{"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234},"overrides":{"HKD":7.8,"EUR":0.9,"TWD":0,"CNY":-1},"output":{"USD":1,"TWD":30.4821,"HKD":7.8,"CNY":7.1234}},
+    {"fetched":{"TWD":0,"HKD":"x","CNY":7},"overrides":{"CNY":"7.5"},"output":{"USD":1,"TWD":31.5,"HKD":7.8,"CNY":7.5}},
+    {"fetched":null,"overrides":null,"output":{"USD":1,"TWD":31.5,"HKD":7.8,"CNY":6.8}},
+    {"fetched":{"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234},"overrides":{"USD":2},"note":"the desktop function itself accepts a USD override; the settings UI never writes one (iOS ignores USD)","output":{"USD":2,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234}}
+  ],
+  "staleness": [
+    {"name":"sameUtcDay","cache":{"rates":{"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234},"date":"2026-10-10","fetchedAt":1791541800000},"now":"2026-10-10T16:30:00.000Z","stale":false},
+    {"name":"yesterdayWithin24h","cache":{"rates":{"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234},"date":"2026-10-09","fetchedAt":1791567000000},"now":"2026-10-10T16:30:00.000Z","stale":false},
+    {"name":"yesterdayOver24h","cache":{"rates":{"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234},"date":"2026-10-09","fetchedAt":1791559800000},"now":"2026-10-10T16:30:00.000Z","stale":true},
+    {"name":"noDateRecent","cache":{"rates":{"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234},"fetchedAt":1791646200000},"now":"2026-10-10T16:30:00.000Z","stale":false},
+    {"name":"noRates","cache":{"date":"2026-10-10","fetchedAt":1791649800000},"now":"2026-10-10T16:30:00.000Z","stale":true},
+    {"name":"fetchedAtString","cache":{"rates":{"USD":1,"TWD":30.4821,"HKD":7.7712,"CNY":7.1234},"date":"2026-10-08","fetchedAt":"1791646200000"},"now":"2026-10-10T16:30:00.000Z","stale":false},
+    {"name":"missing","cache":null,"now":"2026-10-10T16:30:00.000Z","stale":true}
+  ],
+  "effectiveRates": {
+    "fetched": {
+      "date": "2026-10-10",
+      "usd": {"eur":0.8611,"twd":30.4821,"hkd":7.7712,"cny":7.1234,"jpy":151.2,"krw":1389.4}
+    },
+    "overrides": {
+      "HKD": 7.8,
+      "EUR": 0.9,
+      "TWD": 0,
+      "CNY": -1
+    },
+    "rates": {
+      "USD": 1,
+      "TWD": 30.4821,
+      "HKD": 7.8,
+      "CNY": 7.1234
+    },
+    "note": "used as the configured rates by compact-money.json and subscriptions.json"
+  }
+}

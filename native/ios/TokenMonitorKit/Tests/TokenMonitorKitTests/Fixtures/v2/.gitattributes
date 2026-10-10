@@ -1,0 +1,5 @@
+# Fixture bytes are compared exactly. The repo-wide `* text=auto eol=lf` would
+# rewrite the export CSVs' CRLF line endings, and the SSE capture must keep the
+# blank line that terminates its last event.
+*.csv -text -whitespace
+stats-stream.txt -whitespace

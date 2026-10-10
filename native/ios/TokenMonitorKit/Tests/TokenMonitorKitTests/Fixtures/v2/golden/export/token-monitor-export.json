@@ -1,0 +1,2668 @@
+{
+  "generatedAt": "2026-10-10T16:30:00.000Z",
+  "app": {
+    "name": "token-monitor",
+    "version": "fixture"
+  },
+  "snapshot": {
+    "today": {
+      "capabilities": {
+        "tokenComponents": false,
+        "throughput": true
+      },
+      "totalTokens": 73237000,
+      "costUsd": 157.4114,
+      "cacheReadTokens": 61758320,
+      "cacheWriteTokens": 3590600,
+      "outputTokens": 1436240,
+      "unclassifiedTokens": 1368200,
+      "timedTokens": 63153000,
+      "timedOutputTokens": 1333230,
+      "timedDurationMs": 21649230,
+      "modelThroughput": {
+        "claude-sonnet-4-5": {
+          "timedTokens": 41220000,
+          "timedOutputTokens": 870200,
+          "timedDurationMs": 13731458
+        },
+        "deepseek-chat": {
+          "timedTokens": 810000,
+          "timedOutputTokens": 17100,
+          "timedDurationMs": 380000
+        },
+        "deepseek/deepseek-chat": {
+          "timedTokens": 360000,
+          "timedOutputTokens": 7600,
+          "timedDurationMs": 172727
+        },
+        "moonshotai/kimi-k2-turbo": {
+          "timedTokens": 900000,
+          "timedOutputTokens": 19000,
+          "timedDurationMs": 200000
+        },
+        "glm-4.6-cc": {
+          "timedTokens": 189000,
+          "timedOutputTokens": 3990,
+          "timedDurationMs": 57000
+        },
+        "claude-haiku-4-5": {
+          "timedTokens": 234000,
+          "timedOutputTokens": 4940,
+          "timedDurationMs": 41167
+        },
+        "claude-opus-4-1": {
+          "timedTokens": 8325000,
+          "timedOutputTokens": 175750,
+          "timedDurationMs": 4286585
+        },
+        "gpt-5-codex": {
+          "timedTokens": 9990000,
+          "timedOutputTokens": 210900,
+          "timedDurationMs": 2396591
+        },
+        "gpt-5-codex-high": {
+          "timedTokens": 585000,
+          "timedOutputTokens": 12350,
+          "timedDurationMs": 176429
+        },
+        "anthropic/claude-sonnet-4.5": {
+          "timedTokens": 540000,
+          "timedOutputTokens": 11400,
+          "timedDurationMs": 207273
+        }
+      },
+      "clients": {
+        "claude": 55362000,
+        "hermes": 2510000,
+        "gemini": 450000,
+        "cursor": 1350000,
+        "codex": 12400000,
+        "opencode": 1090000
+      },
+      "clientCosts": {
+        "claude": 138.1254,
+        "hermes": 1.381,
+        "gemini": 0.495,
+        "cursor": 1.08,
+        "codex": 15.14,
+        "opencode": 1.14
+      },
+      "clientCacheReads": {
+        "claude": 47611320,
+        "hermes": 2158600,
+        "gemini": 387000,
+        "codex": 10664000,
+        "opencode": 937400
+      },
+      "clientCacheWrites": {
+        "claude": 2768100,
+        "hermes": 125500,
+        "gemini": 22500,
+        "codex": 620000,
+        "opencode": 54500
+      },
+      "clientOutputs": {
+        "claude": 1107240,
+        "hermes": 50200,
+        "gemini": 9000,
+        "codex": 248000,
+        "opencode": 21800
+      },
+      "clientUnclassifiedTokens": {
+        "cursor": 1350000,
+        "claude": 18200
+      },
+      "models": {
+        "claude-sonnet-4-5": 45800000,
+        "deepseek-chat": 900000,
+        "deepseek/deepseek-chat": 400000,
+        "moonshotai/kimi-k2-turbo": 1000000,
+        "glm-4.6-cc": 210000,
+        "gemini-2.5-pro": 450000,
+        "cursor-auto": 1350000,
+        "claude-haiku-4-5": 312000,
+        "claude-opus-4-1": 9250000,
+        "gpt-5-codex": 11100000,
+        "gpt-5-codex-high": 650000,
+        "unknown": 650000,
+        "big-pickle": 400000,
+        "anthropic/claude-sonnet-4.5": 600000,
+        "mystery-model-x": 90000
+      },
+      "modelCosts": {
+        "claude-sonnet-4-5": 77.86,
+        "deepseek-chat": 0.252,
+        "deepseek/deepseek-chat": 0.124,
+        "moonshotai/kimi-k2-turbo": 0.9,
+        "glm-4.6-cc": 0.105,
+        "gemini-2.5-pro": 0.495,
+        "cursor-auto": 1.08,
+        "claude-haiku-4-5": 0.1404,
+        "claude-opus-4-1": 60.125,
+        "gpt-5-codex": 13.32,
+        "gpt-5-codex-high": 1.04,
+        "unknown": 0.78,
+        "anthropic/claude-sonnet-4.5": 1.14
+      },
+      "modelCacheReads": {
+        "claude-sonnet-4-5": 39388000,
+        "deepseek-chat": 774000,
+        "deepseek/deepseek-chat": 344000,
+        "moonshotai/kimi-k2-turbo": 860000,
+        "glm-4.6-cc": 180600,
+        "gemini-2.5-pro": 387000,
+        "claude-haiku-4-5": 268320,
+        "claude-opus-4-1": 7955000,
+        "gpt-5-codex": 9546000,
+        "gpt-5-codex-high": 559000,
+        "unknown": 559000,
+        "big-pickle": 344000,
+        "anthropic/claude-sonnet-4.5": 516000,
+        "mystery-model-x": 77400
+      },
+      "modelCacheWrites": {
+        "claude-sonnet-4-5": 2290000,
+        "deepseek-chat": 45000,
+        "deepseek/deepseek-chat": 20000,
+        "moonshotai/kimi-k2-turbo": 50000,
+        "glm-4.6-cc": 10500,
+        "gemini-2.5-pro": 22500,
+        "claude-haiku-4-5": 15600,
+        "claude-opus-4-1": 462500,
+        "gpt-5-codex": 555000,
+        "gpt-5-codex-high": 32500,
+        "unknown": 32500,
+        "big-pickle": 20000,
+        "anthropic/claude-sonnet-4.5": 30000,
+        "mystery-model-x": 4500
+      },
+      "modelOutputs": {
+        "claude-sonnet-4-5": 916000,
+        "deepseek-chat": 18000,
+        "deepseek/deepseek-chat": 8000,
+        "moonshotai/kimi-k2-turbo": 20000,
+        "glm-4.6-cc": 4200,
+        "gemini-2.5-pro": 9000,
+        "claude-haiku-4-5": 6240,
+        "claude-opus-4-1": 185000,
+        "gpt-5-codex": 222000,
+        "gpt-5-codex-high": 13000,
+        "unknown": 13000,
+        "big-pickle": 8000,
+        "anthropic/claude-sonnet-4.5": 12000,
+        "mystery-model-x": 1800
+      },
+      "modelUnclassifiedTokens": {
+        "cursor-auto": 1350000,
+        "claude-haiku-4-5": 18200
+      },
+      "clientModels": {
+        "claude": {
+          "claude-sonnet-4-5": 45800000,
+          "claude-haiku-4-5": 312000,
+          "claude-opus-4-1": 9250000
+        },
+        "hermes": {
+          "deepseek-chat": 900000,
+          "deepseek/deepseek-chat": 400000,
+          "moonshotai/kimi-k2-turbo": 1000000,
+          "glm-4.6-cc": 210000
+        },
+        "gemini": {
+          "gemini-2.5-pro": 450000
+        },
+        "cursor": {
+          "cursor-auto": 1350000
+        },
+        "codex": {
+          "gpt-5-codex": 11100000,
+          "gpt-5-codex-high": 650000,
+          "unknown": 650000
+        },
+        "opencode": {
+          "big-pickle": 400000,
+          "anthropic/claude-sonnet-4.5": 600000,
+          "mystery-model-x": 90000
+        }
+      },
+      "clientModelCosts": {
+        "claude": {
+          "claude-sonnet-4-5": 77.86,
+          "claude-haiku-4-5": 0.1404,
+          "claude-opus-4-1": 60.125
+        },
+        "hermes": {
+          "deepseek-chat": 0.252,
+          "deepseek/deepseek-chat": 0.124,
+          "moonshotai/kimi-k2-turbo": 0.9,
+          "glm-4.6-cc": 0.105
+        },
+        "gemini": {
+          "gemini-2.5-pro": 0.495
+        },
+        "cursor": {
+          "cursor-auto": 1.08
+        },
+        "codex": {
+          "gpt-5-codex": 13.32,
+          "gpt-5-codex-high": 1.04,
+          "unknown": 0.78
+        },
+        "opencode": {
+          "anthropic/claude-sonnet-4.5": 1.14
+        }
+      },
+      "projects": {
+        "infra": {
+          "label": "infra",
+          "tokens": 1502000,
+          "costUsd": 1.4184,
+          "clients": {
+            "hermes": 1000000,
+            "gemini": 450000,
+            "claude": 52000
+          }
+        },
+        "token-monitor": {
+          "label": "token-monitor",
+          "tokens": 8193000,
+          "costUsd": 19.3766,
+          "clients": {
+            "claude": 4650000,
+            "codex": 3543000
+          }
+        },
+        "docs-site": {
+          "label": "docs-site",
+          "tokens": 1790000,
+          "costUsd": 1.944,
+          "clients": {
+            "codex": 640000,
+            "opencode": 1150000
+          }
+        }
+      },
+      "sessions": {
+        "hermes:hermes-20261010-0815": {
+          "client": "hermes",
+          "sessionId": "hermes-20261010-0815",
+          "totalTokens": 1000000,
+          "costUsd": 0.9,
+          "messageCount": 13,
+          "inputTokens": 70000,
+          "outputTokens": 20000,
+          "cacheReadTokens": 860000,
+          "cacheWriteTokens": 50000,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 18000,
+          "timedDurationMs": 310345,
+          "startedAt": "2026-10-10T08:30:00.000Z",
+          "lastUsedAt": "2026-10-10T16:23:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-infra",
+          "projectLabel": "infra",
+          "sessionKind": "",
+          "models": {
+            "moonshotai/kimi-k2-turbo": 1000000
+          },
+          "modelCosts": {
+            "moonshotai/kimi-k2-turbo": 0.9
+          },
+          "providers": {
+            "moonshotai": 1000000
+          }
+        },
+        "gemini:gemini-6c5b4a39": {
+          "client": "gemini",
+          "sessionId": "gemini-6c5b4a39",
+          "totalTokens": 450000,
+          "costUsd": 0.495,
+          "messageCount": 6,
+          "inputTokens": 31500,
+          "outputTokens": 9000,
+          "cacheReadTokens": 387000,
+          "cacheWriteTokens": 22500,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 0,
+          "timedDurationMs": 0,
+          "startedAt": "2026-10-10T15:00:00.000Z",
+          "lastUsedAt": "2026-10-10T16:26:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-infra",
+          "projectLabel": "infra",
+          "sessionKind": "",
+          "models": {
+            "gemini-2.5-pro": 450000
+          },
+          "modelCosts": {
+            "gemini-2.5-pro": 0.495
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T16:29:00.000Z",
+            "ttlSeconds": 300
+          },
+          "turnEnded": false
+        },
+        "claude:7f3c2a90-1b2c-4d5e-8f90-a1b2c3d4e5f6": {
+          "client": "claude",
+          "sessionId": "7f3c2a90-1b2c-4d5e-8f90-a1b2c3d4e5f6",
+          "totalTokens": 3200000,
+          "costUsd": 5.44,
+          "messageCount": 41,
+          "inputTokens": 224000,
+          "outputTokens": 64000,
+          "cacheReadTokens": 2752000,
+          "cacheWriteTokens": 160000,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 57600,
+          "timedDurationMs": 993103,
+          "startedAt": "2026-10-10T13:30:00.000Z",
+          "lastUsedAt": "2026-10-10T16:28:00.000Z",
+          "contextTokens": 190900,
+          "contextWindow": 950000,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "",
+          "models": {
+            "claude-sonnet-4-5": 3200000
+          },
+          "modelCosts": {
+            "claude-sonnet-4-5": 5.44
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T16:29:00.000Z",
+            "ttlSeconds": 300
+          },
+          "turnEnded": false
+        },
+        "claude:0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d": {
+          "client": "claude",
+          "sessionId": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "totalTokens": 1450000,
+          "costUsd": 9.425,
+          "messageCount": 18,
+          "inputTokens": 101500,
+          "outputTokens": 29000,
+          "cacheReadTokens": 1247000,
+          "cacheWriteTokens": 72500,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 26100,
+          "timedDurationMs": 450000,
+          "startedAt": "2026-10-10T15:20:00.000Z",
+          "lastUsedAt": "2026-10-10T16:25:00.000Z",
+          "contextTokens": 182000,
+          "contextWindow": 200000,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "",
+          "models": {
+            "claude-opus-4-1": 1450000
+          },
+          "modelCosts": {
+            "claude-opus-4-1": 9.425
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T16:25:00.000Z",
+            "ttlSeconds": 3600
+          },
+          "turnEnded": true
+        },
+        "codex:rollout-2026-10-10T09-12-33-5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e": {
+          "client": "codex",
+          "sessionId": "rollout-2026-10-10T09-12-33-5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e",
+          "totalTokens": 2750000,
+          "costUsd": 3.56,
+          "messageCount": 63,
+          "inputTokens": 192500,
+          "outputTokens": 55000,
+          "cacheReadTokens": 2365000,
+          "cacheWriteTokens": 137500,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 49500,
+          "timedDurationMs": 853448,
+          "startedAt": "2026-10-10T11:30:00.000Z",
+          "lastUsedAt": "2026-10-10T14:30:00.000Z",
+          "contextTokens": 120000,
+          "contextWindow": 272000,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "",
+          "models": {
+            "gpt-5-codex": 2100000,
+            "gpt-5-codex-high": 650000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 2.52,
+            "gpt-5-codex-high": 1.04
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T14:30:00.000Z",
+            "ttlSeconds": 1800
+          },
+          "turnEnded": true
+        },
+        "codex:c4d5e6f7-a8b9-4c0d-8e1f-2a3b4c5d6e7f": {
+          "client": "codex",
+          "sessionId": "c4d5e6f7-a8b9-4c0d-8e1f-2a3b4c5d6e7f",
+          "totalTokens": 640000,
+          "costUsd": 0.768,
+          "messageCount": 1,
+          "inputTokens": 44800,
+          "outputTokens": 12800,
+          "cacheReadTokens": 550400,
+          "cacheWriteTokens": 32000,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 11520,
+          "timedDurationMs": 198621,
+          "startedAt": "2026-10-10T15:50:00.000Z",
+          "lastUsedAt": "2026-10-10T16:27:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-docs",
+          "projectLabel": "docs-site",
+          "sessionKind": "",
+          "models": {
+            "gpt-5-codex": 640000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 0.768
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T16:27:00.000Z",
+            "ttlSeconds": 300
+          },
+          "archived": true
+        },
+        "codex:review-1f2e3d4c-5b6a-4978-8695-a4b3c2d1e0f9": {
+          "client": "codex",
+          "sessionId": "review-1f2e3d4c-5b6a-4978-8695-a4b3c2d1e0f9",
+          "totalTokens": 310000,
+          "costUsd": 0.372,
+          "messageCount": 4,
+          "inputTokens": 21700,
+          "outputTokens": 6200,
+          "cacheReadTokens": 266600,
+          "cacheWriteTokens": 15500,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 5580,
+          "timedDurationMs": 96207,
+          "startedAt": "2026-10-10T16:18:00.000Z",
+          "lastUsedAt": "2026-10-10T16:22:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "background-review",
+          "models": {
+            "gpt-5-codex": 310000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 0.372
+          },
+          "providers": {},
+          "turnEnded": true
+        },
+        "codex:review-2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d": {
+          "client": "codex",
+          "sessionId": "review-2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d",
+          "totalTokens": 285000,
+          "costUsd": 0.342,
+          "messageCount": 4,
+          "inputTokens": 19950,
+          "outputTokens": 5700,
+          "cacheReadTokens": 245100,
+          "cacheWriteTokens": 14250,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 5130,
+          "timedDurationMs": 88448,
+          "startedAt": "2026-10-10T15:55:00.000Z",
+          "lastUsedAt": "2026-10-10T16:00:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "background-review",
+          "models": {
+            "gpt-5-codex": 285000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 0.342
+          },
+          "providers": {},
+          "turnEnded": true
+        },
+        "codex:review-3b4c5d6e-7f8a-4b9c-8d0e-2f3a4b5c6d7e": {
+          "client": "codex",
+          "sessionId": "review-3b4c5d6e-7f8a-4b9c-8d0e-2f3a4b5c6d7e",
+          "totalTokens": 198000,
+          "costUsd": 0.2376,
+          "messageCount": 2,
+          "inputTokens": 13860,
+          "outputTokens": 3960,
+          "cacheReadTokens": 170280,
+          "cacheWriteTokens": 9900,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 3564,
+          "timedDurationMs": 61448,
+          "startedAt": "2026-10-10T15:35:00.000Z",
+          "lastUsedAt": "2026-10-10T15:40:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "background-review",
+          "models": {
+            "gpt-5-codex": 198000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 0.2376
+          },
+          "providers": {},
+          "turnEnded": true
+        },
+        "opencode:ses_6f1e2d3c4b5a": {
+          "client": "opencode",
+          "sessionId": "ses_6f1e2d3c4b5a",
+          "totalTokens": 1150000,
+          "costUsd": 1.176,
+          "messageCount": 22,
+          "inputTokens": 1124000,
+          "outputTokens": 21000,
+          "cacheReadTokens": 4000,
+          "cacheWriteTokens": 1000,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 18900,
+          "timedDurationMs": 325862,
+          "startedAt": "2026-10-10T12:30:00.000Z",
+          "lastUsedAt": "2026-10-10T16:04:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-docs",
+          "projectLabel": "docs-site",
+          "sessionKind": "",
+          "models": {
+            "anthropic/claude-sonnet-4.5": 600000,
+            "big-pickle": 400000,
+            "gpt-5-codex": 30000
+          },
+          "modelCosts": {
+            "anthropic/claude-sonnet-4.5": 1.14,
+            "gpt-5-codex": 0.036
+          },
+          "providers": {}
+        },
+        "opencode:ses_7a8b9c0d1e2f": {
+          "client": "opencode",
+          "sessionId": "ses_7a8b9c0d1e2f",
+          "totalTokens": 90000,
+          "costUsd": 0,
+          "messageCount": 3,
+          "inputTokens": 6300,
+          "outputTokens": 1800,
+          "cacheReadTokens": 77400,
+          "cacheWriteTokens": 4500,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 1620,
+          "timedDurationMs": 27931,
+          "startedAt": "2026-10-10T10:30:00.000Z",
+          "lastUsedAt": "2026-10-10T11:30:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "",
+          "projectLabel": "",
+          "sessionKind": "",
+          "models": {
+            "mystery-model-x": 90000
+          },
+          "modelCosts": {},
+          "providers": {},
+          "unpricedTokens": 90000
+        },
+        "claude:9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a": {
+          "client": "claude",
+          "sessionId": "9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a",
+          "totalTokens": 52000,
+          "costUsd": 0.0234,
+          "messageCount": 4,
+          "inputTokens": 3640,
+          "outputTokens": 1040,
+          "cacheReadTokens": 44720,
+          "cacheWriteTokens": 2600,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 0,
+          "timedDurationMs": 0,
+          "startedAt": "2026-10-10T16:10:00.000Z",
+          "lastUsedAt": "2026-10-10T16:20:30.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-infra",
+          "projectLabel": "infra",
+          "sessionKind": "",
+          "models": {
+            "claude-haiku-4-5": 52000
+          },
+          "modelCosts": {
+            "claude-haiku-4-5": 0.0234
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T16:32:00.000Z",
+            "ttlSeconds": 300
+          }
+        },
+        "claude:empty-0000": {
+          "client": "claude",
+          "sessionId": "empty-0000",
+          "totalTokens": 0,
+          "costUsd": 0,
+          "messageCount": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 0,
+          "timedDurationMs": 0,
+          "startedAt": "2026-10-10T16:20:00.000Z",
+          "lastUsedAt": "2026-10-10T16:20:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "",
+          "projectLabel": "",
+          "sessionKind": "",
+          "models": {
+            "claude-sonnet-4-5": 0
+          },
+          "modelCosts": {},
+          "providers": {}
+        }
+      },
+      "unpricedTokens": 90000,
+      "clientUnpricedTokens": {
+        "opencode": 90000
+      },
+      "modelUnpricedTokens": {
+        "mystery-model-x": 90000
+      },
+      "clientModelUnpricedTokens": {
+        "opencode": {
+          "mystery-model-x": 90000
+        }
+      }
+    },
+    "month": {
+      "capabilities": {
+        "tokenComponents": false,
+        "throughput": false
+      },
+      "totalTokens": 734704000,
+      "costUsd": 1542.1648,
+      "cacheReadTokens": 613080240,
+      "cacheWriteTokens": 35644200,
+      "outputTokens": 14257680,
+      "unclassifiedTokens": 21273000,
+      "timedTokens": 610299000,
+      "timedOutputTokens": 12884090,
+      "timedDurationMs": 209721192,
+      "clients": {
+        "copilot": 4200000,
+        "kimi": 6600000,
+        "claude": 539969000,
+        "hermes": 27720000,
+        "gemini": 5250000,
+        "qwen": 990000,
+        "cursor": 21000000,
+        "codex": 117800000,
+        "opencode": 10355000
+      },
+      "clientCosts": {
+        "copilot": 8.4,
+        "kimi": 5.94,
+        "claude": 1334.2548,
+        "hermes": 15.191,
+        "gemini": 5.775,
+        "qwen": 0.594,
+        "cursor": 16.8,
+        "codex": 143.83,
+        "opencode": 10.83
+      },
+      "clientCacheReads": {
+        "copilot": 3612000,
+        "kimi": 5676000,
+        "claude": 464373340,
+        "hermes": 23839200,
+        "gemini": 4515000,
+        "qwen": 851400,
+        "codex": 101308000,
+        "opencode": 8905300
+      },
+      "clientCacheWrites": {
+        "copilot": 210000,
+        "kimi": 330000,
+        "claude": 26998450,
+        "hermes": 1386000,
+        "gemini": 262500,
+        "qwen": 49500,
+        "codex": 5890000,
+        "opencode": 517750
+      },
+      "clientOutputs": {
+        "copilot": 84000,
+        "kimi": 132000,
+        "claude": 10799380,
+        "hermes": 554400,
+        "gemini": 105000,
+        "qwen": 19800,
+        "codex": 2356000,
+        "opencode": 207100
+      },
+      "clientUnclassifiedTokens": {
+        "cursor": 21000000,
+        "claude": 273000
+      },
+      "models": {
+        "gpt-4.1": 4200000,
+        "moonshotai/kimi-k2-turbo": 17600000,
+        "claude-sonnet-4-5": 445300000,
+        "deepseek-chat": 9900000,
+        "deepseek/deepseek-chat": 4400000,
+        "glm-4.6-cc": 2310000,
+        "gemini-2.5-pro": 5250000,
+        "qwen3-coder-plus": 990000,
+        "mystery-model-x": 965000,
+        "cursor-auto": 21000000,
+        "claude-haiku-4-5": 4394000,
+        "claude-opus-4-1": 87875000,
+        "gpt-5-codex": 105450000,
+        "gpt-5-codex-high": 6175000,
+        "unknown": 6175000,
+        "big-pickle": 3800000,
+        "anthropic/claude-sonnet-4.5": 5700000,
+        "claude-sonnet-4.5": 2400000
+      },
+      "modelCosts": {
+        "gpt-4.1": 8.4,
+        "moonshotai/kimi-k2-turbo": 15.84,
+        "claude-sonnet-4-5": 757.01,
+        "deepseek-chat": 2.772,
+        "deepseek/deepseek-chat": 1.364,
+        "glm-4.6-cc": 1.155,
+        "gemini-2.5-pro": 5.775,
+        "qwen3-coder-plus": 0.594,
+        "cursor-auto": 16.8,
+        "claude-haiku-4-5": 1.9773,
+        "claude-opus-4-1": 571.1875,
+        "gpt-5-codex": 126.54,
+        "gpt-5-codex-high": 9.88,
+        "unknown": 7.41,
+        "anthropic/claude-sonnet-4.5": 10.83,
+        "claude-sonnet-4.5": 4.08
+      },
+      "modelCacheReads": {
+        "gpt-4.1": 3612000,
+        "moonshotai/kimi-k2-turbo": 15136000,
+        "claude-sonnet-4-5": 382958000,
+        "deepseek-chat": 8514000,
+        "deepseek/deepseek-chat": 3784000,
+        "glm-4.6-cc": 1986600,
+        "gemini-2.5-pro": 4515000,
+        "qwen3-coder-plus": 851400,
+        "mystery-model-x": 829900,
+        "claude-haiku-4-5": 3778840,
+        "claude-opus-4-1": 75572500,
+        "gpt-5-codex": 90687000,
+        "gpt-5-codex-high": 5310500,
+        "unknown": 5310500,
+        "big-pickle": 3268000,
+        "anthropic/claude-sonnet-4.5": 4902000,
+        "claude-sonnet-4.5": 2064000
+      },
+      "modelCacheWrites": {
+        "gpt-4.1": 210000,
+        "moonshotai/kimi-k2-turbo": 880000,
+        "claude-sonnet-4-5": 22265000,
+        "deepseek-chat": 495000,
+        "deepseek/deepseek-chat": 220000,
+        "glm-4.6-cc": 115500,
+        "gemini-2.5-pro": 262500,
+        "qwen3-coder-plus": 49500,
+        "mystery-model-x": 48250,
+        "claude-haiku-4-5": 219700,
+        "claude-opus-4-1": 4393750,
+        "gpt-5-codex": 5272500,
+        "gpt-5-codex-high": 308750,
+        "unknown": 308750,
+        "big-pickle": 190000,
+        "anthropic/claude-sonnet-4.5": 285000,
+        "claude-sonnet-4.5": 120000
+      },
+      "modelOutputs": {
+        "gpt-4.1": 84000,
+        "moonshotai/kimi-k2-turbo": 352000,
+        "claude-sonnet-4-5": 8906000,
+        "deepseek-chat": 198000,
+        "deepseek/deepseek-chat": 88000,
+        "glm-4.6-cc": 46200,
+        "gemini-2.5-pro": 105000,
+        "qwen3-coder-plus": 19800,
+        "mystery-model-x": 19300,
+        "claude-haiku-4-5": 87880,
+        "claude-opus-4-1": 1757500,
+        "gpt-5-codex": 2109000,
+        "gpt-5-codex-high": 123500,
+        "unknown": 123500,
+        "big-pickle": 76000,
+        "anthropic/claude-sonnet-4.5": 114000,
+        "claude-sonnet-4.5": 48000
+      },
+      "modelUnclassifiedTokens": {
+        "cursor-auto": 21000000,
+        "claude-haiku-4-5": 273000
+      },
+      "clientModels": {
+        "copilot": {
+          "gpt-4.1": 4200000
+        },
+        "kimi": {
+          "moonshotai/kimi-k2-turbo": 6600000
+        },
+        "claude": {
+          "claude-sonnet-4-5": 445300000,
+          "claude-haiku-4-5": 4394000,
+          "claude-opus-4-1": 87875000,
+          "claude-sonnet-4.5": 2400000
+        },
+        "hermes": {
+          "deepseek-chat": 9900000,
+          "deepseek/deepseek-chat": 4400000,
+          "moonshotai/kimi-k2-turbo": 11000000,
+          "glm-4.6-cc": 2310000,
+          "mystery-model-x": 110000
+        },
+        "gemini": {
+          "gemini-2.5-pro": 5250000
+        },
+        "qwen": {
+          "qwen3-coder-plus": 990000
+        },
+        "cursor": {
+          "cursor-auto": 21000000
+        },
+        "codex": {
+          "gpt-5-codex": 105450000,
+          "gpt-5-codex-high": 6175000,
+          "unknown": 6175000
+        },
+        "opencode": {
+          "big-pickle": 3800000,
+          "anthropic/claude-sonnet-4.5": 5700000,
+          "mystery-model-x": 855000
+        }
+      },
+      "clientModelCosts": {
+        "copilot": {
+          "gpt-4.1": 8.4
+        },
+        "kimi": {
+          "moonshotai/kimi-k2-turbo": 5.94
+        },
+        "claude": {
+          "claude-sonnet-4-5": 757.01,
+          "claude-haiku-4-5": 1.9773,
+          "claude-opus-4-1": 571.1875,
+          "claude-sonnet-4.5": 4.08
+        },
+        "hermes": {
+          "deepseek-chat": 2.772,
+          "deepseek/deepseek-chat": 1.364,
+          "moonshotai/kimi-k2-turbo": 9.9,
+          "glm-4.6-cc": 1.155
+        },
+        "gemini": {
+          "gemini-2.5-pro": 5.775
+        },
+        "qwen": {
+          "qwen3-coder-plus": 0.594
+        },
+        "cursor": {
+          "cursor-auto": 16.8
+        },
+        "codex": {
+          "gpt-5-codex": 126.54,
+          "gpt-5-codex-high": 9.88,
+          "unknown": 7.41
+        },
+        "opencode": {
+          "anthropic/claude-sonnet-4.5": 10.83
+        }
+      },
+      "projects": {
+        "token-monitor": {
+          "label": "Token-Monitor",
+          "tokens": 168900000,
+          "costUsd": 302.6,
+          "clients": {
+            "claude": 121900000,
+            "codex": 40500000
+          }
+        },
+        "docs-site": {
+          "label": "docs-site",
+          "tokens": 21000000,
+          "costUsd": 9.75,
+          "clients": {
+            "opencode": 13000000,
+            "codex": 8000000
+          },
+          "unpricedTokens": 855000
+        },
+        "infra": {
+          "label": "Infra",
+          "tokens": 5600000,
+          "costUsd": 6.6,
+          "clients": {
+            "codex": 5100000,
+            "claude": 500000
+          }
+        }
+      },
+      "sessions": {
+        "claude:7f3c2a90-1b2c-4d5e-8f90-a1b2c3d4e5f6": {
+          "client": "claude",
+          "sessionId": "7f3c2a90-1b2c-4d5e-8f90-a1b2c3d4e5f6",
+          "totalTokens": 3200000,
+          "costUsd": 5.44,
+          "messageCount": 41,
+          "inputTokens": 224000,
+          "outputTokens": 64000,
+          "cacheReadTokens": 2752000,
+          "cacheWriteTokens": 160000,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 57600,
+          "timedDurationMs": 993103,
+          "startedAt": "2026-10-10T13:30:00.000Z",
+          "lastUsedAt": "2026-10-10T16:28:00.000Z",
+          "contextTokens": 190900,
+          "contextWindow": 950000,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "",
+          "models": {
+            "claude-sonnet-4-5": 3200000
+          },
+          "modelCosts": {
+            "claude-sonnet-4-5": 5.44
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T16:29:00.000Z",
+            "ttlSeconds": 300
+          },
+          "turnEnded": false
+        },
+        "claude:0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d": {
+          "client": "claude",
+          "sessionId": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "totalTokens": 1450000,
+          "costUsd": 9.425,
+          "messageCount": 18,
+          "inputTokens": 101500,
+          "outputTokens": 29000,
+          "cacheReadTokens": 1247000,
+          "cacheWriteTokens": 72500,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 26100,
+          "timedDurationMs": 450000,
+          "startedAt": "2026-10-10T15:20:00.000Z",
+          "lastUsedAt": "2026-10-10T16:25:00.000Z",
+          "contextTokens": 182000,
+          "contextWindow": 200000,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "",
+          "models": {
+            "claude-opus-4-1": 1450000
+          },
+          "modelCosts": {
+            "claude-opus-4-1": 9.425
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T16:25:00.000Z",
+            "ttlSeconds": 3600
+          },
+          "turnEnded": true
+        },
+        "codex:rollout-2026-10-10T09-12-33-5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e": {
+          "client": "codex",
+          "sessionId": "rollout-2026-10-10T09-12-33-5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e",
+          "totalTokens": 2750000,
+          "costUsd": 3.56,
+          "messageCount": 63,
+          "inputTokens": 192500,
+          "outputTokens": 55000,
+          "cacheReadTokens": 2365000,
+          "cacheWriteTokens": 137500,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 49500,
+          "timedDurationMs": 853448,
+          "startedAt": "2026-10-10T11:30:00.000Z",
+          "lastUsedAt": "2026-10-10T14:30:00.000Z",
+          "contextTokens": 120000,
+          "contextWindow": 272000,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "",
+          "models": {
+            "gpt-5-codex": 2100000,
+            "gpt-5-codex-high": 650000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 2.52,
+            "gpt-5-codex-high": 1.04
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T14:30:00.000Z",
+            "ttlSeconds": 1800
+          },
+          "turnEnded": true
+        },
+        "codex:c4d5e6f7-a8b9-4c0d-8e1f-2a3b4c5d6e7f": {
+          "client": "codex",
+          "sessionId": "c4d5e6f7-a8b9-4c0d-8e1f-2a3b4c5d6e7f",
+          "totalTokens": 640000,
+          "costUsd": 0.768,
+          "messageCount": 1,
+          "inputTokens": 44800,
+          "outputTokens": 12800,
+          "cacheReadTokens": 550400,
+          "cacheWriteTokens": 32000,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 11520,
+          "timedDurationMs": 198621,
+          "startedAt": "2026-10-10T15:50:00.000Z",
+          "lastUsedAt": "2026-10-10T16:27:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-docs",
+          "projectLabel": "docs-site",
+          "sessionKind": "",
+          "models": {
+            "gpt-5-codex": 640000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 0.768
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T16:27:00.000Z",
+            "ttlSeconds": 300
+          },
+          "archived": true
+        },
+        "codex:review-1f2e3d4c-5b6a-4978-8695-a4b3c2d1e0f9": {
+          "client": "codex",
+          "sessionId": "review-1f2e3d4c-5b6a-4978-8695-a4b3c2d1e0f9",
+          "totalTokens": 310000,
+          "costUsd": 0.372,
+          "messageCount": 4,
+          "inputTokens": 21700,
+          "outputTokens": 6200,
+          "cacheReadTokens": 266600,
+          "cacheWriteTokens": 15500,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 5580,
+          "timedDurationMs": 96207,
+          "startedAt": "2026-10-10T16:18:00.000Z",
+          "lastUsedAt": "2026-10-10T16:22:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "background-review",
+          "models": {
+            "gpt-5-codex": 310000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 0.372
+          },
+          "providers": {},
+          "turnEnded": true
+        },
+        "codex:review-2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d": {
+          "client": "codex",
+          "sessionId": "review-2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d",
+          "totalTokens": 285000,
+          "costUsd": 0.342,
+          "messageCount": 4,
+          "inputTokens": 19950,
+          "outputTokens": 5700,
+          "cacheReadTokens": 245100,
+          "cacheWriteTokens": 14250,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 5130,
+          "timedDurationMs": 88448,
+          "startedAt": "2026-10-10T15:55:00.000Z",
+          "lastUsedAt": "2026-10-10T16:00:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "background-review",
+          "models": {
+            "gpt-5-codex": 285000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 0.342
+          },
+          "providers": {},
+          "turnEnded": true
+        },
+        "codex:review-3b4c5d6e-7f8a-4b9c-8d0e-2f3a4b5c6d7e": {
+          "client": "codex",
+          "sessionId": "review-3b4c5d6e-7f8a-4b9c-8d0e-2f3a4b5c6d7e",
+          "totalTokens": 198000,
+          "costUsd": 0.2376,
+          "messageCount": 2,
+          "inputTokens": 13860,
+          "outputTokens": 3960,
+          "cacheReadTokens": 170280,
+          "cacheWriteTokens": 9900,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 3564,
+          "timedDurationMs": 61448,
+          "startedAt": "2026-10-10T15:35:00.000Z",
+          "lastUsedAt": "2026-10-10T15:40:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "background-review",
+          "models": {
+            "gpt-5-codex": 198000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 0.2376
+          },
+          "providers": {},
+          "turnEnded": true
+        },
+        "opencode:ses_6f1e2d3c4b5a": {
+          "client": "opencode",
+          "sessionId": "ses_6f1e2d3c4b5a",
+          "totalTokens": 1150000,
+          "costUsd": 1.176,
+          "messageCount": 22,
+          "inputTokens": 1124000,
+          "outputTokens": 21000,
+          "cacheReadTokens": 4000,
+          "cacheWriteTokens": 1000,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 18900,
+          "timedDurationMs": 325862,
+          "startedAt": "2026-10-10T12:30:00.000Z",
+          "lastUsedAt": "2026-10-10T16:04:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-docs",
+          "projectLabel": "docs-site",
+          "sessionKind": "",
+          "models": {
+            "anthropic/claude-sonnet-4.5": 600000,
+            "big-pickle": 400000,
+            "gpt-5-codex": 30000
+          },
+          "modelCosts": {
+            "anthropic/claude-sonnet-4.5": 1.14,
+            "gpt-5-codex": 0.036
+          },
+          "providers": {}
+        },
+        "opencode:ses_7a8b9c0d1e2f": {
+          "client": "opencode",
+          "sessionId": "ses_7a8b9c0d1e2f",
+          "totalTokens": 90000,
+          "costUsd": 0,
+          "messageCount": 3,
+          "inputTokens": 6300,
+          "outputTokens": 1800,
+          "cacheReadTokens": 77400,
+          "cacheWriteTokens": 4500,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 1620,
+          "timedDurationMs": 27931,
+          "startedAt": "2026-10-10T10:30:00.000Z",
+          "lastUsedAt": "2026-10-10T11:30:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "",
+          "projectLabel": "",
+          "sessionKind": "",
+          "models": {
+            "mystery-model-x": 90000
+          },
+          "modelCosts": {},
+          "providers": {},
+          "unpricedTokens": 90000
+        },
+        "claude:9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a": {
+          "client": "claude",
+          "sessionId": "9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a",
+          "totalTokens": 52000,
+          "costUsd": 0.0234,
+          "messageCount": 4,
+          "inputTokens": 3640,
+          "outputTokens": 1040,
+          "cacheReadTokens": 44720,
+          "cacheWriteTokens": 2600,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 0,
+          "timedDurationMs": 0,
+          "startedAt": "2026-10-10T16:10:00.000Z",
+          "lastUsedAt": "2026-10-10T16:20:30.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-infra",
+          "projectLabel": "infra",
+          "sessionKind": "",
+          "models": {
+            "claude-haiku-4-5": 52000
+          },
+          "modelCosts": {
+            "claude-haiku-4-5": 0.0234
+          },
+          "providers": {},
+          "promptCache": {
+            "observedAt": "2026-10-10T16:32:00.000Z",
+            "ttlSeconds": 300
+          }
+        },
+        "claude:empty-0000": {
+          "client": "claude",
+          "sessionId": "empty-0000",
+          "totalTokens": 0,
+          "costUsd": 0,
+          "messageCount": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 0,
+          "timedDurationMs": 0,
+          "startedAt": "2026-10-10T16:20:00.000Z",
+          "lastUsedAt": "2026-10-10T16:20:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "",
+          "projectLabel": "",
+          "sessionKind": "",
+          "models": {
+            "claude-sonnet-4-5": 0
+          },
+          "modelCosts": {},
+          "providers": {}
+        },
+        "claude:1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f": {
+          "client": "claude",
+          "sessionId": "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+          "totalTokens": 8400000,
+          "costUsd": 14.28,
+          "messageCount": 120,
+          "inputTokens": 588000,
+          "outputTokens": 168000,
+          "cacheReadTokens": 7224000,
+          "cacheWriteTokens": 420000,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 151200,
+          "timedDurationMs": 2606897,
+          "startedAt": "2026-10-07T14:30:00.000Z",
+          "lastUsedAt": "2026-10-07T16:30:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-token-monitor",
+          "projectLabel": "token-monitor",
+          "sessionKind": "",
+          "models": {
+            "claude-sonnet-4-5": 8400000
+          },
+          "modelCosts": {
+            "claude-sonnet-4-5": 14.28
+          },
+          "providers": {},
+          "turnEnded": true
+        },
+        "codex:rollout-2026-10-02T21-40-00-8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d-11223344-5566-4778-8899-aabbccddeeff": {
+          "client": "codex",
+          "sessionId": "rollout-2026-10-02T21-40-00-8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d-11223344-5566-4778-8899-aabbccddeeff",
+          "totalTokens": 5100000,
+          "costUsd": 6.12,
+          "messageCount": 200,
+          "inputTokens": 357000,
+          "outputTokens": 102000,
+          "cacheReadTokens": 4386000,
+          "cacheWriteTokens": 255000,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 91800,
+          "timedDurationMs": 1582759,
+          "startedAt": "2026-10-02T16:30:00.000Z",
+          "lastUsedAt": "2026-10-02T20:30:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-infra",
+          "projectLabel": "infra",
+          "sessionKind": "",
+          "models": {
+            "gpt-5-codex": 5100000
+          },
+          "modelCosts": {
+            "gpt-5-codex": 6.12
+          },
+          "providers": {}
+        },
+        "opencode:ses_0f9e8d7c6b5a": {
+          "client": "opencode",
+          "sessionId": "ses_0f9e8d7c6b5a",
+          "totalTokens": 2300000,
+          "costUsd": 0,
+          "messageCount": 29,
+          "inputTokens": 2258800,
+          "outputTokens": 40000,
+          "cacheReadTokens": 1200,
+          "cacheWriteTokens": 0,
+          "reasoningTokens": 0,
+          "timedOutputTokens": 36000,
+          "timedDurationMs": 620690,
+          "startedAt": "2026-10-05T16:30:00.000Z",
+          "lastUsedAt": "2026-10-05T19:30:00.000Z",
+          "contextTokens": 0,
+          "contextWindow": 0,
+          "projectId": "sha256:fixture-project-docs",
+          "projectLabel": "docs-site",
+          "sessionKind": "",
+          "models": {
+            "big-pickle": 2300000
+          },
+          "modelCosts": {},
+          "providers": {}
+        }
+      },
+      "unpricedTokens": 965000,
+      "clientUnpricedTokens": {
+        "hermes": 110000,
+        "opencode": 855000
+      },
+      "modelUnpricedTokens": {
+        "mystery-model-x": 965000
+      },
+      "clientModelUnpricedTokens": {
+        "hermes": {
+          "mystery-model-x": 110000
+        },
+        "opencode": {
+          "mystery-model-x": 855000
+        }
+      }
+    },
+    "allTime": {
+      "capabilities": {
+        "tokenComponents": false,
+        "throughput": false
+      },
+      "totalTokens": 4722439600,
+      "costUsd": 10030.23472,
+      "cacheReadTokens": 3623601056,
+      "cacheWriteTokens": 210674480,
+      "outputTokens": 84269792,
+      "unclassifiedTokens": 770966352,
+      "timedTokens": 331808400,
+      "timedOutputTokens": 7004844,
+      "timedDurationMs": 117337200,
+      "clients": {
+        "copilot": 14700000,
+        "kimi": 23100000,
+        "claude": 3642401600,
+        "hermes": 99792000,
+        "gemini": 19740000,
+        "qwen": 3564000,
+        "cursor": 96000000,
+        "codex": 753920000,
+        "opencode": 66272000
+      },
+      "clientCosts": {
+        "copilot": 29.4,
+        "kimi": 20.79,
+        "claude": 8832.90072,
+        "hermes": 54.6876,
+        "gemini": 21.714,
+        "qwen": 2.1384,
+        "cursor": 76.8,
+        "codex": 920.512,
+        "opencode": 69.312
+      },
+      "clientCacheReads": {
+        "copilot": 12642000,
+        "kimi": 19866000,
+        "claude": 2779865376,
+        "hermes": 85821120,
+        "gemini": 16976400,
+        "qwen": 3065040,
+        "codex": 648371200,
+        "opencode": 56993920
+      },
+      "clientCacheWrites": {
+        "copilot": 735000,
+        "kimi": 1155000,
+        "claude": 161620080,
+        "hermes": 4989600,
+        "gemini": 987000,
+        "qwen": 178200,
+        "codex": 37696000,
+        "opencode": 3313600
+      },
+      "clientOutputs": {
+        "copilot": 294000,
+        "kimi": 462000,
+        "claude": 64648032,
+        "hermes": 1995840,
+        "gemini": 394800,
+        "qwen": 71280,
+        "codex": 15078400,
+        "opencode": 1325440
+      },
+      "clientUnclassifiedTokens": {
+        "cursor": 96000000,
+        "claude": 617418512,
+        "codex": 52774400,
+        "opencode": 4639040,
+        "gemini": 134400
+      },
+      "models": {
+        "gpt-4.1": 14700000,
+        "moonshotai/kimi-k2-turbo": 62700000,
+        "claude-sonnet-4-5": 2640480000,
+        "deepseek-chat": 35640000,
+        "deepseek/deepseek-chat": 15840000,
+        "glm-4.6-cc": 8316000,
+        "gemini-2.5-pro": 19740000,
+        "qwen3-coder-plus": 3564000,
+        "mystery-model-x": 5868000,
+        "cursor-auto": 96000000,
+        "claude-haiku-4-5": 14161600,
+        "claude-opus-4-1": 562400000,
+        "gpt-5-codex": 674880000,
+        "gpt-5-codex-high": 39520000,
+        "unknown": 39520000,
+        "big-pickle": 24320000,
+        "anthropic/claude-sonnet-4.5": 36480000,
+        "claude-sonnet-4.5": 15360000,
+        "claude-sonnet-4": 410000000
+      },
+      "modelCosts": {
+        "gpt-4.1": 29.4,
+        "moonshotai/kimi-k2-turbo": 56.43,
+        "claude-sonnet-4-5": 4488.816,
+        "deepseek-chat": 9.9792,
+        "deepseek/deepseek-chat": 4.9104,
+        "glm-4.6-cc": 4.158,
+        "gemini-2.5-pro": 21.714,
+        "qwen3-coder-plus": 2.1384,
+        "cursor-auto": 76.8,
+        "claude-haiku-4-5": 6.37272,
+        "claude-opus-4-1": 3655.6,
+        "gpt-5-codex": 809.856,
+        "gpt-5-codex-high": 63.232,
+        "unknown": 47.424,
+        "anthropic/claude-sonnet-4.5": 69.312,
+        "claude-sonnet-4.5": 26.112,
+        "claude-sonnet-4": 656
+      },
+      "modelCacheReads": {
+        "gpt-4.1": 12642000,
+        "moonshotai/kimi-k2-turbo": 53922000,
+        "claude-sonnet-4-5": 2270812800,
+        "deepseek-chat": 30650400,
+        "deepseek/deepseek-chat": 13622400,
+        "glm-4.6-cc": 7151760,
+        "gemini-2.5-pro": 16976400,
+        "qwen3-coder-plus": 3065040,
+        "mystery-model-x": 5046480,
+        "claude-haiku-4-5": 12178976,
+        "claude-opus-4-1": 483664000,
+        "gpt-5-codex": 580396800,
+        "gpt-5-codex-high": 33987200,
+        "unknown": 33987200,
+        "big-pickle": 20915200,
+        "anthropic/claude-sonnet-4.5": 31372800,
+        "claude-sonnet-4.5": 13209600
+      },
+      "modelCacheWrites": {
+        "gpt-4.1": 735000,
+        "moonshotai/kimi-k2-turbo": 3135000,
+        "claude-sonnet-4-5": 132024000,
+        "deepseek-chat": 1782000,
+        "deepseek/deepseek-chat": 792000,
+        "glm-4.6-cc": 415800,
+        "gemini-2.5-pro": 987000,
+        "qwen3-coder-plus": 178200,
+        "mystery-model-x": 293400,
+        "claude-haiku-4-5": 708080,
+        "claude-opus-4-1": 28120000,
+        "gpt-5-codex": 33744000,
+        "gpt-5-codex-high": 1976000,
+        "unknown": 1976000,
+        "big-pickle": 1216000,
+        "anthropic/claude-sonnet-4.5": 1824000,
+        "claude-sonnet-4.5": 768000
+      },
+      "modelOutputs": {
+        "gpt-4.1": 294000,
+        "moonshotai/kimi-k2-turbo": 1254000,
+        "claude-sonnet-4-5": 52809600,
+        "deepseek-chat": 712800,
+        "deepseek/deepseek-chat": 316800,
+        "glm-4.6-cc": 166320,
+        "gemini-2.5-pro": 394800,
+        "qwen3-coder-plus": 71280,
+        "mystery-model-x": 117360,
+        "claude-haiku-4-5": 283232,
+        "claude-opus-4-1": 11248000,
+        "gpt-5-codex": 13497600,
+        "gpt-5-codex-high": 790400,
+        "unknown": 790400,
+        "big-pickle": 486400,
+        "anthropic/claude-sonnet-4.5": 729600,
+        "claude-sonnet-4.5": 307200
+      },
+      "modelUnclassifiedTokens": {
+        "cursor-auto": 96000000,
+        "claude-haiku-4-5": 991312,
+        "claude-sonnet-4-5": 165984000,
+        "claude-opus-4-1": 39368000,
+        "gpt-5-codex": 47241600,
+        "gpt-5-codex-high": 2766400,
+        "unknown": 2766400,
+        "big-pickle": 1702400,
+        "anthropic/claude-sonnet-4.5": 2553600,
+        "mystery-model-x": 383040,
+        "claude-sonnet-4.5": 1075200,
+        "gemini-2.5-pro": 134400,
+        "claude-sonnet-4": 410000000
+      },
+      "clientModels": {
+        "copilot": {
+          "gpt-4.1": 14700000
+        },
+        "kimi": {
+          "moonshotai/kimi-k2-turbo": 23100000
+        },
+        "claude": {
+          "claude-sonnet-4-5": 2640480000,
+          "claude-haiku-4-5": 14161600,
+          "claude-opus-4-1": 562400000,
+          "claude-sonnet-4.5": 15360000,
+          "claude-sonnet-4": 410000000
+        },
+        "hermes": {
+          "deepseek-chat": 35640000,
+          "deepseek/deepseek-chat": 15840000,
+          "moonshotai/kimi-k2-turbo": 39600000,
+          "glm-4.6-cc": 8316000,
+          "mystery-model-x": 396000
+        },
+        "gemini": {
+          "gemini-2.5-pro": 19740000
+        },
+        "qwen": {
+          "qwen3-coder-plus": 3564000
+        },
+        "cursor": {
+          "cursor-auto": 96000000
+        },
+        "codex": {
+          "gpt-5-codex": 674880000,
+          "gpt-5-codex-high": 39520000,
+          "unknown": 39520000
+        },
+        "opencode": {
+          "big-pickle": 24320000,
+          "anthropic/claude-sonnet-4.5": 36480000,
+          "mystery-model-x": 5472000
+        }
+      },
+      "clientModelCosts": {
+        "copilot": {
+          "gpt-4.1": 29.4
+        },
+        "kimi": {
+          "moonshotai/kimi-k2-turbo": 20.79
+        },
+        "claude": {
+          "claude-sonnet-4-5": 4488.816,
+          "claude-haiku-4-5": 6.37272,
+          "claude-opus-4-1": 3655.6,
+          "claude-sonnet-4.5": 26.112,
+          "claude-sonnet-4": 656
+        },
+        "hermes": {
+          "deepseek-chat": 9.9792,
+          "deepseek/deepseek-chat": 4.9104,
+          "moonshotai/kimi-k2-turbo": 35.64,
+          "glm-4.6-cc": 4.158
+        },
+        "gemini": {
+          "gemini-2.5-pro": 21.714
+        },
+        "qwen": {
+          "qwen3-coder-plus": 2.1384
+        },
+        "cursor": {
+          "cursor-auto": 76.8
+        },
+        "codex": {
+          "gpt-5-codex": 809.856,
+          "gpt-5-codex-high": 63.232,
+          "unknown": 47.424
+        },
+        "opencode": {
+          "anthropic/claude-sonnet-4.5": 69.312
+        }
+      },
+      "projects": {
+        "infra": {
+          "label": "infra",
+          "tokens": 83000000,
+          "costUsd": 98.2,
+          "clients": {
+            "claude": 40000000,
+            "hermes": 9000000,
+            "codex": 31000000
+          }
+        },
+        "token-monitor": {
+          "label": "token-monitor",
+          "tokens": 1200000000,
+          "costUsd": 2051.9,
+          "clients": {
+            "claude": 900000000,
+            "codex": 260000000
+          }
+        },
+        "docs-site": {
+          "label": "docs-site",
+          "tokens": 140000000,
+          "costUsd": 66.2,
+          "clients": {
+            "opencode": 90000000,
+            "codex": 50000000
+          },
+          "unpricedTokens": 5500000
+        }
+      },
+      "sessions": {},
+      "unpricedTokens": 5868000,
+      "clientUnpricedTokens": {
+        "hermes": 396000,
+        "opencode": 5472000
+      },
+      "modelUnpricedTokens": {
+        "mystery-model-x": 5868000
+      },
+      "clientModelUnpricedTokens": {
+        "hermes": {
+          "mystery-model-x": 396000
+        },
+        "opencode": {
+          "mystery-model-x": 5472000
+        }
+      }
+    }
+  },
+  "daily": [
+    {
+      "date": "2026-10-04",
+      "tokens": 67205086,
+      "cost": 132.91299800000002,
+      "messages": 1493,
+      "activeTimeMs": 78000000,
+      "cacheReadTokens": 57796375,
+      "cacheWriteTokens": 3360255,
+      "outputTokens": 1344102,
+      "unclassifiedTokens": 0,
+      "tokenComponentsAvailable": true,
+      "perClient": {
+        "claude": {
+          "tokens": 54097661,
+          "cost": 120.932271,
+          "messages": 1202,
+          "cacheReadTokens": 46523989,
+          "cacheWriteTokens": 2704883,
+          "outputTokens": 1081954
+        },
+        "hermes": {
+          "tokens": 1663023,
+          "cost": 0.478119,
+          "messages": 37,
+          "cacheReadTokens": 1430200,
+          "cacheWriteTokens": 83151,
+          "outputTokens": 33260
+        },
+        "gemini": {
+          "tokens": 582058,
+          "cost": 0.640264,
+          "messages": 13,
+          "cacheReadTokens": 500570,
+          "cacheWriteTokens": 29103,
+          "outputTokens": 11641
+        },
+        "codex": {
+          "tokens": 9051953,
+          "cost": 10.862344,
+          "messages": 201,
+          "cacheReadTokens": 7784680,
+          "cacheWriteTokens": 452598,
+          "outputTokens": 181039
+        },
+        "opencode": {
+          "tokens": 1810391,
+          "cost": 0,
+          "messages": 40,
+          "cacheReadTokens": 1556936,
+          "cacheWriteTokens": 90520,
+          "outputTokens": 36208
+        }
+      },
+      "perModel": {
+        "claude-sonnet-4-5": {
+          "tokens": 48063026,
+          "cost": 81.707144,
+          "cacheReadTokens": 41334203,
+          "cacheWriteTokens": 2403151,
+          "outputTokens": 961261,
+          "unclassifiedTokens": 0
+        },
+        "deepseek-chat": {
+          "tokens": 1247267,
+          "cost": 0.349235,
+          "cacheReadTokens": 1072650,
+          "cacheWriteTokens": 62363,
+          "outputTokens": 24945,
+          "unclassifiedTokens": 0
+        },
+        "deepseek/deepseek-chat": {
+          "tokens": 415756,
+          "cost": 0.128884,
+          "cacheReadTokens": 357550,
+          "cacheWriteTokens": 20788,
+          "outputTokens": 8315,
+          "unclassifiedTokens": 0
+        },
+        "gemini-2.5-pro": {
+          "tokens": 582058,
+          "cost": 0.640264,
+          "cacheReadTokens": 500570,
+          "cacheWriteTokens": 29103,
+          "outputTokens": 11641,
+          "unclassifiedTokens": 0
+        },
+        "claude-opus-4-1": {
+          "tokens": 6034635,
+          "cost": 39.225127,
+          "cacheReadTokens": 5189786,
+          "cacheWriteTokens": 301732,
+          "outputTokens": 120693,
+          "unclassifiedTokens": 0
+        },
+        "gpt-5-codex": {
+          "tokens": 9051953,
+          "cost": 10.862344,
+          "cacheReadTokens": 7784680,
+          "cacheWriteTokens": 452598,
+          "outputTokens": 181039,
+          "unclassifiedTokens": 0
+        },
+        "big-pickle": {
+          "tokens": 1810391,
+          "cost": 0,
+          "cacheReadTokens": 1556936,
+          "cacheWriteTokens": 90520,
+          "outputTokens": 36208,
+          "unclassifiedTokens": 0
+        }
+      },
+      "tokenIntensity": 4,
+      "costIntensity": 4,
+      "intensity": 4
+    },
+    {
+      "date": "2026-10-05",
+      "tokens": 61205369,
+      "cost": 126.457308,
+      "messages": 1360,
+      "activeTimeMs": 72180000,
+      "cacheReadTokens": 52636619,
+      "cacheWriteTokens": 3060269,
+      "outputTokens": 1224108,
+      "unclassifiedTokens": 0,
+      "tokenComponentsAvailable": true,
+      "perClient": {
+        "claude": {
+          "tokens": 50076942,
+          "cost": 113.156504,
+          "messages": 1113,
+          "cacheReadTokens": 43066171,
+          "cacheWriteTokens": 2503847,
+          "outputTokens": 1001539
+        },
+        "hermes": {
+          "tokens": 865913,
+          "cost": 0.202046,
+          "messages": 19,
+          "unpricedTokens": 144319,
+          "cacheReadTokens": 744685,
+          "cacheWriteTokens": 43296,
+          "outputTokens": 17318
+        },
+        "gemini": {
+          "tokens": 336744,
+          "cost": 0.370418,
+          "messages": 7,
+          "cacheReadTokens": 289600,
+          "cacheWriteTokens": 16837,
+          "outputTokens": 6735
+        },
+        "codex": {
+          "tokens": 8758032,
+          "cost": 10.509638,
+          "messages": 195,
+          "cacheReadTokens": 7531908,
+          "cacheWriteTokens": 437902,
+          "outputTokens": 175161
+        },
+        "opencode": {
+          "tokens": 1167738,
+          "cost": 2.218702,
+          "messages": 26,
+          "cacheReadTokens": 1004255,
+          "cacheWriteTokens": 58387,
+          "outputTokens": 23355
+        }
+      },
+      "perModel": {
+        "claude-sonnet-4-5": {
+          "tokens": 44238254,
+          "cost": 75.20503199999999,
+          "cacheReadTokens": 38044899,
+          "cacheWriteTokens": 2211913,
+          "outputTokens": 884765,
+          "unclassifiedTokens": 0
+        },
+        "deepseek-chat": {
+          "tokens": 721594,
+          "cost": 0.202046,
+          "cacheReadTokens": 620571,
+          "cacheWriteTokens": 36080,
+          "outputTokens": 14432,
+          "unclassifiedTokens": 0
+        },
+        "gemini-2.5-pro": {
+          "tokens": 336744,
+          "cost": 0.370418,
+          "cacheReadTokens": 289600,
+          "cacheWriteTokens": 16837,
+          "outputTokens": 6735,
+          "unclassifiedTokens": 0
+        },
+        "mystery-model-x": {
+          "tokens": 144319,
+          "cost": 0,
+          "unpricedTokens": 144319,
+          "cacheReadTokens": 124114,
+          "cacheWriteTokens": 7216,
+          "outputTokens": 2886,
+          "unclassifiedTokens": 0
+        },
+        "claude-opus-4-1": {
+          "tokens": 5838688,
+          "cost": 37.951472,
+          "cacheReadTokens": 5021272,
+          "cacheWriteTokens": 291934,
+          "outputTokens": 116774,
+          "unclassifiedTokens": 0
+        },
+        "gpt-5-codex": {
+          "tokens": 8758032,
+          "cost": 10.509638,
+          "cacheReadTokens": 7531908,
+          "cacheWriteTokens": 437902,
+          "outputTokens": 175161,
+          "unclassifiedTokens": 0
+        },
+        "anthropic/claude-sonnet-4.5": {
+          "tokens": 1167738,
+          "cost": 2.218702,
+          "cacheReadTokens": 1004255,
+          "cacheWriteTokens": 58387,
+          "outputTokens": 23355,
+          "unclassifiedTokens": 0
+        }
+      },
+      "unpricedTokens": 144319,
+      "tokenIntensity": 4,
+      "costIntensity": 4,
+      "intensity": 4
+    },
+    {
+      "date": "2026-10-06",
+      "tokens": 10146735,
+      "cost": 13.854999,
+      "messages": 226,
+      "activeTimeMs": 10440000,
+      "cacheReadTokens": 8726192,
+      "cacheWriteTokens": 507336,
+      "outputTokens": 202936,
+      "unclassifiedTokens": 0,
+      "tokenComponentsAvailable": true,
+      "perClient": {
+        "claude": {
+          "tokens": 7322385,
+          "cost": 12.448054,
+          "messages": 163,
+          "cacheReadTokens": 6297251,
+          "cacheWriteTokens": 366119,
+          "outputTokens": 146448
+        },
+        "hermes": {
+          "tokens": 2092111,
+          "cost": 0.601482,
+          "messages": 47,
+          "cacheReadTokens": 1799215,
+          "cacheWriteTokens": 104605,
+          "outputTokens": 41843
+        },
+        "gemini": {
+          "tokens": 732239,
+          "cost": 0.805463,
+          "messages": 16,
+          "cacheReadTokens": 629726,
+          "cacheWriteTokens": 36612,
+          "outputTokens": 14645
+        }
+      },
+      "perModel": {
+        "claude-sonnet-4-5": {
+          "tokens": 7322385,
+          "cost": 12.448054,
+          "cacheReadTokens": 6297251,
+          "cacheWriteTokens": 366119,
+          "outputTokens": 146448,
+          "unclassifiedTokens": 0
+        },
+        "deepseek-chat": {
+          "tokens": 1569083,
+          "cost": 0.439343,
+          "cacheReadTokens": 1349411,
+          "cacheWriteTokens": 78454,
+          "outputTokens": 31382,
+          "unclassifiedTokens": 0
+        },
+        "deepseek/deepseek-chat": {
+          "tokens": 523028,
+          "cost": 0.162139,
+          "cacheReadTokens": 449804,
+          "cacheWriteTokens": 26151,
+          "outputTokens": 10461,
+          "unclassifiedTokens": 0
+        },
+        "gemini-2.5-pro": {
+          "tokens": 732239,
+          "cost": 0.805463,
+          "cacheReadTokens": 629726,
+          "cacheWriteTokens": 36612,
+          "outputTokens": 14645,
+          "unclassifiedTokens": 0
+        }
+      },
+      "tokenIntensity": 1,
+      "costIntensity": 1,
+      "intensity": 1
+    },
+    {
+      "date": "2026-10-07",
+      "tokens": 61774454,
+      "cost": 121.914473,
+      "messages": 1369,
+      "activeTimeMs": 71820000,
+      "cacheReadTokens": 53022830,
+      "cacheWriteTokens": 3082723,
+      "outputTokens": 1233090,
+      "unclassifiedTokens": 120000,
+      "tokenComponentsAvailable": false,
+      "perClient": {
+        "claude": {
+          "tokens": 49869657,
+          "cost": 110.9093,
+          "messages": 1108,
+          "cacheReadTokens": 42887905,
+          "cacheWriteTokens": 2493483,
+          "outputTokens": 997394
+        },
+        "hermes": {
+          "tokens": 1353897,
+          "cost": 0.379091,
+          "messages": 30,
+          "cacheReadTokens": 1164351,
+          "cacheWriteTokens": 67695,
+          "outputTokens": 27078
+        },
+        "gemini": {
+          "tokens": 631819,
+          "cost": 0.695001,
+          "messages": 14,
+          "cacheReadTokens": 543364,
+          "cacheWriteTokens": 31591,
+          "outputTokens": 12636
+        },
+        "antigravity": {
+          "tokens": 120000,
+          "cost": 0.132,
+          "messages": 4,
+          "unclassifiedTokens": 120000
+        },
+        "codex": {
+          "tokens": 8165901,
+          "cost": 9.799081,
+          "messages": 181,
+          "cacheReadTokens": 7022675,
+          "cacheWriteTokens": 408295,
+          "outputTokens": 163318
+        },
+        "opencode": {
+          "tokens": 1633180,
+          "cost": 0,
+          "messages": 36,
+          "cacheReadTokens": 1404535,
+          "cacheWriteTokens": 81659,
+          "outputTokens": 32664
+        }
+      },
+      "perModel": {
+        "claude-sonnet-4-5": {
+          "tokens": 44425723,
+          "cost": 75.523729,
+          "cacheReadTokens": 38206122,
+          "cacheWriteTokens": 2221286,
+          "outputTokens": 888515,
+          "unclassifiedTokens": 0
+        },
+        "deepseek-chat": {
+          "tokens": 1353897,
+          "cost": 0.379091,
+          "cacheReadTokens": 1164351,
+          "cacheWriteTokens": 67695,
+          "outputTokens": 27078,
+          "unclassifiedTokens": 0
+        },
+        "gemini-2.5-pro": {
+          "tokens": 631819,
+          "cost": 0.695001,
+          "cacheReadTokens": 543364,
+          "cacheWriteTokens": 31591,
+          "outputTokens": 12636,
+          "unclassifiedTokens": 0
+        },
+        "gemini-3-pro": {
+          "tokens": 120000,
+          "cost": 0.132,
+          "unclassifiedTokens": 120000
+        },
+        "claude-opus-4-1": {
+          "tokens": 5443934,
+          "cost": 35.385571,
+          "cacheReadTokens": 4681783,
+          "cacheWriteTokens": 272197,
+          "outputTokens": 108879,
+          "unclassifiedTokens": 0
+        },
+        "gpt-5-codex": {
+          "tokens": 8165901,
+          "cost": 9.799081,
+          "cacheReadTokens": 7022675,
+          "cacheWriteTokens": 408295,
+          "outputTokens": 163318,
+          "unclassifiedTokens": 0
+        },
+        "big-pickle": {
+          "tokens": 1633180,
+          "cost": 0,
+          "cacheReadTokens": 1404535,
+          "cacheWriteTokens": 81659,
+          "outputTokens": 32664,
+          "unclassifiedTokens": 0
+        }
+      },
+      "tokenIntensity": 4,
+      "costIntensity": 4,
+      "intensity": 4
+    },
+    {
+      "date": "2026-10-08",
+      "tokens": 46056080,
+      "cost": 97.929768,
+      "messages": 1024,
+      "activeTimeMs": 55920000,
+      "cacheReadTokens": 39608229,
+      "cacheWriteTokens": 2302804,
+      "outputTokens": 921121,
+      "unclassifiedTokens": 0,
+      "tokenComponentsAvailable": true,
+      "perClient": {
+        "claude": {
+          "tokens": 38784067,
+          "cost": 89.203352,
+          "messages": 862,
+          "cacheReadTokens": 33354298,
+          "cacheWriteTokens": 1939203,
+          "outputTokens": 775681
+        },
+        "codex": {
+          "tokens": 7272013,
+          "cost": 8.726416,
+          "messages": 162,
+          "cacheReadTokens": 6253931,
+          "cacheWriteTokens": 363601,
+          "outputTokens": 145440
+        }
+      },
+      "perModel": {
+        "claude-sonnet-4-5": {
+          "tokens": 33936059,
+          "cost": 57.6913,
+          "cacheReadTokens": 29185011,
+          "cacheWriteTokens": 1696803,
+          "outputTokens": 678721,
+          "unclassifiedTokens": 0
+        },
+        "claude-opus-4-1": {
+          "tokens": 4848008,
+          "cost": 31.512052,
+          "cacheReadTokens": 4169287,
+          "cacheWriteTokens": 242400,
+          "outputTokens": 96960,
+          "unclassifiedTokens": 0
+        },
+        "gpt-5-codex": {
+          "tokens": 7272013,
+          "cost": 8.726416,
+          "cacheReadTokens": 6253931,
+          "cacheWriteTokens": 363601,
+          "outputTokens": 145440,
+          "unclassifiedTokens": 0
+        }
+      },
+      "tokenIntensity": 3,
+      "costIntensity": 3,
+      "intensity": 3
+    },
+    {
+      "date": "2026-10-09",
+      "tokens": 52164227,
+      "cost": 103.12857199999999,
+      "messages": 1159,
+      "activeTimeMs": 60960000,
+      "cacheReadTokens": 44861236,
+      "cacheWriteTokens": 2608211,
+      "outputTokens": 1043285,
+      "unclassifiedTokens": 0,
+      "tokenComponentsAvailable": true,
+      "perClient": {
+        "claude": {
+          "tokens": 42332369,
+          "cost": 92.435097,
+          "messages": 941,
+          "cacheReadTokens": 36405838,
+          "cacheWriteTokens": 2116618,
+          "outputTokens": 846648
+        },
+        "hermes": {
+          "tokens": 1760482,
+          "cost": 0.492935,
+          "messages": 39,
+          "cacheReadTokens": 1514015,
+          "cacheWriteTokens": 88024,
+          "outputTokens": 35210
+        },
+        "gemini": {
+          "tokens": 821558,
+          "cost": 0.903714,
+          "messages": 18,
+          "cacheReadTokens": 706540,
+          "cacheWriteTokens": 41078,
+          "outputTokens": 16431
+        },
+        "codex": {
+          "tokens": 6396898,
+          "cost": 7.676278,
+          "messages": 142,
+          "cacheReadTokens": 5501332,
+          "cacheWriteTokens": 319845,
+          "outputTokens": 127938
+        },
+        "opencode": {
+          "tokens": 852920,
+          "cost": 1.620548,
+          "messages": 19,
+          "cacheReadTokens": 733511,
+          "cacheWriteTokens": 42646,
+          "outputTokens": 17058
+        }
+      },
+      "perModel": {
+        "claude-sonnet-4-5": {
+          "tokens": 38067771,
+          "cost": 64.71521,
+          "cacheReadTokens": 32738284,
+          "cacheWriteTokens": 1903388,
+          "outputTokens": 761356,
+          "unclassifiedTokens": 0
+        },
+        "deepseek-chat": {
+          "tokens": 1760482,
+          "cost": 0.492935,
+          "cacheReadTokens": 1514015,
+          "cacheWriteTokens": 88024,
+          "outputTokens": 35210,
+          "unclassifiedTokens": 0
+        },
+        "gemini-2.5-pro": {
+          "tokens": 821558,
+          "cost": 0.903714,
+          "cacheReadTokens": 706540,
+          "cacheWriteTokens": 41078,
+          "outputTokens": 16431,
+          "unclassifiedTokens": 0
+        },
+        "claude-opus-4-1": {
+          "tokens": 4264598,
+          "cost": 27.719887,
+          "cacheReadTokens": 3667554,
+          "cacheWriteTokens": 213230,
+          "outputTokens": 85292,
+          "unclassifiedTokens": 0
+        },
+        "gpt-5-codex": {
+          "tokens": 6396898,
+          "cost": 7.676278,
+          "cacheReadTokens": 5501332,
+          "cacheWriteTokens": 319845,
+          "outputTokens": 127938,
+          "unclassifiedTokens": 0
+        },
+        "anthropic/claude-sonnet-4.5": {
+          "tokens": 852920,
+          "cost": 1.620548,
+          "cacheReadTokens": 733511,
+          "cacheWriteTokens": 42646,
+          "outputTokens": 17058,
+          "unclassifiedTokens": 0
+        }
+      },
+      "tokenIntensity": 4,
+      "costIntensity": 4,
+      "intensity": 4
+    },
+    {
+      "date": "2026-10-10",
+      "tokens": 60657600,
+      "cost": 129.63412,
+      "messages": 1349,
+      "activeTimeMs": 50640000,
+      "cacheReadTokens": 52165536,
+      "cacheWriteTokens": 3032880,
+      "outputTokens": 1213152,
+      "unclassifiedTokens": 0,
+      "tokenComponentsAvailable": true,
+      "perClient": {
+        "claude": {
+          "tokens": 46461600,
+          "cost": 114.45272,
+          "messages": 1032,
+          "cacheReadTokens": 39956976,
+          "cacheWriteTokens": 2323080,
+          "outputTokens": 929232
+        },
+        "hermes": {
+          "tokens": 2886500,
+          "cost": 1.58815,
+          "messages": 64,
+          "cacheReadTokens": 2482390,
+          "cacheWriteTokens": 144325,
+          "outputTokens": 57730
+        },
+        "gemini": {
+          "tokens": 517500,
+          "cost": 0.56925,
+          "messages": 12,
+          "cacheReadTokens": 445050,
+          "cacheWriteTokens": 25875,
+          "outputTokens": 10350
+        },
+        "codex": {
+          "tokens": 9920000,
+          "cost": 12.112000000000002,
+          "messages": 221,
+          "cacheReadTokens": 8531200,
+          "cacheWriteTokens": 496000,
+          "outputTokens": 198400
+        },
+        "opencode": {
+          "tokens": 872000,
+          "cost": 0.912,
+          "messages": 20,
+          "unpricedTokens": 72000,
+          "cacheReadTokens": 749920,
+          "cacheWriteTokens": 43600,
+          "outputTokens": 17440
+        }
+      },
+      "perModel": {
+        "claude-sonnet-4-5": {
+          "tokens": 39020000,
+          "cost": 66.334,
+          "cacheReadTokens": 33557200,
+          "cacheWriteTokens": 1951000,
+          "outputTokens": 780400,
+          "unclassifiedTokens": 0
+        },
+        "deepseek-chat": {
+          "tokens": 1035000,
+          "cost": 0.2898,
+          "cacheReadTokens": 890100,
+          "cacheWriteTokens": 51750,
+          "outputTokens": 20700,
+          "unclassifiedTokens": 0
+        },
+        "deepseek/deepseek-chat": {
+          "tokens": 460000,
+          "cost": 0.1426,
+          "cacheReadTokens": 395600,
+          "cacheWriteTokens": 23000,
+          "outputTokens": 9200,
+          "unclassifiedTokens": 0
+        },
+        "moonshotai/kimi-k2-turbo": {
+          "tokens": 1150000,
+          "cost": 1.035,
+          "cacheReadTokens": 989000,
+          "cacheWriteTokens": 57500,
+          "outputTokens": 23000,
+          "unclassifiedTokens": 0
+        },
+        "glm-4.6-cc": {
+          "tokens": 241500,
+          "cost": 0.12075,
+          "cacheReadTokens": 207690,
+          "cacheWriteTokens": 12075,
+          "outputTokens": 4830,
+          "unclassifiedTokens": 0
+        },
+        "gemini-2.5-pro": {
+          "tokens": 517500,
+          "cost": 0.56925,
+          "cacheReadTokens": 445050,
+          "cacheWriteTokens": 25875,
+          "outputTokens": 10350,
+          "unclassifiedTokens": 0
+        },
+        "claude-opus-4-1": {
+          "tokens": 7400000,
+          "cost": 48.1,
+          "cacheReadTokens": 6364000,
+          "cacheWriteTokens": 370000,
+          "outputTokens": 148000,
+          "unclassifiedTokens": 0
+        },
+        "claude-haiku-4-5": {
+          "tokens": 41600,
+          "cost": 0.01872,
+          "cacheReadTokens": 35776,
+          "cacheWriteTokens": 2080,
+          "outputTokens": 832,
+          "unclassifiedTokens": 0
+        },
+        "gpt-5-codex": {
+          "tokens": 8880000,
+          "cost": 10.656,
+          "cacheReadTokens": 7636800,
+          "cacheWriteTokens": 444000,
+          "outputTokens": 177600,
+          "unclassifiedTokens": 0
+        },
+        "gpt-5-codex-high": {
+          "tokens": 520000,
+          "cost": 0.832,
+          "cacheReadTokens": 447200,
+          "cacheWriteTokens": 26000,
+          "outputTokens": 10400,
+          "unclassifiedTokens": 0
+        },
+        "unknown": {
+          "tokens": 520000,
+          "cost": 0.624,
+          "cacheReadTokens": 447200,
+          "cacheWriteTokens": 26000,
+          "outputTokens": 10400,
+          "unclassifiedTokens": 0
+        },
+        "big-pickle": {
+          "tokens": 320000,
+          "cost": 0,
+          "cacheReadTokens": 275200,
+          "cacheWriteTokens": 16000,
+          "outputTokens": 6400,
+          "unclassifiedTokens": 0
+        },
+        "anthropic/claude-sonnet-4.5": {
+          "tokens": 480000,
+          "cost": 0.912,
+          "cacheReadTokens": 412800,
+          "cacheWriteTokens": 24000,
+          "outputTokens": 9600,
+          "unclassifiedTokens": 0
+        },
+        "mystery-model-x": {
+          "tokens": 72000,
+          "cost": 0,
+          "unpricedTokens": 72000,
+          "cacheReadTokens": 61920,
+          "cacheWriteTokens": 3600,
+          "outputTokens": 1440,
+          "unclassifiedTokens": 0
+        }
+      },
+      "unpricedTokens": 72000,
+      "tokenIntensity": 4,
+      "costIntensity": 4,
+      "intensity": 4
+    }
+  ],
+  "monthly": [
+    {
+      "month": "2026-09",
+      "tokens": 1358620105,
+      "cost": 2536.3498640000003,
+      "activeTimeMs": 1581240000,
+      "perClient": {
+        "claude": {
+          "tokens": 1104963956,
+          "cost": 2276.6683000000003,
+          "messages": 24553
+        },
+        "hermes": {
+          "tokens": 38282226,
+          "cost": 10.485947000000001,
+          "messages": 855,
+          "unpricedTokens": 1296435
+        },
+        "gemini": {
+          "tokens": 15238957,
+          "cost": 16.762855000000002,
+          "messages": 340
+        },
+        "codex": {
+          "tokens": 187854685,
+          "cost": 225.425623,
+          "messages": 4172
+        },
+        "opencode": {
+          "tokens": 12280281,
+          "cost": 7.0071390000000005,
+          "messages": 272
+        }
+      },
+      "perModel": {
+        "claude-sonnet-4-5": {
+          "tokens": 1021999461,
+          "cost": 1737.3990829999998
+        },
+        "deepseek-chat": {
+          "tokens": 32654909,
+          "cost": 9.143374000000001
+        },
+        "gemini-2.5-pro": {
+          "tokens": 15238957,
+          "cost": 16.762855000000002
+        },
+        "deepseek/deepseek-chat": {
+          "tokens": 4330882,
+          "cost": 1.3425729999999998
+        },
+        "mystery-model-x": {
+          "tokens": 1296435,
+          "cost": 0,
+          "unpricedTokens": 1296435
+        },
+        "gpt-5-codex": {
+          "tokens": 187854685,
+          "cost": 225.425623
+        },
+        "claude-opus-4-1": {
+          "tokens": 82964495,
+          "cost": 539.269217
+        },
+        "anthropic/claude-sonnet-4.5": {
+          "tokens": 3687968,
+          "cost": 7.0071390000000005
+        },
+        "big-pickle": {
+          "tokens": 8592313,
+          "cost": 0
+        }
+      },
+      "unpricedTokens": 1296435
+    },
+    {
+      "month": "2026-10",
+      "tokens": 491208847,
+      "cost": 987.866535,
+      "activeTimeMs": 554280000,
+      "perClient": {
+        "claude": {
+          "tokens": 396056169,
+          "cost": 890.284902,
+          "messages": 8801
+        },
+        "hermes": {
+          "tokens": 14053647,
+          "cost": 4.702705,
+          "messages": 313,
+          "unpricedTokens": 144319
+        },
+        "gemini": {
+          "tokens": 5223388,
+          "cost": 5.745727,
+          "messages": 115
+        },
+        "codex": {
+          "tokens": 66645444,
+          "cost": 80.182534,
+          "messages": 1482
+        },
+        "opencode": {
+          "tokens": 9230199,
+          "cost": 6.950667,
+          "messages": 206,
+          "unpricedTokens": 72000
+        }
+      },
+      "perModel": {
+        "claude-sonnet-4-5": {
+          "tokens": 350797607,
+          "cost": 596.35593
+        },
+        "deepseek-chat": {
+          "tokens": 11119044,
+          "cost": 3.113332
+        },
+        "gemini-2.5-pro": {
+          "tokens": 5223388,
+          "cost": 5.745727
+        },
+        "deepseek/deepseek-chat": {
+          "tokens": 1398784,
+          "cost": 0.43362300000000004
+        },
+        "mystery-model-x": {
+          "tokens": 216319,
+          "cost": 0,
+          "unpricedTokens": 216319
+        },
+        "moonshotai/kimi-k2-turbo": {
+          "tokens": 1150000,
+          "cost": 1.035
+        },
+        "glm-4.6-cc": {
+          "tokens": 241500,
+          "cost": 0.12075
+        },
+        "claude-opus-4-1": {
+          "tokens": 45216962,
+          "cost": 293.910252
+        },
+        "gpt-5-codex": {
+          "tokens": 65605444,
+          "cost": 78.72653400000002
+        },
+        "big-pickle": {
+          "tokens": 5499953,
+          "cost": 0
+        },
+        "anthropic/claude-sonnet-4.5": {
+          "tokens": 3658246,
+          "cost": 6.950667
+        },
+        "claude-haiku-4-5": {
+          "tokens": 41600,
+          "cost": 0.01872
+        },
+        "gpt-5-codex-high": {
+          "tokens": 520000,
+          "cost": 0.832
+        },
+        "unknown": {
+          "tokens": 520000,
+          "cost": 0.624
+        }
+      },
+      "unpricedTokens": 216319
+    }
+  ]
+}

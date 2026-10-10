@@ -1,0 +1,89 @@
+{
+  "page": {
+    "id": "openai",
+    "name": "OpenAI",
+    "url": "https://status.example.com/openai",
+    "time_zone": "Etc/UTC",
+    "updated_at": "2026-10-10T16:12:03.512Z"
+  },
+  "components": [
+    {
+      "id": "chatgpt",
+      "name": "ChatGPT",
+      "status": "operational",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-10-10T16:00:00.000Z",
+      "position": 1,
+      "description": null,
+      "showcase": true,
+      "group_id": null,
+      "group": false,
+      "only_show_if_degraded": false
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "status": "degraded_performance",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-10-10T16:00:00.000Z",
+      "position": 1,
+      "description": null,
+      "showcase": true,
+      "group_id": null,
+      "group": false,
+      "only_show_if_degraded": false
+    },
+    {
+      "id": "api",
+      "name": "API",
+      "status": "partial_outage",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-10-10T16:00:00.000Z",
+      "position": 1,
+      "description": null,
+      "showcase": true,
+      "group_id": null,
+      "group": false,
+      "only_show_if_degraded": false
+    },
+    {
+      "id": "sora",
+      "name": "Sora",
+      "status": "operational",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2026-10-10T16:00:00.000Z",
+      "position": 1,
+      "description": null,
+      "showcase": true,
+      "group_id": null,
+      "group": false,
+      "only_show_if_degraded": false
+    }
+  ],
+  "incidents": [
+    {
+      "id": "inc1",
+      "name": "Elevated error rates for Codex",
+      "status": "investigating",
+      "impact": "minor",
+      "created_at": "2026-10-10T15:40:00.000Z",
+      "updated_at": "2026-10-10T16:05:00.000Z",
+      "shortlink": "https://stspg.io/x",
+      "incident_updates": []
+    },
+    {
+      "id": "inc0",
+      "name": "Old incident",
+      "status": "resolved",
+      "impact": "minor",
+      "created_at": "2026-10-09T15:40:00.000Z",
+      "updated_at": "2026-10-09T16:05:00.000Z",
+      "incident_updates": []
+    }
+  ],
+  "scheduled_maintenances": [],
+  "status": {
+    "indicator": "minor",
+    "description": "Partially Degraded Service"
+  }
+}

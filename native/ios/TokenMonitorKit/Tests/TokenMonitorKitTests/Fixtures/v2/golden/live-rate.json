@@ -1,0 +1,68 @@
+{
+  "source": "src/electron/renderer/tokenRatePresentation.js: selectLiveTokenRatePeriods(stats, deviceId, hubMode, scope), createLiveTokenRateGroupTracker({now, activeMs: 8000, clearMs: 180000}) reset/observe/getSample/nextExpiryAt, createLiveTokenRateTracker({now}), liveTokenRateTooltipEntries(sample, mode, formatRate = Math.round(v).toLocaleString('en-US')), tokenRatePerSecond, tokenBurnPerMinute; fake clock in ms starting at 0; each step mutates the named device's today counters from stats.json",
+  "selections": {
+    "all": {
+      "source": "devices:all",
+      "entries": [
+        {"id":"device:build-box","name":"build-box"},
+        {"id":"device:studio-mac","name":"studio-mac"},
+        {"id":"device:tokyo-mac","name":"tokyo-mac"}
+      ]
+    },
+    "deviceScopeStudio": {
+      "source": "device:studio-mac",
+      "entries": [
+        {"id":"device:studio-mac","name":"studio-mac"}
+      ]
+    },
+    "deviceScopeStale": {
+      "source": "device:old-laptop",
+      "entries": [
+        {"id":"device:old-laptop","name":"old-laptop"}
+      ]
+    },
+    "deviceScopeMissing": {
+      "source": "device:gone-device",
+      "entries": []
+    }
+  },
+  "rates": {
+    "aggregate": {
+      "tokenRatePerSecond": 61.58325261452717,
+      "tokenBurnPerMinute": 175026.08637812984
+    },
+    "build-box": {
+      "tokenRatePerSecond": 59.698419876749035,
+      "tokenBurnPerMinute": 169669.19333391832
+    },
+    "old-laptop": {
+      "tokenRatePerSecond": 0,
+      "tokenBurnPerMinute": 0
+    },
+    "studio-mac": {
+      "tokenRatePerSecond": 61.753811463586246,
+      "tokenBurnPerMinute": 175510.83258071882
+    },
+    "tokyo-mac": {
+      "tokenRatePerSecond": 119.9990283479486,
+      "tokenBurnPerMinute": 341049.87004153815
+    }
+  },
+  "groupSteps": [
+    {"t":0,"label":"reset","change":null,"observe":null,"sample":null,"nextExpiryAt":null,"tooltipSpeed":[],"tooltipBurn":[]},
+    {"t":1000,"label":"studio grows","change":{"device:studio-mac":{"timedTokens":9000,"timedOutputTokens":300,"timedDurationMs":5000}},"observe":{"changed":true,"sample":{"speed":60,"burn":108000,"sampledAt":1000,"devices":[{"id":"device:studio-mac","name":"studio-mac","models":[{"model":"claude-sonnet-4-5","speed":66.66666666666667,"burn":120000},{"model":"gpt-5-codex","speed":50,"burn":90000}]}],"deviceCount":1,"revision":1,"expiresAt":9000,"idle":false}},"sample":{"speed":60,"burn":108000,"sampledAt":1000,"devices":[{"id":"device:studio-mac","name":"studio-mac","models":[{"model":"claude-sonnet-4-5","speed":66.66666666666667,"burn":120000},{"model":"gpt-5-codex","speed":50,"burn":90000}]}],"deviceCount":1,"revision":1,"expiresAt":9000,"idle":false},"nextExpiryAt":9000,"tooltipSpeed":[["claude-sonnet-4-5","67 tok/s"],["gpt-5-codex","50 tok/s"]],"tooltipBurn":[["claude-sonnet-4-5","120,000 TPM"],["gpt-5-codex","90,000 TPM"]]},
+    {"t":3000,"label":"build-box grows","change":{"device:build-box":{"timedTokens":4000,"timedOutputTokens":120,"timedDurationMs":2400}},"observe":{"changed":true,"sample":{"speed":110,"burn":208000,"sampledAt":3000,"devices":[{"id":"device:build-box","name":"build-box","models":[{"model":"deepseek-chat","speed":50,"burn":100000}]},{"id":"device:studio-mac","name":"studio-mac","models":[{"model":"claude-sonnet-4-5","speed":66.66666666666667,"burn":120000},{"model":"gpt-5-codex","speed":50,"burn":90000}]}],"deviceCount":2,"revision":2,"expiresAt":9000,"idle":false}},"sample":{"speed":110,"burn":208000,"sampledAt":3000,"devices":[{"id":"device:build-box","name":"build-box","models":[{"model":"deepseek-chat","speed":50,"burn":100000}]},{"id":"device:studio-mac","name":"studio-mac","models":[{"model":"claude-sonnet-4-5","speed":66.66666666666667,"burn":120000},{"model":"gpt-5-codex","speed":50,"burn":90000}]}],"deviceCount":2,"revision":2,"expiresAt":9000,"idle":false},"nextExpiryAt":9000,"tooltipSpeed":[{"full":"build-box","separated":false},["deepseek-chat","50 tok/s"],{"full":"studio-mac","separated":true},["claude-sonnet-4-5","67 tok/s"],["gpt-5-codex","50 tok/s"]],"tooltipBurn":[{"full":"build-box","separated":false},["deepseek-chat","100,000 TPM"],{"full":"studio-mac","separated":true},["claude-sonnet-4-5","120,000 TPM"],["gpt-5-codex","90,000 TPM"]]},
+    {"t":4000,"label":"no change","change":null,"observe":{"changed":false,"sample":{"speed":110,"burn":208000,"sampledAt":3000,"devices":[{"id":"device:build-box","name":"build-box","models":[{"model":"deepseek-chat","speed":50,"burn":100000}]},{"id":"device:studio-mac","name":"studio-mac","models":[{"model":"claude-sonnet-4-5","speed":66.66666666666667,"burn":120000},{"model":"gpt-5-codex","speed":50,"burn":90000}]}],"deviceCount":2,"revision":2,"expiresAt":9000,"idle":false}},"sample":{"speed":110,"burn":208000,"sampledAt":3000,"devices":[{"id":"device:build-box","name":"build-box","models":[{"model":"deepseek-chat","speed":50,"burn":100000}]},{"id":"device:studio-mac","name":"studio-mac","models":[{"model":"claude-sonnet-4-5","speed":66.66666666666667,"burn":120000},{"model":"gpt-5-codex","speed":50,"burn":90000}]}],"deviceCount":2,"revision":2,"expiresAt":9000,"idle":false},"nextExpiryAt":9000,"tooltipSpeed":[{"full":"build-box","separated":false},["deepseek-chat","50 tok/s"],{"full":"studio-mac","separated":true},["claude-sonnet-4-5","67 tok/s"],["gpt-5-codex","50 tok/s"]],"tooltipBurn":[{"full":"build-box","separated":false},["deepseek-chat","100,000 TPM"],{"full":"studio-mac","separated":true},["claude-sonnet-4-5","120,000 TPM"],["gpt-5-codex","90,000 TPM"]]},
+    {"t":9500,"label":"studio sample expired (8 s)","change":null,"observe":{"changed":false,"sample":{"speed":50,"burn":100000,"sampledAt":3000,"devices":[{"id":"device:build-box","name":"build-box","models":[{"model":"deepseek-chat","speed":50,"burn":100000}]}],"deviceCount":1,"revision":2,"expiresAt":11000,"idle":false}},"sample":{"speed":50,"burn":100000,"sampledAt":3000,"devices":[{"id":"device:build-box","name":"build-box","models":[{"model":"deepseek-chat","speed":50,"burn":100000}]}],"deviceCount":1,"revision":2,"expiresAt":11000,"idle":false},"nextExpiryAt":11000,"tooltipSpeed":[["deepseek-chat","50 tok/s"]],"tooltipBurn":[["deepseek-chat","100,000 TPM"]]},
+    {"t":12000,"label":"all expired -> idle","change":null,"observe":null,"sample":{"speed":50,"burn":100000,"sampledAt":3000,"devices":[{"id":"device:build-box","name":"build-box","models":[{"model":"deepseek-chat","speed":50,"burn":100000}]}],"deviceCount":1,"revision":2,"expiresAt":183000,"idle":true},"nextExpiryAt":183000,"tooltipSpeed":[["deepseek-chat","50 tok/s"]],"tooltipBurn":[["deepseek-chat","100,000 TPM"]]},
+    {"t":13000,"label":"tokyo duration unchanged (no sample)","change":{"device:tokyo-mac":{"timedTokens":2000}},"observe":{"changed":false,"sample":{"speed":50,"burn":100000,"sampledAt":3000,"devices":[{"id":"device:build-box","name":"build-box","models":[{"model":"deepseek-chat","speed":50,"burn":100000}]}],"deviceCount":1,"revision":2,"expiresAt":183000,"idle":true}},"sample":{"speed":50,"burn":100000,"sampledAt":3000,"devices":[{"id":"device:build-box","name":"build-box","models":[{"model":"deepseek-chat","speed":50,"burn":100000}]}],"deviceCount":1,"revision":2,"expiresAt":183000,"idle":true},"nextExpiryAt":183000,"tooltipSpeed":[["deepseek-chat","50 tok/s"]],"tooltipBurn":[["deepseek-chat","100,000 TPM"]]},
+    {"t":14000,"label":"studio counters go backwards (reset)","change":{"device:studio-mac":{"timedTokens":-9000,"timedOutputTokens":-300,"timedDurationMs":-5000}},"observe":{"changed":true,"sample":null},"sample":null,"nextExpiryAt":null,"tooltipSpeed":[],"tooltipBurn":[]},
+    {"t":15000,"label":"build-box disappears","change":{"device:build-box":"removed"},"observe":{"changed":true,"sample":null},"sample":null,"nextExpiryAt":null,"tooltipSpeed":[],"tooltipBurn":[]},
+    {"t":200000,"label":"cleared after 180 s","change":null,"observe":null,"sample":null,"nextExpiryAt":null,"tooltipSpeed":[],"tooltipBurn":[]}
+  ],
+  "singleSteps": [
+    {"t":1000,"change":{"timedTokens":1200,"timedOutputTokens":60,"timedDurationMs":1000},"sample":{"speed":60,"burn":72000,"sampledAt":1000,"revision":1,"models":[{"model":"claude-opus-4-1","speed":60,"burn":72000}],"timedTokens":1200,"timedOutputTokens":60,"timedDurationMs":1000},"speed":60,"burn":72000},
+    {"t":2000,"change":{"timedTokens":0,"timedOutputTokens":0,"timedDurationMs":0},"sample":{"speed":60,"burn":72000,"sampledAt":1000,"revision":1,"models":[{"model":"claude-opus-4-1","speed":60,"burn":72000}],"timedTokens":1200,"timedOutputTokens":60,"timedDurationMs":1000},"speed":60,"burn":72000},
+    {"t":3000,"change":{"timedTokens":600,"timedOutputTokens":30,"timedDurationMs":250},"sample":{"speed":120,"burn":144000,"sampledAt":3000,"revision":2,"models":[{"model":"claude-opus-4-1","speed":120,"burn":144000}],"timedTokens":600,"timedOutputTokens":30,"timedDurationMs":250},"speed":120,"burn":144000}
+  ]
+}

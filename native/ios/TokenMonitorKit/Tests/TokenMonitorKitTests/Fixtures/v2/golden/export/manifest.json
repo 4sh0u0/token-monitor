@@ -1,0 +1,20 @@
+{
+  "source": "src/shared/exporter.js: exportFileSet({periods: stats.json periods, history: {daily: history.json daily.slice(-7), monthly: history.json monthly.slice(-2)}, meta: {generatedAt: capture.now, app: {name: 'token-monitor', version: 'fixture'}}})",
+  "fileNames": ["token-monitor-export.json","token-monitor-snapshot.csv","token-monitor-daily.csv","token-monitor-daily-models.csv"],
+  "files": [
+    {"name":"token-monitor-export.json","bytes":79019,"lineEnding":"LF","bom":false,"lines":2668},
+    {"name":"token-monitor-snapshot.csv","bytes":3154,"lineEnding":"CRLF","bom":true,"lines":77},
+    {"name":"token-monitor-daily.csv","bytes":1149,"lineEnding":"CRLF","bom":true,"lines":32},
+    {"name":"token-monitor-daily-models.csv","bytes":3597,"lineEnding":"CRLF","bom":true,"lines":49}
+  ],
+  "csvEscape": [
+    {"value":"plain","escaped":"plain"},
+    {"value":"a,b","escaped":"\"a,b\""},
+    {"value":"say \"hi\"","escaped":"\"say \"\"hi\"\"\""},
+    {"value":"line\nbreak","escaped":"\"line\nbreak\""},
+    {"value":"cr\rhere","escaped":"\"cr\rhere\""},
+    {"value":"","escaped":""},
+    {"value":null,"escaped":""},
+    {"value":12.5,"escaped":"12.5"}
+  ]
+}

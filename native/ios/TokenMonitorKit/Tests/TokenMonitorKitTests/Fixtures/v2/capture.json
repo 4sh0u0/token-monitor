@@ -1,0 +1,113 @@
+{
+  "description": "Round-2 fixtures captured from a real Node Hub (src/hub/server.js) under a frozen clock. See README.txt.",
+  "now": "2026-10-10T16:30:00.000Z",
+  "timeZone": "UTC",
+  "todayKey": "2026-10-10",
+  "secret": "test",
+  "generator": {
+    "node": "22.22.0",
+    "icu": "77.1"
+  },
+  "hubCommand": "TZ=UTC TOKEN_MONITOR_SYNC_SESSION_TITLES=1 node --require clock.js src/hub/server.js --dataFile <scratch>/devices.json --secret test --host 127.0.0.1 --port <free>",
+  "devices": {
+    "studio-mac": {
+      "timeZone": "America/Los_Angeles",
+      "ingestedAt": "2026-10-10T16:29:40.000Z",
+      "todayKey": "2026-10-10",
+      "todayEndsAt": "2026-10-11T07:00:00.000Z",
+      "monthKey": "2026-10",
+      "monthEndsAt": "2026-11-01T07:00:00.000Z",
+      "localTodayKeyAtNow": "2026-10-10",
+      "todayExpired": false,
+      "stale": false
+    },
+    "build-box": {
+      "timeZone": "UTC",
+      "ingestedAt": "2026-10-10T16:25:00.000Z",
+      "todayKey": "2026-10-10",
+      "todayEndsAt": "2026-10-11T00:00:00.000Z",
+      "monthKey": "2026-10",
+      "monthEndsAt": "2026-11-01T00:00:00.000Z",
+      "localTodayKeyAtNow": "2026-10-10",
+      "todayExpired": false,
+      "stale": false
+    },
+    "tokyo-mac": {
+      "timeZone": "Asia/Tokyo",
+      "ingestedAt": "2026-10-10T16:29:20.000Z",
+      "todayKey": "2026-10-11",
+      "todayEndsAt": "2026-10-11T15:00:00.000Z",
+      "monthKey": "2026-10",
+      "monthEndsAt": "2026-10-31T15:00:00.000Z",
+      "localTodayKeyAtNow": "2026-10-11",
+      "todayExpired": false,
+      "stale": false
+    },
+    "old-laptop": {
+      "timeZone": "Asia/Shanghai",
+      "ingestedAt": "2026-10-10T15:20:00.000Z",
+      "todayKey": "2026-10-10",
+      "todayEndsAt": "2026-10-10T16:00:00.000Z",
+      "monthKey": "2026-10",
+      "monthEndsAt": "2026-10-31T16:00:00.000Z",
+      "localTodayKeyAtNow": "2026-10-11",
+      "todayExpired": true,
+      "stale": true
+    }
+  },
+  "historyTodayKey": "2026-10-10",
+  "stream": {
+    "frames": 2,
+    "events": [
+      {
+        "event": "snapshot",
+        "reason": "snapshot",
+        "at": "2026-10-10T16:30:00.000Z"
+      },
+      {
+        "event": "stats",
+        "reason": "ingest",
+        "at": "2026-10-10T16:30:05.000Z",
+        "change": "build-box uploads again with today x1.04"
+      }
+    ]
+  },
+  "locales": {
+    "desktop": [
+      "en",
+      "zh-CN",
+      "zh-TW",
+      "ja",
+      "ko",
+      "pt-BR"
+    ],
+    "ios": [
+      "en",
+      "zh-Hans",
+      "zh-Hant",
+      "ja",
+      "ko",
+      "pt-BR"
+    ],
+    "extra": [
+      "en-US",
+      "en-GB",
+      "zh-HK",
+      "zh-Hans-CN",
+      "zh-Hant-TW",
+      "ja-JP",
+      "ko-KR",
+      "fr"
+    ]
+  },
+  "seed": [
+    "2026-10-10T15:20:00.000Z POST /api/ingest old-laptop",
+    "2026-10-10T16:25:00.000Z POST /api/ingest build-box",
+    "2026-10-10T16:29:00.000Z PUT /api/sync/titles/studio-mac {enabled:true} -> generation 1",
+    "2026-10-10T16:29:20.000Z POST /api/ingest tokyo-mac",
+    "2026-10-10T16:29:40.000Z POST /api/ingest studio-mac (sessionTitleSyncGeneration 1)",
+    "2026-10-10T16:29:45.000Z PUT /api/subscriptions",
+    "2026-10-10T16:29:50.000Z PUT /api/sync/settings/modelAliases (revision 1)",
+    "2026-10-10T16:29:55.000Z PUT /api/sync/settings/customPricing (revision 1)"
+  ]
+}

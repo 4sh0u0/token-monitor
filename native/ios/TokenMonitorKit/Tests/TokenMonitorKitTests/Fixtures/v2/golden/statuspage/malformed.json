@@ -1,0 +1,18 @@
+{
+  "page": "not-an-object",
+  "components": "nope",
+  "incidents": [
+    {
+      "status": "investigating"
+    },
+    {
+      "status": ""
+    },
+    null
+  ],
+  "scheduled_maintenances": {},
+  "status": {
+    "indicator": "catastrophic",
+    "description": "   "
+  }
+}

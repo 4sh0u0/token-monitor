@@ -1,0 +1,32 @@
+{
+  "source": "src/electron/serviceStatus.js: SERVICE_STATUS_PROVIDERS, summarizeStatuspageProvider(provider, payload, {checkedAt, error}); src/electron/renderer/serviceStatusPresentation.js: affectedComponentNames(issues, limit=2), statusHeadline(summary), agoBucket(ms). Payload files are synthetic Statuspage v2 summary.json bodies.",
+  "providers": [
+    {"id":"claude","label":"Claude","pageUrl":"https://status.claude.com","summaryUrl":"https://status.claude.com/api/v2/summary.json"},
+    {"id":"openai","label":"OpenAI","pageUrl":"https://status.openai.com","summaryUrl":"https://status.openai.com/api/v2/summary.json"},
+    {"id":"cursor","label":"Cursor","pageUrl":"https://status.cursor.com","summaryUrl":"https://status.cursor.com/api/v2/summary.json"},
+    {"id":"deepseek","label":"DeepSeek","pageUrl":"https://status.deepseek.com","summaryUrl":"https://deepseek.statuspage.io/api/v2/summary.json"}
+  ],
+  "checkedAt": "2026-10-10T16:30:00.000Z",
+  "summaries": [
+    {"file":"none.json","provider":"claude","summary":{"id":"claude","label":"Claude","pageUrl":"https://status.claude.com","status":"ok","indicator":"none","description":"All Systems Operational","checkedAt":"2026-10-10T16:30:00.000Z","updatedAt":"2026-10-10T16:12:03.512Z","componentIssues":[],"incidentTitle":"","incidentCount":0,"maintenanceCount":0},"affected":{"all":[],"visible":[],"overflow":0},"affectedLimit1":{"all":[],"visible":[],"overflow":0},"headline":"All Systems Operational"},
+    {"file":"minor.json","provider":"openai","summary":{"id":"openai","label":"OpenAI","pageUrl":"https://status.openai.com","status":"degraded","indicator":"minor","description":"Partially Degraded Service","checkedAt":"2026-10-10T16:30:00.000Z","updatedAt":"2026-10-10T16:12:03.512Z","componentIssues":[{"name":"Codex","status":"degraded_performance"},{"name":"API","status":"partial_outage"}],"incidentTitle":"Elevated error rates for Codex","incidentCount":1,"maintenanceCount":0},"affected":{"all":["Codex","API"],"visible":["Codex","API"],"overflow":0},"affectedLimit1":{"all":["Codex","API"],"visible":["Codex"],"overflow":1},"headline":"Elevated error rates for Codex"},
+    {"file":"major.json","provider":"cursor","summary":{"id":"cursor","label":"Cursor","pageUrl":"https://status.cursor.com","status":"outage","indicator":"major","description":"Major Service Outage","checkedAt":"2026-10-10T16:30:00.000Z","updatedAt":"2026-10-10T16:12:03.512Z","componentIssues":[{"name":"Chat","status":"major_outage"},{"name":"Tab","status":"partial_outage"},{"name":"Background Agents","status":"major_outage"},{"name":"Unknown","status":"major_outage"}],"incidentTitle":"Chat and agents unavailable","incidentCount":2,"maintenanceCount":0},"affected":{"all":["Chat","Tab","Background Agents","Unknown"],"visible":["Chat","Tab"],"overflow":2},"affectedLimit1":{"all":["Chat","Tab","Background Agents","Unknown"],"visible":["Chat"],"overflow":3},"headline":"Chat and agents unavailable"},
+    {"file":"maintenance.json","provider":"deepseek","summary":{"id":"deepseek","label":"DeepSeek","pageUrl":"https://status.deepseek.com","status":"unknown","indicator":"maintenance","description":"Service Under Maintenance","checkedAt":"2026-10-10T16:30:00.000Z","updatedAt":"2026-10-10T16:12:03.512Z","componentIssues":[],"incidentTitle":"","incidentCount":0,"maintenanceCount":2},"affected":{"all":[],"visible":[],"overflow":0},"affectedLimit1":{"all":[],"visible":[],"overflow":0},"headline":"Service Under Maintenance"},
+    {"file":"malformed.json","provider":"claude","summary":{"id":"claude","label":"Claude","pageUrl":"https://status.claude.com","status":"unknown","indicator":"catastrophic","description":"Unknown","checkedAt":"2026-10-10T16:30:00.000Z","updatedAt":"","componentIssues":[],"incidentTitle":"","incidentCount":1,"maintenanceCount":0},"affected":{"all":[],"visible":[],"overflow":0},"affectedLimit1":{"all":[],"visible":[],"overflow":0},"headline":"Unknown"}
+  ],
+  "errors": [
+    {"name":"httpError","provider":"openai","input":{"error":"HTTP 503"},"summary":{"id":"openai","label":"OpenAI","pageUrl":"https://status.openai.com","status":"unknown","indicator":"unknown","description":"Unable to check status","checkedAt":"2026-10-10T16:30:00.000Z","updatedAt":"","componentIssues":[],"incidentTitle":"","incidentCount":0,"maintenanceCount":0,"error":"HTTP 503"},"headline":"Unable to check status"},
+    {"name":"nullPayload","provider":"cursor","input":{"payload":null},"summary":{"id":"cursor","label":"Cursor","pageUrl":"https://status.cursor.com","status":"unknown","indicator":"unknown","description":"Unable to check status","checkedAt":"2026-10-10T16:30:00.000Z","updatedAt":"","componentIssues":[],"incidentTitle":"","incidentCount":0,"maintenanceCount":0,"error":"Unable to check status"},"headline":"Unable to check status"},
+    {"name":"stringPayload","provider":"deepseek","input":{"payload":"garbage"},"summary":{"id":"deepseek","label":"DeepSeek","pageUrl":"https://status.deepseek.com","status":"unknown","indicator":"unknown","description":"Unable to check status","checkedAt":"2026-10-10T16:30:00.000Z","updatedAt":"","componentIssues":[],"incidentTitle":"","incidentCount":0,"maintenanceCount":0,"error":"Unable to check status"},"headline":"Unable to check status"}
+  ],
+  "agoBuckets": [
+    {"ms":0,"bucket":{"unit":"seconds","value":0}},
+    {"ms":999,"bucket":{"unit":"seconds","value":0}},
+    {"ms":59999,"bucket":{"unit":"seconds","value":59}},
+    {"ms":60000,"bucket":{"unit":"minutes","value":1}},
+    {"ms":3599999,"bucket":{"unit":"minutes","value":59}},
+    {"ms":3600000,"bucket":{"unit":"hours","value":1}},
+    {"ms":7200000,"bucket":{"unit":"hours","value":2}},
+    {"ms":-5,"bucket":{"unit":"seconds","value":0}}
+  ]
+}

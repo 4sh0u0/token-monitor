@@ -1,0 +1,45 @@
+{
+  "source": "src/electron/renderer/projectRows.js: projectRowsForPeriod(period, {clientLabels, unknownClientLabel: 'Unknown tool'}) (colors dropped; clientTokens[''] is the unknown-tool remainder), projectBreakdownIncomplete(stats, period); src/shared/projectKey.js: canonicalProjectKey, deterministicProjectLabel",
+  "incomplete": {
+    "today": false,
+    "month": true,
+    "allTime": true
+  },
+  "canonicalKeys": [
+    {"value":"token-monitor","key":"token-monitor"},
+    {"value":"Token-Monitor","key":"token-monitor"},
+    {"value":"  Infra ","key":"infra"},
+    {"value":"Café","key":"café"},
+    {"value":"Café","key":"café"},
+    {"value":"","key":""}
+  ],
+  "deterministicLabels": [
+    {"left":"token-monitor","right":"Token-Monitor","label":"Token-Monitor"},
+    {"left":"infra","right":"Infra","label":"Infra"},
+    {"left":"","right":"x","label":"x"},
+    {"left":"b","right":"a","label":"a"}
+  ],
+  "scopes": {
+    "aggregate.today": [
+      {"key":"token-monitor","name":"token-monitor","value":8193000,"cost":19.3766,"clients":["claude","codex"],"clientTokens":{"claude":4650000,"codex":3543000},"accordionRows":[{"key":"claude","name":"Claude Code","value":4650000,"percent":56.75576711827169},{"key":"codex","name":"Codex","value":3543000,"percent":43.24423288172831}]},
+      {"key":"docs-site","name":"docs-site","value":1790000,"cost":1.944,"clients":["codex","opencode"],"clientTokens":{"codex":640000,"opencode":1150000},"accordionRows":[{"key":"opencode","name":"OpenCode","value":1150000,"percent":64.24581005586593},{"key":"codex","name":"Codex","value":640000,"percent":35.754189944134076}]},
+      {"key":"infra","name":"infra","value":1502000,"cost":1.4184,"clients":["claude","gemini","hermes"],"clientTokens":{"hermes":1000000,"gemini":450000,"claude":52000},"accordionRows":[{"key":"hermes","name":"Hermes Agent","value":1000000,"percent":66.57789613848203},{"key":"gemini","name":"Gemini","value":450000,"percent":29.96005326231691},{"key":"claude","name":"Claude Code","value":52000,"percent":3.462050599201065}]}
+    ],
+    "aggregate.month": [
+      {"key":"token-monitor","name":"Token-Monitor","value":168900000,"cost":302.6,"clients":["claude","codex"],"clientTokens":{"claude":121900000,"codex":40500000,"":6500000},"accordionRows":[{"key":"claude","name":"Claude Code","value":121900000,"percent":72.17288336293664},{"key":"codex","name":"Codex","value":40500000,"percent":23.978685612788635},{"key":"unknown","name":"Unknown tool","value":6500000,"percent":3.8484310242747193}]},
+      {"key":"docs-site","name":"docs-site","value":21000000,"cost":9.75,"unpricedTokens":855000,"clients":["codex","opencode"],"clientTokens":{"opencode":13000000,"codex":8000000},"accordionRows":[{"key":"opencode","name":"OpenCode","value":13000000,"percent":61.904761904761905},{"key":"codex","name":"Codex","value":8000000,"percent":38.095238095238095}]},
+      {"key":"infra","name":"Infra","value":5600000,"cost":6.6,"clients":["claude","codex"],"clientTokens":{"codex":5100000,"claude":500000},"accordionRows":[{"key":"codex","name":"Codex","value":5100000,"percent":91.07142857142857},{"key":"claude","name":"Claude Code","value":500000,"percent":8.928571428571429}]}
+    ],
+    "aggregate.allTime": [
+      {"key":"token-monitor","name":"token-monitor","value":1200000000,"cost":2051.9,"clients":["claude","codex"],"clientTokens":{"claude":900000000,"codex":260000000,"":40000000},"accordionRows":[{"key":"claude","name":"Claude Code","value":900000000,"percent":75},{"key":"codex","name":"Codex","value":260000000,"percent":21.666666666666668},{"key":"unknown","name":"Unknown tool","value":40000000,"percent":3.3333333333333335}]},
+      {"key":"infra","name":"infra","value":83000000,"cost":98.2,"clients":["claude","codex","hermes"],"clientTokens":{"claude":40000000,"hermes":9000000,"codex":31000000,"":3000000},"accordionRows":[{"key":"claude","name":"Claude Code","value":40000000,"percent":48.19277108433735},{"key":"codex","name":"Codex","value":31000000,"percent":37.34939759036144},{"key":"hermes","name":"Hermes Agent","value":9000000,"percent":10.843373493975903},{"key":"unknown","name":"Unknown tool","value":3000000,"percent":3.614457831325301}]},
+      {"key":"docs-site","name":"docs-site","value":140000000,"cost":66.2,"unpricedTokens":5500000,"clients":["codex","opencode"],"clientTokens":{"opencode":90000000,"codex":50000000},"accordionRows":[{"key":"opencode","name":"OpenCode","value":90000000,"percent":64.28571428571429},{"key":"codex","name":"Codex","value":50000000,"percent":35.714285714285715}]}
+    ],
+    "device.studio-mac.month": [
+      {"key":"token-monitor","name":"Token-Monitor","value":168900000,"cost":302.59999999999997,"clients":["claude","codex"],"clientTokens":{"claude":121900000,"codex":40500000,"":6500000},"accordionRows":[{"key":"claude","name":"Claude Code","value":121900000,"percent":72.17288336293664},{"key":"codex","name":"Codex","value":40500000,"percent":23.978685612788635},{"key":"unknown","name":"Unknown tool","value":6500000,"percent":3.8484310242747193}]},
+      {"key":"docs-site","name":"docs-site","value":21000000,"cost":9.75,"unpricedTokens":855000,"clients":["codex","opencode"],"clientTokens":{"opencode":13000000,"codex":8000000},"accordionRows":[{"key":"opencode","name":"OpenCode","value":13000000,"percent":61.904761904761905},{"key":"codex","name":"Codex","value":8000000,"percent":38.095238095238095}]},
+      {"key":"infra","name":"Infra","value":5600000,"cost":6.6,"clients":["claude","codex"],"clientTokens":{"codex":5100000,"claude":500000},"accordionRows":[{"key":"codex","name":"Codex","value":5100000,"percent":91.07142857142857},{"key":"claude","name":"Claude Code","value":500000,"percent":8.928571428571429}]}
+    ],
+    "device.tokyo-mac.month": []
+  }
+}
