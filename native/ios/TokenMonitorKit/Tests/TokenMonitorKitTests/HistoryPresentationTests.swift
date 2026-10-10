@@ -389,6 +389,17 @@ final class HistoryPresentationTests: XCTestCase {
             }
             XCTAssertEqual(AreaLineGeometry.svgPath(geometry.line), chart["linePath"] as? String, name)
             XCTAssertEqual(AreaLineGeometry.svgPath(geometry.area), chart["areaPath"] as? String, name)
+            // The same paths from the desktop's own placed points (what a
+            // chart placing points through its proxy draws).
+            let placed = goldenPoints.map { TrendPlotPoint(x: number($0["x"]) ?? .nan, y: number($0["y"]) ?? .nan) }
+            let curve = options["curve"] as? Bool ?? false
+            let baseline = (number(plot["y"]) ?? 0) + (number(plot["h"]) ?? 0)
+            XCTAssertEqual(AreaLineGeometry.svgPath(TrendSeriesBuilder.linePath(through: placed, curve: curve)), chart["linePath"] as? String, name)
+            XCTAssertEqual(
+                AreaLineGeometry.svgPath(TrendSeriesBuilder.areaPath(through: placed, baseline: baseline, curve: curve)),
+                chart["areaPath"] as? String,
+                name
+            )
 
             // `homeTrendSummary` always reads the rows' tokens, whatever the
             // chart's metric.
@@ -416,6 +427,9 @@ final class HistoryPresentationTests: XCTestCase {
         let single = TrendSeriesBuilder.areaLine(points: [TrendLinePoint(date: "2026-10-10", value: 5)], width: 100, height: 50, insets: TrendPlotInsets(top: 0, right: 0, bottom: 0, left: 0))
         XCTAssertEqual(single.points.first?.x, 50)
         XCTAssertEqual(single.points.first?.y, 0)
+        XCTAssertEqual(TrendSeriesBuilder.areaPath(through: [], baseline: 10), [])
+        let two = [TrendPlotPoint(x: 0, y: 4), TrendPlotPoint(x: 10, y: 2)]
+        XCTAssertEqual(TrendSeriesBuilder.linePath(through: two), [.move(two[0]), .line(two[1])], "straight under three points")
     }
 
     func testHomeTrendFillsCalendarDays() throws {

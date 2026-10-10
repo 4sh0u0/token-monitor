@@ -172,8 +172,12 @@ public struct TrendBarsChart: View {
     }
 }
 
-/// The smooth area line (Home "Trend"): a Catmull-Rom line over a fading
-/// fill of its colour.
+/// The smooth area line (Home "Trend"): the desktop's Catmull-Rom line
+/// (`areaLineChart(curve: true)`, 1/6 tension) over a fading fill of its
+/// colour. Swift Charts places the days and scales the values; the curve is
+/// drawn from those positions with `TrendSeriesBuilder.linePath`, so it has
+/// the same shape as the Overview trend; no built-in interpolation draws
+/// that curve exactly (`.catmullRom` bends differently around spikes).
 public struct TrendAreaLineChart: View {
     private let points: [TrendLinePoint]
     private let selection: Binding<String?>?
@@ -215,22 +219,13 @@ public struct TrendAreaLineChart: View {
         let selectedPoint = selection?.wrappedValue.flatMap { key in points.first { $0.date == key } }
         Chart {
             ForEach(points) { point in
-                AreaMark(
-                    x: .value(labels.date, point.date),
-                    y: .value(labels.value, point.value)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(
-                    LinearGradient(colors: [color.opacity(0.22), color.opacity(0)], startPoint: .top, endPoint: .bottom)
-                )
-                .accessibilityHidden(true)
+                // Invisible: it places the day, sets the scales and reads the
+                // day to VoiceOver; the curve is drawn behind it.
                 LineMark(
                     x: .value(labels.date, point.date),
                     y: .value(labels.value, point.value)
                 )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(color)
-                .lineStyle(StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+                .foregroundStyle(Color.clear)
                 .accessibilityLabel(dateLabel(point.date))
                 .accessibilityValue(axisValue(point.value))
             }
@@ -249,6 +244,15 @@ public struct TrendAreaLineChart: View {
             }
         }
         .chartYScale(domain: .automatic(includesZero: true))
+        .chartBackground { proxy in
+            GeometryReader { geometry in
+                if let plot = proxy.plotFrame {
+                    curve(plot: geometry[plot], size: geometry.size, proxy: proxy)
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
         .modifier(TrendSelection(selection: selection))
         .modifier(TrendAxes(
             showsAxes: showsAxes,
@@ -256,6 +260,27 @@ public struct TrendAreaLineChart: View {
             axisValue: axisValue,
             dateLabel: dateLabel
         ))
+    }
+
+    /// The line and its fill, at the positions the chart gave the days.
+    private func curve(plot: CGRect, size: CGSize, proxy: ChartProxy) -> some View {
+        let placed = points.compactMap { point -> TrendPlotPoint? in
+            guard let x = proxy.position(forX: point.date), let y = proxy.position(forY: point.value) else { return nil }
+            return TrendPlotPoint(x: Double(plot.minX + x), y: Double(plot.minY + y))
+        }
+        let baseline = Double(plot.minY + (proxy.position(forY: 0.0) ?? plot.height))
+        // The fill fades over the plot area, as the area mark did.
+        let fade = LinearGradient(
+            colors: [color.opacity(0.22), color.opacity(0)],
+            startPoint: UnitPoint(x: 0.5, y: size.height > 0 ? plot.minY / size.height : 0),
+            endPoint: UnitPoint(x: 0.5, y: size.height > 0 ? plot.maxY / size.height : 1)
+        )
+        return ZStack {
+            Path(trendElements: TrendSeriesBuilder.areaPath(through: placed, baseline: baseline))
+                .fill(fade)
+            Path(trendElements: TrendSeriesBuilder.linePath(through: placed))
+                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+        }
     }
 }
 

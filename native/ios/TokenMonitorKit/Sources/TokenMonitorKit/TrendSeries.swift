@@ -363,15 +363,8 @@ public enum TrendSeriesBuilder {
             return AreaLineGeometry.Point(date: points[index].date, value: values[index], x: x, y: y)
         }
         let baseline = insets.top + innerHeight
-        let line = curve ? smoothPath(plotted) : straightPath(plotted)
-        var area: [TrendPathElement] = []
-        if let first = plotted.first, let last = plotted.last {
-            area = line + [
-                .line(TrendPlotPoint(x: last.x, y: baseline)),
-                .line(TrendPlotPoint(x: first.x, y: baseline)),
-                .close
-            ]
-        }
+        let placed = plotted.map { TrendPlotPoint(x: $0.x, y: $0.y) }
+        let line = linePath(through: placed, curve: curve)
         return AreaLineGeometry(
             width: width,
             height: height,
@@ -382,34 +375,44 @@ public enum TrendSeriesBuilder {
             points: plotted,
             baseline: baseline,
             line: line,
-            area: area
+            area: areaPath(through: placed, baseline: baseline, curve: curve)
         )
     }
 
-    private static func straightPath(_ points: [AreaLineGeometry.Point]) -> [TrendPathElement] {
-        points.enumerated().map { index, point in
-            let target = TrendPlotPoint(x: point.x, y: point.y)
-            return index == 0 ? .move(target) : .line(target)
+    /// The stroke through points already placed in chart coordinates
+    /// (`smoothLinePath` / `straightLinePath`): the uniform Catmull-Rom curve
+    /// with 1/6 tension, end points repeated, or straight segments — and
+    /// straight with fewer than three points either way. For charts that
+    /// place their points themselves (a Swift Charts `ChartProxy`), so every
+    /// trend line has the desktop's exact shape.
+    public static func linePath(through points: [TrendPlotPoint], curve: Bool = true) -> [TrendPathElement] {
+        guard curve, points.count >= 3 else {
+            return points.enumerated().map { index, point in index == 0 ? .move(point) : .line(point) }
         }
-    }
-
-    /// `smoothLinePath`: uniform Catmull-Rom through every point as cubic
-    /// Béziers, end points repeated.
-    private static func smoothPath(_ points: [AreaLineGeometry.Point]) -> [TrendPathElement] {
-        guard points.count >= 3 else { return straightPath(points) }
-        var path: [TrendPathElement] = [.move(TrendPlotPoint(x: points[0].x, y: points[0].y))]
+        var path: [TrendPathElement] = [.move(points[0])]
         for index in 0..<(points.count - 1) {
             let p0 = points[max(0, index - 1)]
             let p1 = points[index]
             let p2 = points[index + 1]
             let p3 = points[min(points.count - 1, index + 2)]
             path.append(.curve(
-                to: TrendPlotPoint(x: p2.x, y: p2.y),
+                to: p2,
                 control1: TrendPlotPoint(x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6),
                 control2: TrendPlotPoint(x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6)
             ))
         }
         return path
+    }
+
+    /// `linePath(through:curve:)` closed down to the y of `baseline`: the
+    /// area under the line. Empty without points.
+    public static func areaPath(through points: [TrendPlotPoint], baseline: Double, curve: Bool = true) -> [TrendPathElement] {
+        guard let first = points.first, let last = points.last else { return [] }
+        return linePath(through: points, curve: curve) + [
+            .line(TrendPlotPoint(x: last.x, y: baseline)),
+            .line(TrendPlotPoint(x: first.x, y: baseline)),
+            .close
+        ]
     }
 }
 
