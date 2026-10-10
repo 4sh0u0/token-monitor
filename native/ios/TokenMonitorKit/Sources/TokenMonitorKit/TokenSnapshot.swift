@@ -6,6 +6,12 @@ import Foundation
 /// Bounded by construction — at most `maxShares` tools/models per period, a
 /// `maxTrendDays` trend, primary limit windows only, emails masked — so it
 /// stays a few KB however large the Hub's response is.
+///
+/// Build it with `SnapshotBuilder`, which applies the device scope, model
+/// aliases and the user's tool and Limits preferences and stamps
+/// `projectionKey`. Every field added since round 1 is optional and written
+/// only when set, so older readers decode new files and new readers treat
+/// an older file as all devices with no projection.
 public struct TokenSnapshot: Sendable, Equatable {
     /// Bump when a field changes meaning; readers ignore newer versions.
     public static let currentSchemaVersion = 1
@@ -29,8 +35,19 @@ public struct TokenSnapshot: Sendable, Equatable {
     /// `LimitProvider.sortedForDisplay`, each `compacted()`.
     public var limits: [LimitProvider]
     public var devices: DeviceCounts
-    /// Daily tokens/cost, oldest first, ending on the fetch day.
+    /// Daily tokens/cost, oldest first, ending on the fetch day. Empty when
+    /// one device is scoped (its History is not part of stats).
     public var trend: [HistoryDay]
+    /// The device scope the numbers follow; nil for all devices (and in
+    /// snapshots that predate it).
+    public var scope: SnapshotScope?
+    /// The revision of the model-alias document the models were folded
+    /// with; nil when none was applied.
+    public var aliasRevision: Int?
+    /// `SnapshotBuilder.projectionKey` of the preferences and aliases this
+    /// snapshot was built with. A reader whose builder's key differs treats
+    /// the snapshot as due for a refresh, though it may still show it.
+    public var projectionKey: String?
 
     public init(
         schemaVersion: Int = TokenSnapshot.currentSchemaVersion,
@@ -43,7 +60,10 @@ public struct TokenSnapshot: Sendable, Equatable {
         allTime: PeriodSummary,
         limits: [LimitProvider] = [],
         devices: DeviceCounts = DeviceCounts(online: 0, total: 0),
-        trend: [HistoryDay] = []
+        trend: [HistoryDay] = [],
+        scope: SnapshotScope? = nil,
+        aliasRevision: Int? = nil,
+        projectionKey: String? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.fetchedAt = fetchedAt
@@ -56,9 +76,14 @@ public struct TokenSnapshot: Sendable, Equatable {
         self.limits = limits
         self.devices = devices
         self.trend = trend
+        self.scope = scope
+        self.aliasRevision = aliasRevision
+        self.projectionKey = projectionKey
     }
 
-    /// Projects fresh stats.
+    /// Projects fresh stats the round-1 way: all devices, no aliases, the
+    /// usage order of tools and ready limits first. Surfaces that honour the
+    /// user's preferences use `SnapshotBuilder` instead.
     /// - Parameters:
     ///   - hub: the connection the stats were read from, recorded as `hubKey`
     ///     (never the secret). Pass it wherever the Hub is known.
@@ -140,11 +165,78 @@ public struct TokenSnapshot: Sendable, Equatable {
     public init(jsonData: Data) throws {
         self = try JSONDecoder().decode(TokenSnapshot.self, from: jsonData)
     }
+
+    /// Whether this snapshot was built with `projectionKey` (the current
+    /// `SnapshotBuilder.projectionKey`). False for a snapshot that predates
+    /// the key.
+    public func matches(projectionKey key: String) -> Bool {
+        projectionKey == key
+    }
+
+    /// The device scope this snapshot was asked for: `.all` without a scope.
+    /// A missing device still reports its scope; its numbers are the
+    /// aggregate's (`SnapshotScope.isMissing`).
+    public var requestedScope: DeviceScope {
+        scope.map { .device($0.deviceID) } ?? .all
+    }
+
+    /// One device's numbers are shown (not all devices, and not the
+    /// aggregate standing in for a missing device).
+    public var isDeviceScoped: Bool {
+        scope.map { !$0.isMissing } ?? false
+    }
+}
+
+/// The device a snapshot is scoped to.
+public struct SnapshotScope: Sendable, Equatable {
+    /// The Hub id (`DeviceSummary.id`).
+    public var deviceID: String
+    /// The device's display name; the id when the device is missing.
+    public var deviceName: String
+    /// The device is stale: its numbers describe the past.
+    public var isStale: Bool
+    /// The Hub no longer lists the device, so the snapshot shows all devices.
+    public var isMissing: Bool
+
+    public init(deviceID: String, deviceName: String? = nil, isStale: Bool = false, isMissing: Bool = false) {
+        self.deviceID = deviceID
+        self.deviceName = deviceName ?? deviceID
+        self.isStale = isStale
+        self.isMissing = isMissing
+    }
+}
+
+extension SnapshotScope: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case deviceID, deviceName, isStale, isMissing
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard let deviceID = container.lenientString(.deviceID) else {
+            throw DecodingError.dataCorruptedError(forKey: .deviceID, in: container, debugDescription: "scope without a device id")
+        }
+        self.init(
+            deviceID: deviceID,
+            deviceName: container.lenientString(.deviceName),
+            isStale: container.lenientBool(.isStale) ?? false,
+            isMissing: container.lenientBool(.isMissing) ?? false
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(deviceID, forKey: .deviceID)
+        try container.encode(deviceName, forKey: .deviceName)
+        if isStale { try container.encode(true, forKey: .isStale) }
+        if isMissing { try container.encode(true, forKey: .isMissing) }
+    }
 }
 
 extension TokenSnapshot: Codable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, fetchedAt, hubKey, sourceUpdatedAt, isSourceStale, today, month, allTime, limits, devices, trend
+        case scope, aliasRevision, projectionKey
     }
 
     // Dates are written as ISO 8601 strings by hand, so any encoder/decoder
@@ -165,7 +257,10 @@ extension TokenSnapshot: Codable {
             allTime: container.lenientObject(.allTime, as: PeriodSummary.self) ?? PeriodSummary(kind: .allTime),
             limits: container.lenientArray(.limits, of: LimitProvider.self),
             devices: container.lenientObject(.devices, as: DeviceCounts.self) ?? DeviceCounts(online: 0, total: 0),
-            trend: container.lenientArray(.trend, of: HistoryDay.self)
+            trend: container.lenientArray(.trend, of: HistoryDay.self),
+            scope: container.lenientObject(.scope, as: SnapshotScope.self),
+            aliasRevision: container.lenientInt(.aliasRevision).flatMap { $0 >= 0 ? $0 : nil },
+            projectionKey: container.lenientString(.projectionKey)
         )
     }
 
@@ -182,6 +277,9 @@ extension TokenSnapshot: Codable {
         try container.encode(limits, forKey: .limits)
         try container.encode(devices, forKey: .devices)
         try container.encode(trend, forKey: .trend)
+        try container.encodeIfPresent(scope, forKey: .scope)
+        try container.encodeIfPresent(aliasRevision, forKey: .aliasRevision)
+        try container.encodeIfPresent(projectionKey, forKey: .projectionKey)
     }
 }
 
@@ -204,6 +302,10 @@ public struct PeriodSummary: Sendable, Equatable, Codable {
     public var otherToolTokens: Int
     /// Tokens of the period not in `models`.
     public var otherModelTokens: Int
+    /// Tokens the cost excludes because no price was known (compact cost
+    /// labels read "$1.23 + ?"); nil when there are none or the Hub predates
+    /// the field.
+    public var unpricedTokens: Int?
 
     public init(
         kind: UsagePeriodKind,
@@ -217,7 +319,8 @@ public struct PeriodSummary: Sendable, Equatable, Codable {
         tools: [UsageShare] = [],
         models: [UsageShare] = [],
         otherToolTokens: Int = 0,
-        otherModelTokens: Int = 0
+        otherModelTokens: Int = 0,
+        unpricedTokens: Int? = nil
     ) {
         self.kind = kind
         self.totalTokens = totalTokens
@@ -231,11 +334,21 @@ public struct PeriodSummary: Sendable, Equatable, Codable {
         self.models = models
         self.otherToolTokens = otherToolTokens
         self.otherModelTokens = otherModelTokens
+        self.unpricedTokens = unpricedTokens
     }
 
+    /// The period's top tools (in usage order) and models.
     public init(kind: UsagePeriodKind, period: UsagePeriod, maxShares: Int = TokenSnapshot.maxShares) {
+        self.init(kind: kind, period: period, tools: period.clients, maxShares: maxShares)
+    }
+
+    /// The period with `tools` as its tool rows, in that order (already
+    /// ordered and filtered by the caller, e.g. `ClientDisplayOrder.apply`);
+    /// the first `maxShares` are kept and every other token of the period
+    /// counts as `otherToolTokens`.
+    public init(kind: UsagePeriodKind, period: UsagePeriod, tools rows: [UsageShare], maxShares: Int = TokenSnapshot.maxShares) {
         let limit = max(0, maxShares)
-        let tools = period.clients.prefix(limit).map { share in
+        let tools = rows.prefix(limit).map { share in
             UsageShare(kind: .client, id: share.id, label: VendorCatalog.toolLabel(share.id), tokens: share.tokens, costUsd: share.costUsd, vendorID: share.vendorID)
         }
         let models = Array(period.models.prefix(limit))
@@ -251,7 +364,8 @@ public struct PeriodSummary: Sendable, Equatable, Codable {
             tools: tools,
             models: models,
             otherToolTokens: max(0, period.totalTokens - tools.reduce(0) { $0 + $1.tokens }),
-            otherModelTokens: max(0, period.totalTokens - models.reduce(0) { $0 + $1.tokens })
+            otherModelTokens: max(0, period.totalTokens - models.reduce(0) { $0 + $1.tokens }),
+            unpricedTokens: period.unpricedTokens.flatMap { $0 > 0 ? $0 : nil }
         )
     }
 

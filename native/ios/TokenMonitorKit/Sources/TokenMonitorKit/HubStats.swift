@@ -129,6 +129,12 @@ public struct HubStats: Sendable, Equatable {
         devices.first { $0.id == id }
     }
 
+    /// The Hub's summary of the full aggregate History (`historyPreview.summary`),
+    /// for stat cards when `/api/history` is not loaded. Nil when the Hub sends
+    /// none, and in device-scoped stats (`scoped(to:)`), whose preview is not
+    /// the device's.
+    public var historySummary: HistorySummary? { historyPreviewSummary }
+
     /// Decodes a stats body, mapping failures to `HubClientError.decoding`.
     /// `.compact` (the default) is what widgets, the watch and complications
     /// need; the app passes `.app`.
@@ -157,69 +163,10 @@ public struct HubStats: Sendable, Equatable {
 
 /// `historyPreview.summary` of `GET /api/stats`: the Hub's summary of the
 /// full aggregate History (`history.js` `mergeHistories`), the same object
-/// `GET /api/history` returns as `summary`.
-public struct HistoryPreviewSummary: Sendable, Hashable {
-    public var totalTokens: Int
-    /// The known (priced) subtotal in USD.
-    public var totalCost: Double
-    public var activeDays: Int
-    public var currentStreak: Int
-    public var longestStreak: Int
-    public var peakDayTokens: Int
-    public var favoriteModel: String?
-    public var messages: Int
-    public var activeTimeMs: Double
-    /// Tokens the cost excludes; nil when absent.
-    public var unpricedTokens: Int?
-
-    public init(
-        totalTokens: Int = 0,
-        totalCost: Double = 0,
-        activeDays: Int = 0,
-        currentStreak: Int = 0,
-        longestStreak: Int = 0,
-        peakDayTokens: Int = 0,
-        favoriteModel: String? = nil,
-        messages: Int = 0,
-        activeTimeMs: Double = 0,
-        unpricedTokens: Int? = nil
-    ) {
-        self.totalTokens = totalTokens
-        self.totalCost = totalCost
-        self.activeDays = activeDays
-        self.currentStreak = currentStreak
-        self.longestStreak = longestStreak
-        self.peakDayTokens = peakDayTokens
-        self.favoriteModel = favoriteModel
-        self.messages = messages
-        self.activeTimeMs = activeTimeMs
-        self.unpricedTokens = unpricedTokens
-    }
-}
-
-extension HistoryPreviewSummary: Decodable {
-    private enum CodingKeys: String, CodingKey {
-        case totalTokens, totalCost, activeDays, currentStreak, longestStreak, peakDayTokens
-        case favoriteModel, messages, activeTimeMs, unpricedTokens
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        func count(_ key: CodingKeys) -> Int { nonNegative(container.lenientInt(key) ?? 0) }
-        self.init(
-            totalTokens: count(.totalTokens),
-            totalCost: nonNegative(container.lenientDouble(.totalCost) ?? 0),
-            activeDays: count(.activeDays),
-            currentStreak: count(.currentStreak),
-            longestStreak: count(.longestStreak),
-            peakDayTokens: count(.peakDayTokens),
-            favoriteModel: container.lenientString(.favoriteModel),
-            messages: count(.messages),
-            activeTimeMs: nonNegative(container.lenientDouble(.activeTimeMs) ?? 0),
-            unpricedTokens: container.lenientInt(.unpricedTokens).map(nonNegative)
-        )
-    }
-}
+/// `GET /api/history` returns as `summary`. One type with `HistorySummary`
+/// (same fields, same lenient decoding); the name is kept for callers that
+/// read the preview.
+public typealias HistoryPreviewSummary = HistorySummary
 
 extension HubStats: Decodable {
     private enum CodingKeys: String, CodingKey {
