@@ -156,10 +156,7 @@ enum LimitText {
 
     static func windowTitle(_ title: LimitWindowTitle) -> String {
         switch title {
-        case .label(let text):
-            // The Kit names an unnamed additional pool in English.
-            return text == LimitWindowName.additionalLimit.desktopText ? String(localized: "Additional limit") : text
-        case .rawKind(let text):
+        case .label(let text), .rawKind(let text):
             return text
         case .kind(let kind):
             return kindName(kind)

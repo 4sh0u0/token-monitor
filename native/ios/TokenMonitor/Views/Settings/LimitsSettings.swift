@@ -450,7 +450,10 @@ enum LimitsSettingsLogic {
         for record in records {
             for item in LimitPresentation.usageItems(for: record, showCodexAdditional: prefs.showCodexAdditionalLimits)
             where seen.insert(item.id).inserted {
-                rows.append(ChecklistRow(id: item.id, label: LimitText.usageItemLabel(item.label), hidden: hiddenSet.contains(item.id), available: true))
+                // A window row reads as on the Limits page; its desktop
+                // checklist label spells some cadences ("3-hour") in English.
+                let label = item.windowName.map(LimitText.windowName) ?? LimitText.usageItemLabel(item.label)
+                rows.append(ChecklistRow(id: item.id, label: label, hidden: hiddenSet.contains(item.id), available: true))
             }
         }
         for id in hidden where !seen.contains(id) {
