@@ -50,11 +50,44 @@ struct UsageWidgetIntent: WidgetConfigurationIntent {
     var breakdown: BreakdownOption
 }
 
+/// What the Activity widget's colours measure. A local enum (App Intents
+/// metadata is extracted from this target's sources); "App Setting" follows
+/// the app's Activity heatmap colour (`heatmapMetric`).
+enum ActivityMetricOption: String, AppEnum, CaseIterable {
+    case automatic
+    case tokens
+    case cost
+
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Metric")
+    static let caseDisplayRepresentations: [ActivityMetricOption: DisplayRepresentation] = [
+        .automatic: DisplayRepresentation(title: "App Setting"),
+        .tokens: DisplayRepresentation(title: "Tokens"),
+        .cost: DisplayRepresentation(title: "Cost")
+    ]
+
+    func metric(_ preferences: DisplayPreferences) -> HeatmapMetric {
+        switch self {
+        case .automatic: return preferences.heatmapMetric
+        case .tokens: return .tokens
+        case .cost: return .cost
+        }
+    }
+}
+
+struct ActivityWidgetIntent: WidgetConfigurationIntent {
+    static let title: LocalizedStringResource = "Activity"
+    static let description = IntentDescription("Choose what the heatmap's colors measure.")
+
+    @Parameter(title: "Metric", default: .automatic)
+    var metric: ActivityMetricOption
+}
+
 struct LimitsWidgetIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "AI Tool Limits"
     static let description = IntentDescription("Pin one provider, or leave empty to show the most constrained limits first.")
 
-    /// Nil means automatic: the most constrained providers first.
+    /// Nil means automatic: the Home limits order (most constrained first
+    /// unless the user set a Home provider order).
     @Parameter(title: "Provider")
     var provider: LimitProviderEntity?
 }
@@ -125,7 +158,7 @@ struct RefreshUsageIntent: AppIntent {
     static var isDiscoverable: Bool { false }
 
     func perform() async throws -> some IntentResult {
-        _ = await SnapshotLoader.load(forceRefresh: true)
+        _ = await SnapshotLoader.load(forceRefresh: true, context: PresentationContext.load())
         WidgetCenter.shared.reloadAllTimelines()
         return .result()
     }

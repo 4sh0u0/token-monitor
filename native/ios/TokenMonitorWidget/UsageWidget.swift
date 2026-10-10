@@ -31,7 +31,7 @@ struct UsageWidgetView: View {
     let entry: TokenEntry
 
     var body: some View {
-        WidgetChrome(url: url) {
+        WidgetChrome(url: url, context: entry.context) {
             content
         }
     }
@@ -77,6 +77,7 @@ struct UsageWidgetView: View {
 } timeline: {
     TokenEntry.preview()
     TokenEntry.preview(period: .month, fetchedMinutesAgo: 45)
+    TokenEntry.preview(scoped: true)
     TokenEntry.previewState(.notConfigured)
 }
 
@@ -85,6 +86,7 @@ struct UsageWidgetView: View {
 } timeline: {
     TokenEntry.preview()
     TokenEntry.preview(period: .allTime, breakdown: .models)
+    TokenEntry.preview(scoped: true, preferences: .previewIconsOff)
     TokenEntry.previewState(.unavailable)
 }
 
@@ -93,6 +95,7 @@ struct UsageWidgetView: View {
 } timeline: {
     TokenEntry.preview()
     TokenEntry.preview(period: .month, breakdown: .models, fetchedMinutesAgo: 45)
+    TokenEntry.preview(scoped: true, preferences: .previewUsedTWD)
 }
 
 #Preview(as: .accessoryCircular) {
@@ -106,6 +109,7 @@ struct UsageWidgetView: View {
     UsageWidget()
 } timeline: {
     TokenEntry.preview()
+    TokenEntry.preview(scoped: true)
     TokenEntry.preview(period: .allTime, fetchedMinutesAgo: 45)
 }
 

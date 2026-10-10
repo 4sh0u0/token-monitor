@@ -6,5 +6,6 @@ struct TokenMonitorWidgetBundle: WidgetBundle {
     var body: some Widget {
         UsageWidget()
         LimitsWidget()
+        ActivityWidget()
     }
 }

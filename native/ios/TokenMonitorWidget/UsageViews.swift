@@ -5,7 +5,8 @@ import WidgetKit
 
 enum UsageTrend {
     /// The sparkline series of a period: the last two weeks for today, this
-    /// month's days for the month, every cached day for all time.
+    /// month's days for the month, every cached day for all time. Empty for a
+    /// scoped device, whose History is not part of the snapshot.
     static func values(_ snapshot: TokenSnapshot, period: UsagePeriodKind) -> [Double] {
         let days = snapshot.trend
         switch period {
@@ -30,29 +31,26 @@ enum UsageTrend {
         return min(1, Double(snapshot.today.totalTokens) / Double(peak))
     }
 
-    /// "$31.84 · 62.4 tok/s" (the rate only when the period was timed).
-    static func costLine(_ summary: PeriodSummary) -> String {
-        var parts = [WidgetText.cost(summary.costUsd)]
-        if let rate = rateText(summary) { parts.append(rate) }
+    /// "$31.84 · 62 tok/s" (the rate only when the period was timed).
+    static func costLine(_ summary: PeriodSummary, _ format: DisplayFormatter) -> String {
+        var parts = [WidgetText.cost(summary, format)]
+        if let rate = rateText(summary, format) { parts.append(rate) }
         return parts.joined(separator: " · ")
     }
 
-    static func rateText(_ summary: PeriodSummary) -> String? {
+    static func rateText(_ summary: PeriodSummary, _ format: DisplayFormatter) -> String? {
         guard let rate = summary.outputTokensPerSecond, rate > 0 else { return nil }
-        return WidgetText.rate(rate)
+        return WidgetText.rate(rate, format)
     }
 
     /// Tools or models of the period, with an "Other" row for the rest.
+    /// Tools are already in the user's order, minus hidden ones
+    /// (`SnapshotBuilder`).
     static func shares(_ summary: PeriodSummary, breakdown: BreakdownOption) -> [UsageShare] {
         switch breakdown {
         case .tools: return summary.tools(otherLabel: WidgetText.other)
         case .models: return summary.models(otherLabel: WidgetText.other)
         }
-    }
-
-    /// The remainder is drawn neutral so it never reads as one more vendor.
-    static func color(_ share: UsageShare) -> Color {
-        share.kind == .remainder ? TMTheme.muted.opacity(0.55) : share.color
     }
 }
 
@@ -60,6 +58,7 @@ enum UsageTrend {
 
 /// Header, coloured share bar and the top rows of a Tools/Models breakdown.
 struct BreakdownList: View {
+    @Environment(\.tmPresentation) private var presentation
     let title: String
     /// Nil when the period's figures are unknown (`TokenEntry.periodSummary`).
     let shares: [UsageShare]?
@@ -95,28 +94,30 @@ struct BreakdownList: View {
     }
 
     private func segments(_ shares: [UsageShare]) -> [UsageBar.Segment] {
-        shares.map { UsageBar.Segment(id: $0.id, value: Double($0.tokens), color: UsageTrend.color($0)) }
+        let palette = presentation.palette
+        return shares.map { UsageBar.Segment(id: $0.id, value: Double($0.tokens), color: ShareStyle.color($0, palette: palette)) }
     }
 }
 
 struct ShareRow: View {
+    @Environment(\.tmFormatter) private var format
     let share: UsageShare
     let total: Int
 
     var body: some View {
         HStack(spacing: 6) {
-            VendorDot(color: UsageTrend.color(share))
-            Text(share.label)
+            ShareMark(share: share, size: 12)
+            Text(verbatim: share.label)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(TMTheme.text)
                 .lineLimit(1)
             Spacer(minLength: 4)
-            Text(WidgetText.tokens(share.tokens))
+            Text(verbatim: format.compactTokens(share.tokens))
                 .font(.caption2.weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(TMTheme.muted)
                 .lineLimit(1)
-            Text(WidgetText.share(share.fraction(of: total)))
+            Text(verbatim: WidgetText.share(share.fraction(of: total), format))
                 .font(.caption2)
                 .monospacedDigit()
                 .foregroundStyle(TMTheme.muted.opacity(0.75))
@@ -130,22 +131,23 @@ struct ShareRow: View {
 /// Total, cost and throughput of a period, with the trend and the update
 /// time below. The left half of the medium widget.
 struct UsageSummaryColumn: View {
+    @Environment(\.tmFormatter) private var format
     let entry: TokenEntry
     let snapshot: TokenSnapshot
 
     var body: some View {
         let summary = entry.periodSummary
         VStack(alignment: .leading, spacing: 0) {
-            PeriodHeader(period: entry.period, isStale: entry.isStale)
+            PeriodHeader(period: entry.period, isStale: entry.isStale, scopeName: entry.scopeName)
             TotalTokensText(tokens: summary?.totalTokens, size: 30)
                 .padding(.top, 3)
-            Text(WidgetText.cost(summary))
+            Text(verbatim: WidgetText.cost(summary, format))
                 .font(.subheadline.weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(TMTheme.muted)
                 .lineLimit(1)
-            if let summary, let rate = UsageTrend.rateText(summary) {
-                Text(rate)
+            if let summary, let rate = UsageTrend.rateText(summary, format) {
+                Text(verbatim: rate)
                     .font(.caption2)
                     .monospacedDigit()
                     .foregroundStyle(TMTheme.muted)
@@ -155,7 +157,7 @@ struct UsageSummaryColumn: View {
             Spacer(minLength: 4)
             TrendLine(values: UsageTrend.values(snapshot, period: entry.period))
                 .frame(maxWidth: .infinity, minHeight: 0, maxHeight: 22)
-            UpdatedFootnote(snapshot: snapshot, now: entry.date, isStale: entry.isStale)
+            UpdatedFootnote(fetchedAt: snapshot.fetchedAt, now: entry.date, isStale: entry.isStale)
                 .padding(.top, 4)
         }
     }
@@ -165,16 +167,17 @@ struct UsageSummaryColumn: View {
 
 /// systemSmall: the period total, cost, trend and update time.
 struct UsageSmallView: View {
+    @Environment(\.tmFormatter) private var format
     let entry: TokenEntry
     let snapshot: TokenSnapshot
 
     var body: some View {
         let summary = entry.periodSummary
         VStack(alignment: .leading, spacing: 0) {
-            PeriodHeader(period: entry.period, isStale: entry.isStale)
+            PeriodHeader(period: entry.period, isStale: entry.isStale, scopeName: entry.scopeName)
             TotalTokensText(tokens: summary?.totalTokens, size: 34)
                 .padding(.top, 2)
-            Text(WidgetText.cost(summary))
+            Text(verbatim: WidgetText.cost(summary, format))
                 .font(.subheadline.weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(TMTheme.muted)
@@ -182,7 +185,7 @@ struct UsageSmallView: View {
             Spacer(minLength: 4)
             TrendLine(values: UsageTrend.values(snapshot, period: entry.period))
                 .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 30)
-            UpdatedFootnote(snapshot: snapshot, now: entry.date, isStale: entry.isStale)
+            UpdatedFootnote(fetchedAt: snapshot.fetchedAt, now: entry.date, isStale: entry.isStale)
                 .padding(.top, 4)
         }
         .accessibilityElement(children: .combine)
@@ -214,9 +217,10 @@ struct UsageMediumView: View {
     }
 }
 
-/// systemLarge: a dashboard — total and trend, the breakdown, and the most
-/// constrained AI tool limits.
+/// systemLarge: a dashboard — total and trend, the breakdown, and the AI
+/// tool limits in the Limits widget's automatic order.
 struct UsageLargeView: View {
+    @Environment(\.tmFormatter) private var format
     let entry: TokenEntry
     let snapshot: TokenSnapshot
 
@@ -229,22 +233,23 @@ struct UsageLargeView: View {
 
     private func content(height: CGFloat) -> some View {
         let summary = entry.periodSummary
+        let candidates = LimitSelection.providers(in: snapshot, pinnedID: nil, preferences: entry.preferences, limit: 3)
         // Large widgets range from ~290 pt (4.7") to ~350 pt (6.7") of
         // content height; trade rows for fit instead of clipping.
-        let limitRows = snapshot.limits.isEmpty ? 0 : (height >= 340 ? 3 : 2)
+        let limitRows = candidates.isEmpty ? 0 : (height >= 340 ? 3 : 2)
         let shareRows = limitRows == 0 ? (height >= 300 ? 7 : 6) : (height >= 300 ? 4 : 3)
-        let providers = LimitSelection.providers(in: snapshot, pinnedID: nil, limit: limitRows)
+        let providers = Array(candidates.prefix(limitRows))
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
-                PeriodHeader(period: entry.period, isStale: entry.isStale)
+                PeriodHeader(period: entry.period, isStale: entry.isStale, scopeName: entry.scopeName)
                 Spacer(minLength: 4)
-                UpdatedFootnote(snapshot: snapshot, now: entry.date, isStale: entry.isStale)
+                UpdatedFootnote(fetchedAt: snapshot.fetchedAt, now: entry.date, isStale: entry.isStale)
                 RefreshButton()
             }
             HStack(alignment: .bottom, spacing: 14) {
                 VStack(alignment: .leading, spacing: 1) {
                     TotalTokensText(tokens: summary?.totalTokens, size: 36)
-                    Text(summary.map(UsageTrend.costLine) ?? WidgetText.noValue)
+                    Text(verbatim: summary.map { UsageTrend.costLine($0, format) } ?? WidgetText.noValue)
                         .font(.subheadline.weight(.medium))
                         .monospacedDigit()
                         .foregroundStyle(TMTheme.muted)
@@ -283,35 +288,41 @@ struct UsageLargeView: View {
 /// accessoryCircular: the period total; today is drawn against the busiest
 /// recent day.
 struct UsageCircularView: View {
+    @Environment(\.tmFormatter) private var format
     let entry: TokenEntry
     let snapshot: TokenSnapshot
 
     var body: some View {
         let summary = entry.periodSummary
         AccessoryTokensGauge(
-            valueText: summary.map { WidgetText.tokens($0.totalTokens) } ?? WidgetText.noValue,
+            valueText: summary.map { format.compactTokens($0.totalTokens) } ?? WidgetText.noValue,
             label: WidgetText.shortPeriod(entry.period),
             fraction: entry.period == .today && summary != nil ? UsageTrend.todayFraction(snapshot) : nil
         )
     }
 }
 
-/// accessoryRectangular: period, tokens with the trend, and the cost (or,
-/// when the data is old, when it was last updated).
+/// accessoryRectangular: period (and scoped device), tokens with the trend,
+/// and the cost (or, when the data is old, when it was last updated).
 struct UsageRectangularView: View {
+    @Environment(\.tmFormatter) private var format
     let entry: TokenEntry
     let snapshot: TokenSnapshot
 
     var body: some View {
         let summary = entry.periodSummary
         AccessorySummaryView(
-            title: WidgetText.period(entry.period),
-            value: summary.map { WidgetText.tokenCount($0.totalTokens) } ?? WidgetText.noValue,
+            title: title,
+            value: summary.map { WidgetText.tokenCount($0.totalTokens, format) } ?? WidgetText.noValue,
             detail: entry.isStale || summary == nil
                 ? WidgetText.updated(snapshot.fetchedAt, now: entry.date)
-                : WidgetText.cost(summary),
+                : WidgetText.cost(summary, format),
             trend: Array(UsageTrend.values(snapshot, period: entry.period).suffix(14))
         )
+    }
+
+    private var title: String {
+        [WidgetText.period(entry.period), entry.scopeName].compactMap { $0 }.joined(separator: " · ")
     }
 }
 
@@ -319,16 +330,17 @@ struct UsageRectangularView: View {
 /// over since the fetch, when the numbers were last read instead (the line
 /// has no room for a stale mark).
 struct UsageInlineView: View {
+    @Environment(\.tmFormatter) private var format
     let entry: TokenEntry
     let snapshot: TokenSnapshot
 
     var body: some View {
         if let summary = entry.periodSummary {
-            let tokens = WidgetText.tokens(summary.totalTokens)
-            let cost = WidgetText.cost(summary.costUsd)
+            let tokens = format.compactTokens(summary.totalTokens)
+            let cost = WidgetText.cost(summary, format)
             Text("\(tokens) tokens · \(cost)")
         } else {
-            Text(WidgetText.updated(snapshot.fetchedAt, now: entry.date))
+            Text(verbatim: WidgetText.updated(snapshot.fetchedAt, now: entry.date))
         }
     }
 }

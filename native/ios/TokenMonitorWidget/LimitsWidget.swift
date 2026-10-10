@@ -3,8 +3,10 @@ import TokenMonitorKit
 import TokenMonitorUI
 import WidgetKit
 
-/// AI Tool Limits: quota windows and when they reset, most constrained first
-/// unless one provider is pinned.
+/// AI Tool Limits: quota windows and when they reset. Unless one provider is
+/// pinned, the order follows the Home limits settings: the user's Home
+/// provider order, else the most constrained first, minus providers hidden
+/// from Home.
 struct LimitsWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(
@@ -25,7 +27,7 @@ struct LimitsWidgetView: View {
     let entry: TokenEntry
 
     var body: some View {
-        WidgetChrome(url: url) {
+        WidgetChrome(url: url, context: entry.context) {
             content
         }
     }
@@ -49,7 +51,7 @@ struct LimitsWidgetView: View {
 
     @ViewBuilder
     private func ready(_ snapshot: TokenSnapshot) -> some View {
-        if let lead = LimitSelection.providers(in: snapshot, pinnedID: entry.pinnedLimitID, limit: 1).first {
+        if let lead = LimitSelection.providers(in: snapshot, pinnedID: entry.pinnedLimitID, preferences: entry.preferences, limit: 1).first {
             switch family {
             case .systemMedium:
                 LimitsMediumView(entry: entry, snapshot: snapshot)
@@ -71,6 +73,7 @@ struct LimitsWidgetView: View {
 } timeline: {
     TokenEntry.preview()
     TokenEntry.preview(pinnedLimitID: "deepseek-sample")
+    TokenEntry.preview(pinnedLimitID: "claude-sample", preferences: .previewUsedTWD)
     TokenEntry.previewState(.notConfigured)
 }
 
@@ -79,6 +82,7 @@ struct LimitsWidgetView: View {
 } timeline: {
     TokenEntry.preview()
     TokenEntry.preview(pinnedLimitID: "claude-sample", fetchedMinutesAgo: 45)
+    TokenEntry.preview(preferences: .previewIconsOff)
 }
 
 #Preview(as: .accessoryCircular) {
@@ -92,5 +96,6 @@ struct LimitsWidgetView: View {
     LimitsWidget()
 } timeline: {
     TokenEntry.preview()
+    TokenEntry.preview(pinnedLimitID: "cursor-sample")
     TokenEntry.previewState(.unavailable)
 }

@@ -27,14 +27,37 @@ struct StaleBadge: View {
     }
 }
 
-/// Period label plus the stale mark, as the top line of the usage widgets.
+/// The device the numbers follow (`deviceScope`), shown while one device is
+/// scoped. The name is the Hub's, shown as is.
+struct ScopeLabel: View {
+    let name: String
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "laptopcomputer")
+                .font(.system(size: 8, weight: .semibold))
+                .accessibilityHidden(true)
+            Text(verbatim: name)
+                .font(.caption2.weight(.medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .foregroundStyle(TMTheme.muted)
+        .layoutPriority(-1)
+    }
+}
+
+/// Period label, the scoped device and the stale mark, as the top line of
+/// the usage widgets.
 struct PeriodHeader: View {
     let period: UsagePeriodKind
     let isStale: Bool
+    var scopeName: String? = nil
 
     var body: some View {
         HStack(spacing: 4) {
             SectionLabel(text: WidgetText.shortPeriod(period))
+            if let scopeName { ScopeLabel(name: scopeName) }
             if isStale { StaleBadge() }
         }
     }
@@ -42,12 +65,12 @@ struct PeriodHeader: View {
 
 /// "Updated 14:05" — when this phone last read the Hub.
 struct UpdatedFootnote: View {
-    let snapshot: TokenSnapshot
+    let fetchedAt: Date
     let now: Date
     let isStale: Bool
 
     var body: some View {
-        Text(WidgetText.updated(snapshot.fetchedAt, now: now))
+        Text(WidgetText.updated(fetchedAt, now: now))
             .font(.caption2)
             .monospacedDigit()
             .foregroundStyle(isStale ? TMTheme.caution : TMTheme.muted)
@@ -72,13 +95,15 @@ struct RefreshButton: View {
     }
 }
 
-/// The headline token count; `WidgetText.noValue` when it is unknown.
+/// The headline token count in the user's units; `WidgetText.noValue` when
+/// it is unknown.
 struct TotalTokensText: View {
+    @Environment(\.tmFormatter) private var format
     let tokens: Int?
     let size: CGFloat
 
     var body: some View {
-        Text(tokens.map(WidgetText.tokens) ?? WidgetText.noValue)
+        Text(tokens.map { format.compactTokens($0) } ?? WidgetText.noValue)
             .font(.system(size: size, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(TMTheme.number)
@@ -110,15 +135,48 @@ struct TrendLine: View {
     }
 }
 
-struct VendorDot: View {
-    let color: Color
-    var size: CGFloat = 7
+/// The neutral dot of a breakdown's "Other" row, which stands for no vendor.
+struct RemainderDot: View {
+    var size: CGFloat = 12
 
     var body: some View {
         Circle()
-            .fill(color)
+            .fill(ShareStyle.remainderColor)
+            .frame(width: size * 0.7, height: size * 0.7)
             .frame(width: size, height: size)
             .accessibilityHidden(true)
+    }
+}
+
+/// The leading mark of a Tools/Models row: the vendor icon or, with tool
+/// icons off, the vendor-colour dot (`VendorMark`).
+struct ShareMark: View {
+    let share: UsageShare
+    var size: CGFloat = 12
+
+    var body: some View {
+        switch share.kind {
+        case .client:
+            VendorMark(.client(share.vendorID ?? share.id), size: size)
+        case .model:
+            VendorMark(.model(share.id), size: size)
+        case .remainder:
+            RemainderDot(size: size)
+        }
+    }
+}
+
+/// The colours of breakdown rows, with the user's vendor-colour overrides.
+enum ShareStyle {
+    /// The remainder is drawn neutral so it never reads as one more vendor.
+    static let remainderColor = TMTheme.muted.opacity(0.55)
+
+    static func color(_ share: UsageShare, palette: VendorPalette) -> Color {
+        switch share.kind {
+        case .client: return VendorColor.color(for: share.vendorID ?? share.id, palette: palette)
+        case .model: return VendorColor.model(share.id, palette: palette)
+        case .remainder: return remainderColor
+        }
     }
 }
 
@@ -166,6 +224,17 @@ struct WidgetMessage {
             title: String(localized: "No limits yet"),
             detail: nil,
             short: String(localized: "No limits yet")
+        )
+    }
+
+    /// The app has not written the Activity file for this Hub and scope yet:
+    /// it does after loading History, which the widget never decodes itself.
+    static var noActivity: WidgetMessage {
+        WidgetMessage(
+            symbol: "square.grid.3x3.fill",
+            title: String(localized: "No activity yet"),
+            detail: String(localized: "Open Token Monitor to load activity"),
+            short: String(localized: "Open Token Monitor to load activity")
         )
     }
 }
