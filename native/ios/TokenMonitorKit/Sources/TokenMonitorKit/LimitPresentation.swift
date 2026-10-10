@@ -1590,7 +1590,10 @@ public enum LimitWindowName: Sendable, Hashable {
         }
     }
 
-    /// The same name as a checklist label.
+    /// The same name as a checklist label, in the desktop's wording: a
+    /// cadence other than the five named ones and `.additionalLimit` become
+    /// English provider text there. Targets that localize those read
+    /// `LimitUsageItem.windowName` instead.
     public var usageItemLabel: LimitUsageItemLabel {
         switch self {
         case .title(let title): return .window(title)
@@ -2459,9 +2462,9 @@ extension LimitPresentation {
     /// summary (`spend`) and reset credits (`resets`) rows.
     public static func usageItems(for provider: LimitProvider, showCodexAdditional: Bool = true) -> [LimitUsageItem] {
         var items: [LimitUsageItem] = []
-        func add(_ id: String, _ label: LimitUsageItemLabel) {
+        func add(_ id: String, _ label: LimitUsageItemLabel, windowName: LimitWindowName? = nil) {
             guard !id.isEmpty, !items.contains(where: { $0.id == id }) else { return }
-            items.append(LimitUsageItem(id: id, label: label))
+            items.append(LimitUsageItem(id: id, label: label, windowName: windowName))
         }
         for window in cardWindows(provider, showCodexAdditional: showCodexAdditional) {
             let id = provider.usageItemID(for: window)
@@ -2475,7 +2478,8 @@ extension LimitPresentation {
             case LimitUsageFixedItem.spend.rawValue:
                 add(id, window.label.map { .window(.label($0)) } ?? .fixed(.spend))
             default:
-                add(id, windowName(window, provider: provider).usageItemLabel)
+                let name = windowName(window, provider: provider)
+                add(id, name.usageItemLabel, windowName: name)
             }
         }
         if let balance = provider.balance, finite(balance.amount) != nil || finite(balance.giftBalance) != nil

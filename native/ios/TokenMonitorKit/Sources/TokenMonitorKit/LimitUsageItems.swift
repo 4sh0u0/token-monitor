@@ -122,10 +122,18 @@ public struct LimitUsageItem: Sendable, Hashable, Identifiable {
     /// The stored item id: a `LimitUsageFixedItem` raw value or a window key.
     public var id: String
     public var label: LimitUsageItemLabel
+    /// The window's Limits-page name when the row is a window
+    /// (`LimitPresentation.windowName`). `label` keeps the desktop's
+    /// checklist wording, which flattens an odd cadence ("3-hour") and
+    /// "Additional limit" into English text; targets word this instead
+    /// whenever it is set. Nil for the fixed rows (balance, spend, resets)
+    /// and for balance or spend windows, which keep their own label.
+    public var windowName: LimitWindowName?
 
-    public init(id: String, label: LimitUsageItemLabel) {
+    public init(id: String, label: LimitUsageItemLabel, windowName: LimitWindowName? = nil) {
         self.id = id
         self.label = label
+        self.windowName = windowName
     }
 }
 
