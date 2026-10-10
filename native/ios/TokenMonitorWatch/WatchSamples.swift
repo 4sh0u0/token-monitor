@@ -25,42 +25,12 @@ extension TokenSnapshot {
             var scaled = share
             scaled.tokens *= 17
             return scaled
-        })
+        }, unpricedTokens: 2_400_000)
         let allTime = PeriodSummary(kind: .allTime, totalTokens: 4_233_100_000, costUsd: 7_196.27, tools: tools.map { share in
             var scaled = share
             scaled.tokens *= 58
             return scaled
         })
-        let limits = [
-            LimitProvider(
-                id: "claude-sample",
-                provider: "claude",
-                planLabel: "Max",
-                updatedAt: now,
-                windows: [
-                    LimitWindow(kind: .session, usedPercent: 42, remainingPercent: 58, resetsAt: now.addingTimeInterval(2.5 * 3600)),
-                    LimitWindow(kind: .weekly, usedPercent: 20.5, remainingPercent: 79.5, resetsAt: now.addingTimeInterval(4 * 86_400)),
-                    LimitWindow(kind: .billing, label: "Balance", metric: .credits, remaining: 37.5, currency: "USD", showMeter: false)
-                ]
-            ),
-            LimitProvider(
-                id: "codex-sample",
-                provider: "codex",
-                planLabel: "Plus",
-                updatedAt: now,
-                windows: [
-                    LimitWindow(kind: .session, usedPercent: 8, remainingPercent: 92, resetsAt: now.addingTimeInterval(4 * 3600)),
-                    LimitWindow(kind: .weekly, usedPercent: 81, remainingPercent: 19, resetsAt: now.addingTimeInterval(2 * 86_400))
-                ]
-            ),
-            LimitProvider(
-                id: "openrouter-sample",
-                provider: "openrouter",
-                updatedAt: now,
-                windows: [LimitWindow(kind: .billing, metric: .credits, remaining: 12.75, currency: "USD")],
-                balance: LimitBalance(amount: 12.75, currency: "USD", monthSpend: 7.25)
-            )
-        ]
         let calendar = Calendar.current
         let trend: [HistoryDay] = (0..<14).reversed().map { offset in
             let day = calendar.date(byAdding: .day, value: -offset, to: now) ?? now
@@ -73,9 +43,103 @@ extension TokenSnapshot {
             today: today,
             month: month,
             allTime: allTime,
-            limits: limits,
+            limits: watchSampleLimits(now: now),
             devices: DeviceCounts(online: 2, total: 3),
             trend: trend
         )
+    }
+
+    /// `watchSample` scoped to one device that went offline: no trend (a
+    /// device's history is not part of stats), smaller numbers.
+    static var watchScopedSample: TokenSnapshot {
+        var snapshot = watchSample
+        snapshot.scope = SnapshotScope(deviceID: "studio-mac", deviceName: "Studio Mac", isStale: true)
+        snapshot.trend = []
+        for kind in UsagePeriodKind.allCases {
+            var summary = snapshot[kind]
+            summary.totalTokens /= 3
+            summary.costUsd /= 3
+            summary.tools = summary.tools.prefix(2).map { share in
+                var scaled = share
+                scaled.tokens /= 3
+                return scaled
+            }
+            summary.otherToolTokens = max(0, summary.totalTokens - summary.tools.reduce(0) { $0 + $1.tokens })
+            switch kind {
+            case .today: snapshot.today = summary
+            case .month: snapshot.month = summary
+            case .allTime: snapshot.allTime = summary
+            }
+        }
+        return snapshot
+    }
+
+    private static func watchSampleLimits(now: Date) -> [LimitProvider] {
+        [
+            LimitProvider(
+                id: "claude-sample",
+                provider: "claude",
+                planLabel: "Max",
+                updatedAt: now.addingTimeInterval(-240),
+                windows: [
+                    LimitWindow(kind: .session, usedPercent: 42, remainingPercent: 58, resetsAt: now.addingTimeInterval(2.5 * 3600)),
+                    LimitWindow(kind: .weekly, usedPercent: 20.5, remainingPercent: 79.5, resetsAt: now.addingTimeInterval(4 * 86_400))
+                ]
+            ),
+            LimitProvider(
+                id: "codex-sample-work",
+                provider: "codex",
+                accountEmail: "d***v@example.com",
+                accountName: "Work",
+                planLabel: "Plus",
+                updatedAt: now.addingTimeInterval(-60),
+                windows: [
+                    LimitWindow(kind: .session, usedPercent: 8, remainingPercent: 92, resetsAt: now.addingTimeInterval(4 * 3600)),
+                    LimitWindow(kind: .weekly, usedPercent: 81, remainingPercent: 19, resetsAt: now.addingTimeInterval(2 * 86_400))
+                ]
+            ),
+            LimitProvider(
+                id: "codex-sample-personal",
+                provider: "codex",
+                accountEmail: "d***v@example.com",
+                planLabel: "Pro",
+                updatedAt: now.addingTimeInterval(-3 * 3600),
+                isStale: true,
+                windows: [
+                    LimitWindow(kind: .session, usedPercent: 55, remainingPercent: 45, resetsAt: now.addingTimeInterval(3600))
+                ],
+                workspaceKind: "personal"
+            ),
+            LimitProvider(
+                id: "openrouter-sample",
+                provider: "openrouter",
+                updatedAt: now,
+                windows: [LimitWindow(kind: .billing, metric: .credits, remaining: 12.75, currency: "USD")],
+                balance: LimitBalance(amount: 12.75, currency: "USD", monthSpend: 7.25)
+            ),
+            LimitProvider(
+                id: "cursor-sample",
+                provider: "cursor",
+                status: .unauthorized,
+                updatedAt: now.addingTimeInterval(-600),
+                windows: [
+                    LimitWindow(kind: .billing, usedPercent: 64, remainingPercent: 36, resetsAt: now.addingTimeInterval(12 * 86_400))
+                ]
+            )
+        ]
+    }
+}
+
+extension PresentationContext {
+    /// Previews only: Traditional Chinese units in TWD, used mode, no tool
+    /// icons, Codex listed first.
+    static var watchSample: PresentationContext {
+        var preferences = DisplayPreferences.defaults
+        preferences.compactTokenUnits = .localized
+        preferences.currency = .twd
+        preferences.showLimitUsed = true
+        preferences.showToolIcons = false
+        preferences.limitProviderOrder = ["codex"]
+        return PresentationContext(preferences: preferences, languageIdentifier: "zh-Hant")
     }
 }

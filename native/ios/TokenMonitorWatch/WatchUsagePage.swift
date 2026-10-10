@@ -2,7 +2,8 @@ import SwiftUI
 import TokenMonitorKit
 import TokenMonitorUI
 
-/// Page 1: the period's total tokens, cost, output speed and a 14-day trend.
+/// Page 1: the period's total tokens, cost, output speed and a 14-day trend,
+/// for the device scope the iPhone chose.
 struct WatchUsagePage: View {
     static let trendDays = 14
 
@@ -10,15 +11,20 @@ struct WatchUsagePage: View {
     let snapshot: TokenSnapshot
     @Binding var period: UsagePeriodKind
 
+    @Environment(\.tmFormatter) private var format
+
     var body: some View {
         let summary = snapshot[period]
+        // Empty for a scoped device: its daily history is not part of stats.
         let trend = Array(snapshot.trend.suffix(Self.trendDays))
+        let cost = format.costLabel(summary.costUsd, unpricedTokens: summary.unpricedTokens, compact: true, compactAmount: true)
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
+                WatchScopeLabel(scope: snapshot.scope)
                 Text("Tokens")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(TMTheme.muted)
-                Text(TokenFormat.compactTokens(summary.totalTokens))
+                Text(verbatim: format.compactTokens(summary.totalTokens))
                     .font(.system(size: 40, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(TMTheme.number)
@@ -26,9 +32,9 @@ struct WatchUsagePage: View {
                     .minimumScaleFactor(0.5)
                     .contentTransition(.numericText())
                 HStack(spacing: 6) {
-                    Text(TokenFormat.usd(summary.costUsd))
+                    Text(verbatim: WatchText.cost(cost))
                     if let rate = summary.outputTokensPerSecond {
-                        Text("\(TokenFormat.tokensPerSecond(rate)) tok/s")
+                        Text("\(format.liveTokenRate(rate)) tok/s")
                     }
                 }
                 .font(.footnote.weight(.medium))
@@ -65,4 +71,11 @@ struct WatchUsagePage: View {
     NavigationStack {
         WatchUsagePage(store: WatchStore(), snapshot: .watchSample, period: .constant(.today))
     }
+}
+
+#Preview("Scoped, localized units") {
+    NavigationStack {
+        WatchUsagePage(store: WatchStore(), snapshot: .watchScopedSample, period: .constant(.month))
+    }
+    .tmPresentation(.watchSample)
 }

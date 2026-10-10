@@ -12,9 +12,13 @@ struct WatchRootView: View {
         NavigationStack {
             content
         }
-        .task(id: scenePhase) {
+        // Units, currency, vendor colours, tool icons and used/remaining
+        // for every page, as the iPhone last sent them.
+        .tmPresentation(store.context)
+        .task(id: PollingKey(isActive: scenePhase == .active, interval: store.timing.pollInterval)) {
             // Polls only while the app is on screen; the task is cancelled
-            // when the wrist drops.
+            // when the wrist drops, and restarted when the iPhone changes the
+            // watch refresh interval.
             guard scenePhase == .active else { return }
             await store.runWhileActive()
         }
@@ -45,6 +49,13 @@ struct WatchRootView: View {
             WatchLoadingView()
         }
     }
+}
+
+/// What restarts the polling task: the scene becoming active, or another
+/// poll interval.
+private struct PollingKey: Hashable {
+    var isActive: Bool
+    var interval: TimeInterval
 }
 
 struct WatchNotConfiguredView: View {
@@ -104,6 +115,42 @@ struct WatchLoadingView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .containerBackground(for: .navigation) { TMBackground() }
+    }
+}
+
+/// The device the numbers follow (`deviceScope`); nothing for all devices.
+/// A device the Hub no longer lists falls back to all devices, and says so.
+struct WatchScopeLabel: View {
+    let scope: SnapshotScope?
+
+    var body: some View {
+        if let scope {
+            Group {
+                if scope.isMissing {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Label("Device not found", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(TMTheme.caution)
+                        Text("All devices")
+                            .foregroundStyle(TMTheme.muted)
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "laptopcomputer")
+                            .accessibilityHidden(true)
+                        Text(verbatim: scope.deviceName)
+                        if scope.isStale {
+                            Text("Offline")
+                                .foregroundStyle(TMTheme.staleMuted)
+                        }
+                    }
+                    .foregroundStyle(TMTheme.accent)
+                }
+            }
+            .font(.caption2.weight(.medium))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .accessibilityElement(children: .combine)
+        }
     }
 }
 

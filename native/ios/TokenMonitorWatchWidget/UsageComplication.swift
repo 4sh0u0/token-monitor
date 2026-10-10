@@ -3,11 +3,12 @@ import TokenMonitorKit
 import TokenMonitorUI
 import WidgetKit
 
-/// Today's tokens and cost.
+/// Today's tokens and cost, for the device scope the iPhone chose.
 struct UsageComplication: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: ComplicationKind.usage, provider: ComplicationProvider()) { entry in
             UsageComplicationView(entry: entry)
+                .tmPresentation(entry.context)
                 .containerBackground(for: .widget) { TMBackground() }
         }
         .configurationDisplayName("Token Monitor Summary")
@@ -30,16 +31,20 @@ struct UsageComplicationView: View {
 
     @ViewBuilder
     private func content(_ snapshot: TokenSnapshot) -> some View {
+        let format = entry.context.formatter
+        let today = snapshot.today
         // A snapshot fetched yesterday says nothing about today's usage.
         let isCurrentDay = snapshot.isCurrent(.today, at: entry.date)
-        let tokens = isCurrentDay ? TokenFormat.compactTokens(snapshot.today.totalTokens) : "—"
-        let cost = isCurrentDay ? TokenFormat.usd(snapshot.today.costUsd) : "—"
+        let tokens = isCurrentDay ? format.compactTokens(today.totalTokens) : "—"
+        let cost = isCurrentDay
+            ? ComplicationText.cost(format.costLabel(today.costUsd, unpricedTokens: today.unpricedTokens, compact: true, compactAmount: true))
+            : "—"
         switch family {
         case .accessoryRectangular:
             AccessorySummaryView(
                 title: title(snapshot),
                 value: tokens,
-                detail: isCurrentDay ? detail(snapshot, cost: cost) : nil,
+                detail: isCurrentDay ? detail(snapshot, cost: cost, format: format) : nil,
                 trend: ComplicationContent.trend(snapshot)
             )
         case .accessoryInline:
@@ -66,18 +71,26 @@ struct UsageComplicationView: View {
         }
     }
 
-    /// "Today", or "Today · 2 hr. ago" once the numbers are old.
+    /// "Today", "Today · Studio Mac" for a scoped device, then "· 2h ago"
+    /// once the numbers are old.
     private func title(_ snapshot: TokenSnapshot) -> String {
-        let today = String(localized: "Today")
-        guard snapshot.isOlder(than: ComplicationContent.staleAge, at: entry.date) else { return today }
-        return "\(today) · \(TokenFormat.relative(snapshot.fetchedAt, to: entry.date))"
+        var parts = [String(localized: "Today")]
+        if let scope = snapshot.scope, !scope.isMissing {
+            parts.append(scope.deviceName)
+        }
+        if snapshot.isOlder(than: entry.timing.staleAge, at: entry.date) {
+            parts.append(ComplicationText.age(of: snapshot.fetchedAt, at: entry.date))
+        }
+        return parts.joined(separator: " · ")
     }
 
-    /// "$122.83 · Claude 57%".
-    private func detail(_ snapshot: TokenSnapshot, cost: String) -> String {
+    /// "$122.83 · Claude 57%": the cost, then today's biggest visible tool.
+    private func detail(_ snapshot: TokenSnapshot, cost: String, format: DisplayFormatter) -> String {
         let total = snapshot.today.totalTokens
-        guard let top = snapshot.today.tools.first, total > 0 else { return cost }
-        return "\(cost) · \(top.label) \(TokenFormat.percent(top.fraction(of: total) * 100))"
+        guard total > 0, let top = ComplicationContent.topTool(snapshot.today, preferences: entry.context.preferences) else {
+            return cost
+        }
+        return "\(cost) · \(top.label) \(format.percent(top.fraction(of: total) * 100))"
     }
 }
 
@@ -85,6 +98,7 @@ struct UsageComplicationView: View {
     UsageComplication()
 } timeline: {
     ComplicationEntry.sample
+    ComplicationEntry.sample(context: .complicationSample, snapshot: .complicationScopedSample)
     ComplicationEntry(date: .now, snapshot: nil, isConfigured: false)
 }
 
@@ -92,6 +106,7 @@ struct UsageComplicationView: View {
     UsageComplication()
 } timeline: {
     ComplicationEntry.sample
+    ComplicationEntry.sample(context: .complicationSample)
 }
 
 #Preview(as: .accessoryCorner) {
@@ -104,4 +119,5 @@ struct UsageComplicationView: View {
     UsageComplication()
 } timeline: {
     ComplicationEntry.sample
+    ComplicationEntry.sample(context: .complicationSample)
 }

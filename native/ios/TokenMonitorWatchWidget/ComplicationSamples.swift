@@ -4,7 +4,13 @@ import TokenMonitorKit
 extension ComplicationEntry {
     /// The face gallery and previews; never shown on a configured face.
     static var sample: ComplicationEntry {
-        ComplicationEntry(date: Date(), snapshot: .complicationSample, isConfigured: true)
+        sample(context: .standard)
+    }
+
+    /// The sample numbers presented with `context` (the user's units and
+    /// currency in the face gallery).
+    static func sample(context: PresentationContext, snapshot: TokenSnapshot = .complicationSample) -> ComplicationEntry {
+        ComplicationEntry(date: Date(), snapshot: snapshot, isConfigured: true, context: context)
     }
 }
 
@@ -49,6 +55,12 @@ extension TokenSnapshot {
                 updatedAt: now,
                 windows: [LimitWindow(kind: .billing, metric: .credits, remaining: 12.75, currency: "USD")],
                 balance: LimitBalance(amount: 12.75, currency: "USD", monthSpend: 7.25)
+            ),
+            LimitProvider(
+                id: "cursor-sample",
+                provider: "cursor",
+                status: .unauthorized,
+                updatedAt: now
             )
         ]
         let calendar = Calendar.current
@@ -66,5 +78,29 @@ extension TokenSnapshot {
             devices: DeviceCounts(online: 2, total: 3),
             trend: trend
         )
+    }
+
+    /// One device's numbers: no trend, a scope to label.
+    static var complicationScopedSample: TokenSnapshot {
+        var snapshot = complicationSample
+        snapshot.scope = SnapshotScope(deviceID: "studio-mac", deviceName: "Studio Mac")
+        snapshot.trend = []
+        snapshot.today.totalTokens = 24_100_000
+        snapshot.today.costUsd = 40.95
+        snapshot.today.unpricedTokens = 1_200_000
+        return snapshot
+    }
+}
+
+extension PresentationContext {
+    /// Previews only: Japanese units in CNY, used mode, Claude hidden from
+    /// the Quota complication.
+    static var complicationSample: PresentationContext {
+        var preferences = DisplayPreferences.defaults
+        preferences.compactTokenUnits = .localized
+        preferences.currency = .cny
+        preferences.showLimitUsed = true
+        preferences.hiddenHomeLimitProviders = ["claude"]
+        return PresentationContext(preferences: preferences, languageIdentifier: "ja")
     }
 }

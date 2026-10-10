@@ -5,84 +5,131 @@ import WidgetKit
 
 enum ComplicationContent {
     static let trendDays = 14
-    /// Older than this, the rectangular usage complication says how old.
-    static let staleAge: TimeInterval = 60 * 60
 
     static func trend(_ snapshot: TokenSnapshot) -> [Double] {
         snapshot.trend.suffix(trendDays).map { Double($0.tokens) }
     }
 
     /// Today against the busiest day of the trend (today included), for the
-    /// circular gauge; nil when there is nothing to compare.
+    /// circular gauge; nil when there is nothing to compare (a scoped device
+    /// has no trend).
     static func busiestDayFraction(_ snapshot: TokenSnapshot) -> Double? {
         let today = snapshot.today.totalTokens
-        let peak = max(today, snapshot.trend.suffix(trendDays).map(\.tokens).max() ?? 0)
+        let trend = snapshot.trend.suffix(trendDays).map(\.tokens)
+        guard !trend.isEmpty else { return nil }
+        let peak = max(today, trend.max() ?? 0)
         guard peak > 0 else { return nil }
         return Double(today) / Double(peak)
     }
 
-    static func windowTitle(_ window: LimitWindow) -> String {
-        if let label = window.label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
-            return label
-        }
-        switch window.metric {
-        case .credits: return String(localized: "Balance")
-        case .spend: return String(localized: "Spend")
-        case nil: break
-        }
-        switch window.kind {
-        case .session: return String(localized: "Session")
-        case .daily: return String(localized: "Daily")
-        case .weekly: return String(localized: "Weekly")
-        case .billing: return String(localized: "Billing")
-        }
-    }
-
-    /// "58%" or a compact amount: complications have no room for "left".
-    static func shortValue(_ window: LimitWindow, in provider: LimitProvider) -> String {
-        if window.isMoney {
-            if window.isUnlimited { return "∞" }
-            let amount = window.isCredits ? (window.remaining ?? provider.balance?.amount) : window.used
-            return amount.map { TokenFormat.compactMoney($0, currency: window.currency ?? provider.balance?.currency) } ?? "—"
-        }
-        return window.remainingPercent.map { TokenFormat.percent($0) } ?? "—"
+    /// Today's biggest tool among those the user did not hide.
+    static func topTool(_ summary: PeriodSummary, preferences: DisplayPreferences) -> UsageShare? {
+        let visible = ClientDisplayOrder.apply(summary.tools, id: \.id, preferences: preferences, known: VendorCatalog.trackedClientIDs)
+        return visible.max { $0.tokens < $1.tokens }
     }
 }
 
-/// One quota meter on a complication: a provider's headline window, or one
-/// window of a single provider.
+/// One line of the Quota complication: a provider's headline window, one
+/// window of a single provider, or a provider whose reading needs attention
+/// (its status label instead of a value).
 struct ComplicationQuotaRow: Identifiable {
     let id: String
     let title: String
     let provider: LimitProvider
-    let window: LimitWindow
+    /// Nil for a status row.
+    let window: LimitWindow?
+    let context: PresentationContext
 
-    /// What is left, 0...1; nil when the window must not draw a meter.
-    var fraction: Double? { provider.meterFraction(for: window) }
-    var value: String { ComplicationContent.shortValue(window, in: provider) }
-    var tint: Color { TMTheme.quotaColor(remainingFraction: fraction) }
+    private var showUsed: Bool { context.preferences.showLimitUsed }
 
-    /// Providers worth a complication: healthy readings with a headline
-    /// window, tightest first (`LimitProvider.sortedByUrgency`, the iOS
-    /// Limits widget's order): fresh readings before stale ones, then the
-    /// least left, then windows without a meter.
-    static func headlines(in snapshot: TokenSnapshot, limit: Int) -> [ComplicationQuotaRow] {
-        let rows = LimitProvider.sortedByUrgency(snapshot.limits)
-            .filter { $0.status == .ok }
-            .compactMap { provider -> ComplicationQuotaRow? in
-                guard let window = provider.headlineWindow else { return nil }
-                return ComplicationQuotaRow(id: provider.id, title: provider.displayName, provider: provider, window: window)
+    /// The localized status chip of a reading that is not healthy.
+    var status: String? {
+        guard provider.status != .ok else { return nil }
+        return ComplicationText.statusLabel(LimitPresentation.statusChip(provider).label)
+    }
+
+    /// What is left, 0...1, whatever the used/remaining choice (gauges
+    /// always fill by what is left); nil when the window draws no meter.
+    var fraction: Double? {
+        guard status == nil, let window else { return nil }
+        return LimitPresentation.gaugeFill(window: window, provider: provider, showUsed: showUsed).remainingFraction
+    }
+
+    private var headline: LimitPresentation.Headline? {
+        window.map { LimitPresentation.headline(window: $0, provider: provider, showUsed: showUsed) }
+    }
+
+    /// "58%" (used or left, as the user chose) or a compact amount; the
+    /// status for a row that needs attention.
+    var value: String {
+        if let status { return status }
+        return headline.map { ComplicationText.shortValue($0, format: context.formatter) } ?? "—"
+    }
+
+    /// "58% left" / "42% used" where there is room (inline).
+    var longValue: String {
+        if let status { return status }
+        return headline.map { ComplicationText.longValue($0, format: context.formatter) } ?? "—"
+    }
+
+    /// Calm while there is room, amber then red as it runs out; stale
+    /// readings and status rows are muted.
+    var tint: Color {
+        guard status == nil, !provider.isStale else { return TMTheme.muted }
+        return TMTheme.quotaColor(remainingFraction: fraction)
+    }
+
+    /// The providers the Quota complication considers: every reading but the
+    /// providers hidden from Home (`hiddenHomeLimitProviders`), each narrowed
+    /// to the windows the user left visible.
+    static func providers(in snapshot: TokenSnapshot, preferences: DisplayPreferences) -> [LimitProvider] {
+        let hidden = Set(preferences.hiddenHomeLimitProviders.map(OrderedIDs.normalizeID))
+        return snapshot.limits
+            .filter { !hidden.contains(OrderedIDs.normalizeID($0.provider)) }
+            .map { provider in
+                var visible = provider
+                visible.windows = LimitPresentation.visibleWindows(provider, prefs: preferences)
+                return visible
             }
-        return Array(rows.prefix(limit))
+    }
+
+    /// Tightest first (`LimitProvider.sortedByUrgency`, the iOS Limits
+    /// widget's order): healthy readings by what is left of their headline
+    /// window, stale ones after them, then the providers that need
+    /// attention (signed out, limited, failing) with their status. Providers
+    /// the user turned off or never set up are left out.
+    static func headlines(in snapshot: TokenSnapshot, context: PresentationContext, limit: Int) -> [ComplicationQuotaRow] {
+        let sorted = LimitProvider.sortedByUrgency(providers(in: snapshot, preferences: context.preferences))
+        let healthy = sorted.filter { $0.status == .ok }.compactMap { provider -> ComplicationQuotaRow? in
+            guard let window = provider.headlineWindow else { return nil }
+            return ComplicationQuotaRow(id: provider.id, title: provider.displayName, provider: provider, window: window, context: context)
+        }
+        let attention = sorted.filter { needsAttention($0.status) }.map { provider in
+            ComplicationQuotaRow(id: provider.id, title: provider.displayName, provider: provider, window: nil, context: context)
+        }
+        return Array((healthy + attention).prefix(max(0, limit)))
+    }
+
+    private static func needsAttention(_ status: LimitStatus) -> Bool {
+        switch status {
+        case .ok, .disabled, .notConfigured: return false
+        case .unauthorized, .rateLimited, .sourceRateLimited, .unavailable, .error: return true
+        }
     }
 
     /// The rectangular family's rows: one per provider, or, when only one
     /// provider reports, its windows.
-    static func rectangularRows(in snapshot: TokenSnapshot, limit: Int) -> (header: String?, rows: [ComplicationQuotaRow]) {
-        let headlines = headlines(in: snapshot, limit: limit)
-        guard headlines.count == 1, let only = headlines.first else { return (nil, headlines) }
-        let windows = only.provider.primaryWindows.prefix(max(1, limit - 1)).map { window in
-            ComplicationQuotaRow(id: "\(only.provider.id)|\(window.id)", title: ComplicationContent.windowTitle(window), provider: only.provider, window: window)
+    static func rectangularRows(in snapshot: TokenSnapshot, context: PresentationContext, limit: Int) -> (header: String?, rows: [ComplicationQuotaRow]) {
+        let headlines = headlines(in: snapshot, context: context, limit: limit)
+        guard headlines.count == 1, let only = headlines.first, only.status == nil else { return (nil, headlines) }
+        let windows = only.provider.windows.prefix(max(1, limit - 1)).map { window in
+            ComplicationQuotaRow(
+                id: "\(only.provider.id)|\(window.id)",
+                title: ComplicationText.windowName(LimitPresentation.windowName(window, provider: only.provider)),
+                provider: only.provider,
+                window: window,
+                context: context
+            )
         }
         return (only.provider.displayName, windows)
     }

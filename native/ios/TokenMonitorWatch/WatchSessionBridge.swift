@@ -3,9 +3,9 @@ import TokenMonitorKit
 import WatchConnectivity
 import WidgetKit
 
-/// Receives the Hub connection and snapshots from the iPhone
-/// (`PhoneSessionBridge` in the iOS app target) and stores them in the watch's
-/// own Keychain item and App Group, where the complications read them.
+/// Receives the Hub connection, snapshots and display preferences from the
+/// iPhone (`PhoneSessionBridge` in the iOS app target) and stores them in the
+/// watch's own Keychain item and App Group, where the complications read them.
 ///
 /// Payload keys mirror `PhoneSessionBridge.Key`; change both together.
 final class WatchSessionBridge: NSObject, @unchecked Sendable {
@@ -13,7 +13,8 @@ final class WatchSessionBridge: NSObject, @unchecked Sendable {
 
     static let shared = WatchSessionBridge()
 
-    /// Posted on the main queue after the stored connection or snapshot changed.
+    /// Posted on the main queue after the stored connection, snapshot or
+    /// display preferences changed.
     static let didChangeNotification = Notification.Name("TokenMonitorWatchDataDidChange")
 
     private enum Key {
@@ -24,6 +25,12 @@ final class WatchSessionBridge: NSObject, @unchecked Sendable {
         static let snapshot = "snapshot"
         static let request = "request"
         static let syncRequest = "sync"
+        /// `PreferencesPayload` JSON (`PhoneSessionBridge.Key.prefs`): the
+        /// iPhone's display preferences and exchange-rate cache. It rides in
+        /// the application context and the sync reply, never in a
+        /// complication transfer; an older iPhone never sends it, and the
+        /// watch then keeps the defaults.
+        static let prefs = PreferencesPayload.contextKey
     }
 
     private static let protocolVersion = 1
@@ -141,13 +148,26 @@ final class WatchSessionBridge: NSObject, @unchecked Sendable {
         let defaults = AppGroup.defaults
         let appliedRevision = (defaults.object(forKey: Self.appliedRevisionKey) as? NSNumber)?.int64Value ?? 0
         // Older than the connection state already applied: e.g. a snapshot
-        // queued before the user disconnected, delivered after.
+        // queued before the user disconnected, delivered after (or a sync
+        // reply carrying the preferences the user has since changed).
         guard revision >= appliedRevision else { return }
+
+        // First, so a locked Keychain (below) does not hold them back, and so
+        // the snapshot check below already sees them.
+        let preferencesChanged = carriesConnection && applyPreferences(payload[Key.prefs] as? Data)
+        var connectionChanged = false
+        var snapshotChanged = false
+        defer {
+            announce(
+                connectionChanged: connectionChanged,
+                snapshotChanged: snapshotChanged,
+                preferencesChanged: preferencesChanged,
+                carriesConnection: carriesConnection
+            )
+        }
 
         let store = HubConnectionStore.shared
         let snapshots = SnapshotStore.shared
-        var connectionChanged = false
-        var snapshotChanged = false
 
         if carriesConnection, let connected = payload[Key.connected] as? Bool {
             if connected {
@@ -186,20 +206,42 @@ final class WatchSessionBridge: NSObject, @unchecked Sendable {
            snapshot.schemaVersion <= TokenSnapshot.currentSchemaVersion,
            snapshot.belongs(toHubKey: hubKey) {
             // The watch fetches the Hub itself too; keep whichever is newer
-            // (a cached one from another Hub never counts).
+            // (a cached one from another Hub never counts), but never trade
+            // one built for this watch's settings for one built for others.
             let cached = snapshots.load().flatMap { $0.belongs(toHubKey: hubKey) ? $0 : nil }
-            if cached.map({ snapshot.fetchedAt > $0.fetchedAt }) ?? true {
+            let builder = SnapshotBuilder.load(hubKey: hubKey)
+            if builder.prefers(snapshot, over: cached, hubKey: hubKey) {
                 try? snapshots.save(snapshot)
                 snapshotChanged = true
             }
         }
+    }
 
-        guard connectionChanged || snapshotChanged else { return }
+    /// Stores the iPhone's display preferences and exchange rates. Returns
+    /// whether either changed. A payload without rates keeps the cached ones
+    /// (the watch never fetches rates itself, so they came from the phone).
+    private func applyPreferences(_ data: Data?) -> Bool {
+        guard let data, let payload = PreferencesPayload.decode(data) else { return false }
+        var changed = PreferencesStore.shared.save(payload.preferences)
+        let rates = ExchangeRateStore.shared
+        if let rateData = payload.rateCacheData, rateData != rates.data() {
+            changed = rates.save(data: rateData) || changed
+        }
+        return changed
+    }
+
+    /// Tells the watch app what changed and brings the complications along.
+    private func announce(connectionChanged: Bool, snapshotChanged: Bool, preferencesChanged: Bool, carriesConnection: Bool) {
+        guard connectionChanged || snapshotChanged || preferencesChanged else { return }
+        // `WatchStore` reloads its presentation, rebuilds or refetches the
+        // snapshot for the new settings, and adopts a newer stored snapshot.
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
         }
-        // A complication transfer exists to update the face now.
-        reloadComplicationsLocked(force: connectionChanged || !carriesConnection)
+        // A complication transfer exists to update the face now; new
+        // settings change what every complication shows (units, currency,
+        // scope, hidden providers), so they never wait for the throttle.
+        reloadComplicationsLocked(force: connectionChanged || preferencesChanged || !carriesConnection)
     }
 }
 

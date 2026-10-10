@@ -8,6 +8,7 @@ struct QuotaComplication: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: ComplicationKind.quota, provider: ComplicationProvider()) { entry in
             QuotaComplicationView(entry: entry)
+                .tmPresentation(entry.context)
                 .containerBackground(for: .widget) { TMBackground() }
         }
         .configurationDisplayName("Token Monitor Quota")
@@ -32,15 +33,15 @@ struct QuotaComplicationView: View {
 
     @ViewBuilder
     private func content(_ snapshot: TokenSnapshot) -> some View {
-        let headline = ComplicationQuotaRow.headlines(in: snapshot, limit: 1).first
+        let headline = ComplicationQuotaRow.headlines(in: snapshot, context: entry.context, limit: 1).first
         switch family {
         case .accessoryRectangular:
-            let layout = ComplicationQuotaRow.rectangularRows(in: snapshot, limit: Self.maxRows)
+            let layout = ComplicationQuotaRow.rectangularRows(in: snapshot, context: entry.context, limit: Self.maxRows)
             QuotaRectangularView(header: layout.header, rows: layout.rows)
         case .accessoryInline:
             if let headline {
                 Label {
-                    Text(verbatim: "\(headline.title) \(headline.value)")
+                    Text(verbatim: "\(headline.title) \(headline.longValue)")
                 } icon: {
                     Image(systemName: "gauge.medium")
                 }
@@ -49,7 +50,7 @@ struct QuotaComplicationView: View {
             }
         case .accessoryCorner:
             if let headline {
-                Text(verbatim: headline.value)
+                Text(verbatim: headline.status == nil ? headline.value : "!")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .minimumScaleFactor(0.6)
@@ -60,6 +61,8 @@ struct QuotaComplicationView: View {
                                 Text(verbatim: headline.title)
                             }
                             .tint(headline.tint)
+                        } else if let status = headline.status {
+                            Text(verbatim: "\(headline.title) · \(status)")
                         } else {
                             Text(verbatim: headline.title)
                         }
@@ -75,8 +78,8 @@ struct QuotaComplicationView: View {
             if let headline {
                 AccessoryQuotaGauge(
                     fraction: headline.fraction,
-                    valueText: headline.value,
-                    label: headline.title,
+                    valueText: headline.status == nil ? headline.value : "!",
+                    label: headline.status ?? headline.title,
                     tint: headline.tint
                 )
             } else {
@@ -87,7 +90,7 @@ struct QuotaComplicationView: View {
 }
 
 /// Up to three meters: one per provider, or one provider's windows under
-/// its name.
+/// its name. A provider that needs attention shows its status instead.
 struct QuotaRectangularView: View {
     let header: String?
     let rows: [ComplicationQuotaRow]
@@ -112,22 +115,33 @@ struct QuotaRectangularView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .frame(width: 54, alignment: .leading)
-                    // `showMeter == false`: the amount alone, no meter.
-                    if let fraction = row.fraction {
-                        Gauge(value: fraction) {
-                            EmptyView()
-                        }
-                        .gaugeStyle(.accessoryLinearCapacity)
-                        .tint(row.tint)
-                    } else {
+                    if let status = row.status {
+                        // No meter: what the reading needs instead.
+                        Text(verbatim: status)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         Spacer(minLength: 0)
+                    } else {
+                        // `showMeter == false`: the amount alone, no meter.
+                        if let fraction = row.fraction {
+                            Gauge(value: fraction) {
+                                EmptyView()
+                            }
+                            .gaugeStyle(.accessoryLinearCapacity)
+                            .tint(row.tint)
+                        } else {
+                            Spacer(minLength: 0)
+                        }
+                        Text(verbatim: row.value)
+                            .font(.caption2.weight(.medium))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .foregroundStyle(row.provider.isStale ? HierarchicalShapeStyle.secondary : HierarchicalShapeStyle.primary)
+                            .widgetAccentable()
                     }
-                    Text(verbatim: row.value)
-                        .font(.caption2.weight(.medium))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .widgetAccentable()
                 }
             }
         }
@@ -139,12 +153,14 @@ struct QuotaRectangularView: View {
     QuotaComplication()
 } timeline: {
     ComplicationEntry.sample
+    ComplicationEntry.sample(context: .complicationSample)
 }
 
 #Preview(as: .accessoryCircular) {
     QuotaComplication()
 } timeline: {
     ComplicationEntry.sample
+    ComplicationEntry.sample(context: .complicationSample)
 }
 
 #Preview(as: .accessoryCorner) {
@@ -157,4 +173,5 @@ struct QuotaRectangularView: View {
     QuotaComplication()
 } timeline: {
     ComplicationEntry.sample
+    ComplicationEntry.sample(context: .complicationSample)
 }
