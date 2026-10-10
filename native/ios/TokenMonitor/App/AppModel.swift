@@ -452,6 +452,8 @@ final class AppModel {
         // hidden providers and re-check interval without waiting for it.
         serviceStatus.apply(preferences: preferences)
         if previous.showStatusTab, !preferences.showStatusTab { statusTabHidden() }
+        // The desktop's Settings rule: a new `periodMonthMode` replaces the
+        // shown period when the middle segment is the one selected.
         if selectedPeriod.monthMode != nil, selectedPeriod != middleSelection {
             selectedPeriod = middleSelection
         }

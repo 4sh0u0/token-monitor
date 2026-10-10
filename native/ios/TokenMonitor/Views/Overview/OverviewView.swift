@@ -29,20 +29,11 @@ struct OverviewView: View {
             }
         }
         .task(id: model.selectedPeriod) {
-            // WEEK / 7D / 30D are derived from History.
+            // WEEK / 7D / 30D are derived from History. (A new
+            // `periodMonthMode` replaces a selected middle segment in
+            // `AppModel`, as the desktop's Settings rule does.)
             if model.selectedPeriod.isDerived { model.history.ensureLoaded() }
         }
-        .onChange(of: model.middleSelection, initial: true) { _, middle in
-            followMiddleSegment(middle)
-        }
-    }
-
-    /// The desktop's Settings rule: a new `periodMonthMode` replaces the
-    /// shown period when the middle segment is the one selected.
-    private func followMiddleSegment(_ middle: PeriodSelection) {
-        let selected = model.selectedPeriod
-        guard selected.monthMode != nil, selected != middle else { return }
-        model.selectPeriod(middle)
     }
 }
 
