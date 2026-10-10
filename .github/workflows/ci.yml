@@ -175,5 +175,13 @@ jobs:
           -destination 'generic/platform=watchOS Simulator'
           build
           CODE_SIGNING_ALLOWED=NO
+      - name: Build watchOS app for devices (arm64_32, where Int is 32-bit)
+        run: >-
+          xcodebuild
+          -project native/ios/TokenMonitor.xcodeproj
+          -scheme TokenMonitorWatch
+          -destination 'generic/platform=watchOS'
+          build
+          CODE_SIGNING_ALLOWED=NO
       - name: Check iOS CI diff
         run: git diff --check
