@@ -34,19 +34,15 @@ struct ScopeAndPeriodSettingsView: View {
     }
 }
 
-/// All devices, or one device by Hub id. Lists every device the Hub knows
-/// (online first), and keeps a scoped device the Hub no longer lists
-/// selectable so the choice stays visible ("Device not found").
+/// All devices, or one device by Hub id. Lists every device the Hub knows in
+/// the Overview scope menu's order (online first, most recent upload first,
+/// `DevicePresentation.ordered`), and keeps a scoped device the Hub no
+/// longer lists selectable so the choice stays visible ("Device not found").
 private struct DeviceScopeSection: View {
     @Environment(AppModel.self) private var model
 
     private var devices: [DeviceSummary] {
-        let all = model.presented?.stats.devices ?? model.stats?.devices ?? []
-        return all.sorted { lhs, rhs in
-            if lhs.isStale != rhs.isStale { return !lhs.isStale }
-            let order = lhs.displayName.localizedStandardCompare(rhs.displayName)
-            return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
-        }
+        DevicePresentation.ordered(model.presented?.stats.devices ?? model.stats?.devices ?? [])
     }
 
     /// The scoped device id when the Hub does not list it.
