@@ -84,6 +84,50 @@ public enum TMTheme {
         case .inactive: return muted
         }
     }
+
+    /// K-line candles that closed at or above their open (`dashboard.css`
+    /// `.candle-up`).
+    public static let candleUp = Color(hex: "#4ec77f")
+    /// K-line candles that closed below their open (`.candle-down`).
+    public static let candleDown = Color(hex: "#f06a7b")
+    /// A device that stopped reporting (the desktop's `deviceStaleColor`).
+    public static let staleMuted = Color(hex: "#8c97a7")
+    /// Device marks drawn as dots (the desktop's `deviceAccent`).
+    public static let deviceAccent = chartBlue
+    /// How vendor icons are tinted: the text colour, slightly softened.
+    public static let iconTint = text.opacity(0.88)
+
+    /// A status chip's text colour (`styles.css` `.limit-provider-tag-*`).
+    public static func tagColor(_ tone: LimitStatusTone) -> Color {
+        switch tone {
+        case .ok: return success
+        case .setup: return caution
+        case .warn, .stale: return warning
+        case .sync: return chartBlue
+        case .muted: return muted
+        }
+    }
+
+    /// A status chip's border colour: the tone colour, faint.
+    public static func tagBorder(_ tone: LimitStatusTone) -> Color {
+        switch tone {
+        case .ok: return success.opacity(0.28)
+        case .setup: return caution.opacity(0.32)
+        case .warn, .stale: return warning.opacity(0.32)
+        case .sync: return chartBlue.opacity(0.3)
+        case .muted: return Color.white.opacity(0.13)
+        }
+    }
+
+    /// A session context gauge's colour: it only turns once headroom runs
+    /// out (`.row-context[data-tone]`).
+    public static func contextColor(_ tone: ContextTone) -> Color {
+        switch tone {
+        case .low: return caution
+        case .caution: return warning
+        case .neutral: return muted
+        }
+    }
 }
 
 /// The widget/app background: the base colour with the macOS widget's faint
@@ -118,6 +162,22 @@ public enum VendorColor {
     /// The unmodified brand colour (light surfaces, settings swatches).
     public static func brand(for id: String?) -> Color {
         Color(hex: VendorCatalog.brandColorHex(for: id))
+    }
+
+    /// A mark's colour with the user's vendor-colour overrides applied
+    /// (`PresentationContext.palette`).
+    public static func color(for id: String?, palette: VendorPalette) -> Color {
+        Color(paint: palette.paint(for: id))
+    }
+
+    /// A model row's colour with the user's overrides applied.
+    public static func model(_ name: String, palette: VendorPalette) -> Color {
+        Color(paint: palette.modelPaint(for: name))
+    }
+
+    /// The brand colour with the user's overrides applied (swatches).
+    public static func brand(for id: String?, palette: VendorPalette) -> Color {
+        Color(hex: palette.brandHex(for: id))
     }
 }
 
