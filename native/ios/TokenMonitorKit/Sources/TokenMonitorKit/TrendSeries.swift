@@ -255,7 +255,7 @@ public enum TrendSeriesBuilder {
             let leftTotal = keyTotals[left] ?? 0
             let rightTotal = keyTotals[right] ?? 0
             if leftTotal != rightTotal { return leftTotal > rightTotal }
-            return TrendKeyCollation.compare(left, right) < 0
+            return UsageRowCollation.compare(left, right) < 0
         }
         var maxTotal = 1.0
         let bars = days.map { day -> TrendBar in
@@ -681,49 +681,5 @@ struct LiveDayComponents {
         } else {
             self.unclassified = remainder
         }
-    }
-}
-
-/// `String.prototype.localeCompare` with the default (root) collation, as far
-/// as ids need it: case-insensitive first, whitespace and punctuation before
-/// digits before letters (punctuation is not ignored), lowercase before
-/// uppercase on a tie, then code units. Characters outside ASCII sort after
-/// ASCII letters by scalar value — an approximation of ICU, used only to
-/// break ties between equal values.
-enum TrendKeyCollation {
-    private static let asciiOrder: [UInt8: Int] = {
-        let order = " _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$0123456789"
-        var weights: [UInt8: Int] = [:]
-        for (index, byte) in order.utf8.enumerated() { weights[byte] = index }
-        let base = order.utf8.count
-        for (index, letter) in "abcdefghijklmnopqrstuvwxyz".utf8.enumerated() {
-            weights[letter] = base + index
-            weights[letter - 32] = base + index
-        }
-        return weights
-    }()
-
-    private static func primary(_ scalar: Unicode.Scalar) -> Int {
-        if scalar.isASCII, let weight = asciiOrder[UInt8(scalar.value)] { return weight }
-        return 1_000 + Int(scalar.value)
-    }
-
-    /// -1, 0 or 1 like `localeCompare`.
-    static func compare(_ left: String, _ right: String) -> Int {
-        let lhs = Array(left.unicodeScalars)
-        let rhs = Array(right.unicodeScalars)
-        for (a, b) in zip(lhs, rhs) {
-            let weightA = primary(a)
-            let weightB = primary(b)
-            if weightA != weightB { return weightA < weightB ? -1 : 1 }
-        }
-        if lhs.count != rhs.count { return lhs.count < rhs.count ? -1 : 1 }
-        for (a, b) in zip(lhs, rhs) where a != b {
-            let aLower = a.properties.isLowercase
-            let bLower = b.properties.isLowercase
-            if aLower != bLower { return aLower ? -1 : 1 }
-            return a.value < b.value ? -1 : 1
-        }
-        return 0
     }
 }

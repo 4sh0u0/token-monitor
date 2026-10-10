@@ -463,35 +463,10 @@ public enum DevicePresentation {
 
     // MARK: - Ordering helper
 
-    /// An approximation of JavaScript's default `localeCompare` (ICU root
-    /// collation) for the tie-breaks the desktop sorts with: case and
-    /// accents are ignored first, punctuation and symbols sort before
-    /// digits, digits before letters; then lower case before upper case;
-    /// then code points, so the order is total.
+    /// JavaScript's default `localeCompare` (ICU root collation) for the
+    /// tie-breaks the desktop sorts with (`UsageRowCollation`).
     static func localeAscending(_ left: String, _ right: String) -> Bool {
-        let leftKey = collationKey(left)
-        let rightKey = collationKey(right)
-        if leftKey != rightKey { return leftKey.lexicographicallyPrecedes(rightKey) }
-        let leftCase = left.unicodeScalars.map { $0.properties.isUppercase ? 1 : 0 }
-        let rightCase = right.unicodeScalars.map { $0.properties.isUppercase ? 1 : 0 }
-        if leftCase != rightCase { return leftCase.lexicographicallyPrecedes(rightCase) }
-        return left.unicodeScalars.map(\.value).lexicographicallyPrecedes(right.unicodeScalars.map(\.value))
-    }
-
-    private static func collationKey(_ value: String) -> [UInt64] {
-        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-            .unicodeScalars
-            .map { scalar -> UInt64 in
-                let group: UInt64
-                if scalar.properties.numericType != nil && scalar.properties.generalCategory == .decimalNumber {
-                    group = 1
-                } else if scalar.properties.isAlphabetic {
-                    group = 2
-                } else {
-                    group = 0
-                }
-                return group << 32 | UInt64(scalar.value)
-            }
+        UsageRowCollation.compare(left, right) < 0
     }
 
     private static func saturatingInt(_ value: Double) -> Int {

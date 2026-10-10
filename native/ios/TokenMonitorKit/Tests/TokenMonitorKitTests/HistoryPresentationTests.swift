@@ -861,11 +861,18 @@ final class HistoryPresentationTests: XCTestCase {
     func testLocaleCompareTieBreak() {
         let ids = ["gpt-5", "GPT-5", "gpt5", "gpt-5-codex", "gpt_5", "gpt.5", "claude-sonnet-4-5", "claude-sonnet-4.5", "claude/sonnet", "Claude", "claude", "a1", "a10", "a2", "ab", "a-b", "b", "z"]
         // `ids.sort((a, b) => a.localeCompare(b))` in node 22 (ICU root).
-        XCTAssertEqual(ids.sorted { TrendKeyCollation.compare($0, $1) < 0 }, [
+        XCTAssertEqual(ids.sorted { UsageRowCollation.compare($0, $1) < 0 }, [
             "a-b", "a1", "a10", "a2", "ab", "b", "claude", "Claude", "claude-sonnet-4-5", "claude-sonnet-4.5", "claude/sonnet",
             "gpt_5", "gpt-5", "GPT-5", "gpt-5-codex", "gpt.5", "gpt5", "z"
         ])
-        XCTAssertEqual(TrendKeyCollation.compare("same", "same"), 0)
+        XCTAssertEqual(UsageRowCollation.compare("same", "same"), 0)
+
+        // The legend breaks equal totals the same way.
+        let day = HubHistoryDay(date: "2026-10-10", tokens: 40, perModel: [
+            "claude-x": HistoryBucket(tokens: 10), "cafes": HistoryBucket(tokens: 10),
+            "claude_x": HistoryBucket(tokens: 10), "café": HistoryBucket(tokens: 10)
+        ])
+        XCTAssertEqual(TrendSeriesBuilder.bars(days: [day], stack: .model, metric: .tokens).keys, ["café", "cafes", "claude_x", "claude-x"])
     }
 
     // MARK: Activity snapshot (App Group, Activity widget)

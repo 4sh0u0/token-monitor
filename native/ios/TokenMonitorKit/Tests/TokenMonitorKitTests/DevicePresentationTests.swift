@@ -413,6 +413,9 @@ final class DevicePresentationTests: XCTestCase {
         // → ['_x', '10', 'a', 'A', 'b', 'e', 'é']
         let sorted = ["b", "A", "a", "_x", "10", "é", "e"].sorted(by: DevicePresentation.localeAscending)
         XCTAssertEqual(sorted, ["_x", "10", "a", "A", "b", "e", "é"])
+        // Accents and punctuation as Node orders them (the Tools screen's model).
+        XCTAssertEqual(["claude-x", "cafes", "claude_x", "café"].sorted(by: DevicePresentation.localeAscending),
+                       ["café", "cafes", "claude_x", "claude-x"])
     }
 }
 
