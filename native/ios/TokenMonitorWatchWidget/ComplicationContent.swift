@@ -94,10 +94,12 @@ struct ComplicationQuotaRow: Identifiable {
     }
 
     /// Tightest first (`LimitProvider.sortedByUrgency`, the iOS Limits
-    /// widget's order): healthy readings by what is left of their headline
-    /// window, stale ones after them, then the providers that need
-    /// attention (signed out, limited, failing) with their status. Providers
-    /// the user turned off or never set up are left out.
+    /// widget's automatic order while no Home provider order is set; the
+    /// complication always leads with the tightest window): healthy readings
+    /// by what is left of their headline window, stale ones after them, then
+    /// the providers that need attention (signed out, limited, failing) with
+    /// their status. Providers the user turned off or never set up are left
+    /// out.
     static func headlines(in snapshot: TokenSnapshot, context: PresentationContext, limit: Int) -> [ComplicationQuotaRow] {
         let sorted = LimitProvider.sortedByUrgency(providers(in: snapshot, preferences: context.preferences))
         let healthy = sorted.filter { $0.status == .ok }.compactMap { provider -> ComplicationQuotaRow? in
