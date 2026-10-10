@@ -111,9 +111,10 @@ enum DevicePeriods {
         }
     }
 
-    /// The device records are on their way: not loaded, and no load failed.
+    /// The device records are on their way: not loaded, and the Hub neither
+    /// lacks `/api/devices` nor failed the last load.
     static func recordsPending(_ history: HistoryStore) -> Bool {
-        !history.deviceRecordsLoaded && history.lastError == nil
+        !history.deviceRecordsLoaded && !history.deviceRecordsUnavailable
     }
 
     /// What a list of devices says above its rows for a fixed range: loading

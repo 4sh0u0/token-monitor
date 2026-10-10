@@ -80,6 +80,10 @@ final class HistoryStore {
     private(set) var loadedAt: Date?
     /// `GET /api/devices` has been loaded for this Hub.
     private(set) var deviceRecordsLoaded = false
+    /// No device records are held and none are on their way: the Hub has no
+    /// `GET /api/devices`, or the last load failed (a retry may still clear
+    /// it).
+    private(set) var deviceRecordsUnavailable = false
 
     /// The History summary of the scope (all retained History, not only
     /// `daily`).
@@ -854,6 +858,7 @@ final class HistoryStore {
         // The projection includes records once it was built after a load.
         let projectedRecords = projection.flatMap { $0.recordsToken > 0 ? $0.records : nil }
         nextRecordsLoaded = projectedRecords != nil
+        let nextRecordsUnavailable = projectedRecords == nil && (records.unsupported || records.failed)
 
         if connection != nil, requested {
             if let deviceID = effective.deviceID {
@@ -912,6 +917,7 @@ final class HistoryStore {
         if scope != effective { scope = effective }
         if loadedAt != nextLoadedAt { loadedAt = nextLoadedAt }
         if deviceRecordsLoaded != nextRecordsLoaded { deviceRecordsLoaded = nextRecordsLoaded }
+        if deviceRecordsUnavailable != nextRecordsUnavailable { deviceRecordsUnavailable = nextRecordsUnavailable }
 
         if nextHistory != nil, nextAvailable {
             updateActivity(daily: nextDaily, todayKey: nextToday, summary: nextHistory?.summary, now: now)
