@@ -10,15 +10,26 @@ import TokenMonitorUI
 /// It reads the current device scope's History from `model.history` (live
 /// today patched in) and asks for it on appear. Like the desktop Home it
 /// falls back silently to the stats' 30-day preview when `/api/history` is
-/// unavailable. It draws its own card; the Overview places it as is.
+/// unavailable. It draws its own card (the Overview only spaces modules) and
+/// nothing at all before the first stats arrive; while History loads, fails
+/// or is empty the card says so, as the desktop module does.
 struct ActivityModule: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        if model.presented != nil {
+            card
+                .onAppear {
+                    model.history.ensureLoaded()
+                }
+        }
+    }
+
+    private var card: some View {
         let store = model.history
         let state = store.trendsLoadState
         let grid = state == .ready ? store.heatmap(metric: model.preferences.heatmapMetric) : .empty
-        CardContainer {
+        return CardContainer {
             VStack(alignment: .leading, spacing: 12) {
                 ModuleHeader(title: "Activity", route: .trends) {
                     if state == .ready {
@@ -37,9 +48,6 @@ struct ActivityModule: View {
                     TrendsStateView(state: state, compact: true)
                 }
             }
-        }
-        .onAppear {
-            model.history.ensureLoaded()
         }
     }
 }
