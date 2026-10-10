@@ -21962,6 +21962,46 @@
         }
       }
     },
+    "Total tokens: %@, Total cost: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total tokens: %1$@, Total cost: %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "総トークン：%1$@、総コスト：%2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "총 토큰: %1$@, 총 비용: %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total de tokens: %1$@, Custo total: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总 Token：%1$@，总花费：%2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "總 Token：%1$@，總花費：%2$@"
+          }
+        }
+      }
+    },
     "Totals, tools, models, sessions, projects, activity and trends follow the scope, and so do the widgets and Apple Watch. Limits and the Devices tab always show every device." : {
       "localizations" : {
         "en" : {

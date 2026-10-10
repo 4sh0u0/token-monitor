@@ -322,9 +322,9 @@ struct BreakdownsRow<Mark: View, Detail: View>: View {
     /// "Total tokens: 1,234, Total cost: $1.23 + 12 unpriced tokens, 12%"
     /// (the desktop's row `aria-label` wording).
     private var accessibilityValue: Text {
+        let total = formatter.fullTokens(tokens)
         let cost = CostLabelText.string(usd: costUsd, unpricedTokens: unpricedTokens, formatter: formatter)
-        var text = Text("Total tokens") + Text(verbatim: ": \(formatter.fullTokens(tokens)), ")
-            + Text("Total cost") + Text(verbatim: ": \(cost)")
+        var text = Text("Total tokens: \(total), Total cost: \(cost)")
         if let share {
             text = text + Text(verbatim: ", \(share)")
         }
