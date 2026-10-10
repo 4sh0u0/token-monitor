@@ -43,7 +43,7 @@ enum ActivityLoader {
         let store = ActivitySnapshotStore.shared
         let usage = SnapshotLoader.cachedSnapshot(hubKey: hubKey)
         if let activity = store.load(hubKey: hubKey, scope: scope) {
-            return (.ready(activity), activity.scopeDeviceID.map { scopeName($0, usage: usage) })
+            return (.ready(activity), activity.scopeDeviceID.flatMap { scopeName($0, usage: usage) })
         }
         if let deviceID = scope.deviceID,
            let usageScope = usage?.scope, usageScope.deviceID == deviceID, usageScope.isMissing,
@@ -54,10 +54,13 @@ enum ActivityLoader {
     }
 
     /// The device's name from the usage snapshot when it is scoped to the
-    /// same device, else its Hub id.
-    private static func scopeName(_ deviceID: String, usage: TokenSnapshot?) -> String {
+    /// same device, else its Hub id. Nil once the Hub no longer lists the
+    /// device: the app then writes all devices' activity under the scope, as
+    /// every surface falls back to all devices, so naming the device would
+    /// mislabel it (`TokenEntry.scopeName` drops the name the same way).
+    private static func scopeName(_ deviceID: String, usage: TokenSnapshot?) -> String? {
         guard let scope = usage?.scope, scope.deviceID == deviceID else { return deviceID }
-        return scope.deviceName
+        return scope.isMissing ? nil : scope.deviceName
     }
 
     static func entry(at date: Date, option: ActivityMetricOption, context: PresentationContext) -> ActivityEntry {
