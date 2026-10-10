@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import TokenMonitorKit
 
-/// Round-2 wire decoding against `Fixtures/v2` (captured from a real Node Hub
+/// Wire decoding against `Fixtures/v2` (captured from a real Node Hub
 /// under a frozen clock; see `Fixtures/v2/README.txt`) and its goldens.
 final class WireV2Tests: XCTestCase {
     // MARK: - Options
@@ -627,7 +627,7 @@ final class WireV2Tests: XCTestCase {
 
 // MARK: - Fixture helpers
 
-/// Loads `Fixtures/v2` (the round-1 `Fixture.data` only reads `Fixtures`).
+/// Loads `Fixtures/v2` (`Fixture.data` only reads the top-level `Fixtures`).
 private enum V2 {
     static func data(_ name: String, subdirectory: String = "Fixtures/v2") throws -> Data {
         let parts = name.split(separator: ".", maxSplits: 1).map(String.init)

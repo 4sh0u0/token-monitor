@@ -216,7 +216,7 @@ final class HubStatsDecodingTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.provider), ["claude", "codex", "opencode", "deepseek", "openrouter", "cursor", "kimi"])
     }
 
-    func testRoundOneFixtureUnderAppOptions() throws {
+    func testOriginalFixtureUnderAppOptions() throws {
         let compact = try Fixture.stats()
         let app = try HubStats.decode(from: Fixture.data("stats.json"), options: .app)
         XCTAssertEqual(app.today.sessions.map(\.id), ["claude:7f3c2a90-session"])

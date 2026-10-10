@@ -149,7 +149,7 @@ final class LimitWindowTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
-    func testRoundOneFieldsKeepTheirMeaningBesideTheExtras() throws {
+    func testOriginalFieldsKeepTheirMeaningBesideTheExtras() throws {
         // The legacy plan fallback is unchanged; the raw labels sit beside it.
         let deepSeek = try provider("deepseek")
         XCTAssertEqual(deepSeek.planLabel, "Pay-as-you-go")

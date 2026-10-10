@@ -57,18 +57,19 @@ public struct ComplicationRefreshTiming: Sendable, Equatable {
     }
 }
 
-/// The refresh preferences turned into timings (round-2 plan §3.10). Every
-/// default choice reproduces the round-1 constants exactly.
+/// The refresh preferences turned into timings. Every default choice
+/// reproduces the fixed timings the targets used before these settings
+/// existed, so an untouched install refreshes exactly as before.
 public enum RefreshPolicy {
-    /// The app's poll interval, nil in Live mode (the SSE stream with the
-    /// round-1 backoff, polling fallback and first-event grace, which stay in
-    /// the app). Pull to refresh always works.
+    /// The app's poll interval, nil in Live mode (the SSE stream with its
+    /// reconnect backoff, polling fallback and first-event grace, which stay
+    /// in the app). Pull to refresh always works.
     public static func appPollInterval(_ mode: AppRefreshMode) -> TimeInterval? {
         mode == .live ? nil : TimeInterval(mode.rawValue)
     }
 
     /// N minutes → refresh after `max(5, N − 5)` min, reload every N min,
-    /// stale after 2N min. The default 15 gives round 1's 10 / 15 / 30.
+    /// stale after 2N min. The default 15 gives 10 / 15 / 30 min.
     public static func widget(_ interval: WidgetRefreshInterval) -> WidgetRefreshTiming {
         let minutes = TimeInterval(interval.rawValue)
         return WidgetRefreshTiming(
@@ -85,7 +86,7 @@ public enum RefreshPolicy {
 
     /// N seconds → poll every N, skip a re-activation fetch younger than
     /// `min(30 s, N / 2)`, stale after `max(15 min, 2N)`. The default 60 s
-    /// gives round 1's 60 s / 30 s / 15 min.
+    /// gives 60 s / 30 s / 15 min.
     public static func watch(_ interval: WatchRefreshInterval) -> WatchRefreshTiming {
         let seconds = TimeInterval(interval.rawValue)
         return WatchRefreshTiming(
@@ -97,7 +98,7 @@ public enum RefreshPolicy {
 
     /// N minutes → refresh age and reload interval both N; 60 min while no
     /// Hub is configured; stale after `max(60 min, 2N)`. The default 20 gives
-    /// round 1's 20 / 20 / 60 / 60 minutes.
+    /// 20 / 20 / 60 / 60 minutes.
     public static func complication(_ interval: ComplicationRefreshInterval) -> ComplicationRefreshTiming {
         let seconds = TimeInterval(interval.rawValue) * 60
         return ComplicationRefreshTiming(

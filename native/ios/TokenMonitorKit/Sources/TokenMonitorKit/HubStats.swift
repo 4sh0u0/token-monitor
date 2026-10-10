@@ -17,7 +17,8 @@ public struct HubStats: Sendable, Equatable {
     public var month: UsagePeriod
     public var allTime: UsagePeriod
     /// Provider accounts in the Hub's order (provider id, then account); use
-    /// `LimitProvider.sortedForDisplay(_:)` for presentation order.
+    /// `LimitPresentation.ordered(_:order:)` for the user's presentation
+    /// order.
     public var limits: [LimitProvider]
     public var limitsUpdatedAt: Date?
     /// Sorted by device id, like the Hub.

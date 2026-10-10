@@ -615,7 +615,8 @@ extension LimitPresentation {
 extension LimitPresentation {
     /// What a window's value cell reads (`formatLimitWindowValue`,
     /// `windowText.js`, the per-provider value overrides). Money is formatted
-    /// with `BalanceFormat` in the provider's own currency (D-MONEY).
+    /// with `BalanceFormat` in the provider's own currency, never converted
+    /// to the display currency (the desktop does the same).
     public enum Headline: Sendable, Hashable {
         /// "N% left" / "N% used" (`Math.round`; targets localize "%@ left" /
         /// "%@ used").
@@ -945,8 +946,8 @@ extension LimitPresentation {
     /// row that is not healthy and not stale, else the plan, else the status
     /// of a stale row that is not `ok`.
     ///
-    /// The status uses the Settings-tag vocabulary (D-STATUSWORDING), where
-    /// the desktop Limits page has its own English-only words.
+    /// The status uses the localized Settings-tag vocabulary, where the
+    /// desktop Limits page has its own English-only words.
     public static func planCell(_ provider: LimitProvider, grouped: Bool = false) -> LimitPlanCell {
         let id = normalizedID(provider.provider)
         let healthyOrStale = provider.status == .ok || provider.isStale

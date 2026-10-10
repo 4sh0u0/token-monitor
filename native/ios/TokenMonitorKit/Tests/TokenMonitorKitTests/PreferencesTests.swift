@@ -920,10 +920,10 @@ final class ClientDisplayOrderTests: XCTestCase {
 // MARK: - RefreshPolicy
 
 final class RefreshPolicyTests: XCTestCase {
-    /// The round-1 constants the defaults must reproduce: `WidgetTiming`
+    /// The fixed timings the defaults must reproduce: `WidgetTiming`
     /// (WidgetSupport.swift), `WatchStore` and `ComplicationProvider` /
     /// `ComplicationContent`.
-    func testDefaultsReproduceRoundOne() {
+    func testDefaultsReproduceTheFixedTimings() {
         let preferences = DisplayPreferences.defaults
         XCTAssertNil(RefreshPolicy.appPollInterval(preferences.appRefreshSeconds), "Live (SSE) by default")
 

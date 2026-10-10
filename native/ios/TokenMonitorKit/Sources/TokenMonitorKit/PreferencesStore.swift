@@ -83,7 +83,8 @@ public struct PreferencesPayload: Codable, Equatable, Sendable {
     public static let version = 1
     /// The WatchConnectivity context and reply key.
     public static let contextKey = "prefs"
-    /// The encoded payload's budget (round-2 plan §3.4).
+    /// The encoded payload's budget: far below WatchConnectivity's limits,
+    /// and small enough to ride along in every application context.
     public static let defaultMaxBytes = 8192
 
     public var preferences: DisplayPreferences

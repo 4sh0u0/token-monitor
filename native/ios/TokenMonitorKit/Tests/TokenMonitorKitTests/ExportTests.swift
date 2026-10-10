@@ -5,7 +5,7 @@ import XCTest
 /// output (`Fixtures/v2/golden/export`, produced by `src/shared/exporter.js`),
 /// plus a synthetic case run through the same JS for the edge behaviour.
 ///
-/// The goldens keep the Hub's wire order. D-EXPORT sorts instead, so CSVs are
+/// The goldens keep the Hub's wire order. The iOS export sorts instead, so CSVs are
 /// compared header-exact and by row multiset (and checked for the documented
 /// order separately), and the JSON structurally, by size, and by line multiset
 /// (sorting keys moves lines without changing them).
@@ -67,7 +67,7 @@ final class ExportTests: XCTestCase {
         let output = try file("token-monitor-snapshot.csv", in: goldenFileSet())
         try assertCSV(output, golden: "token-monitor-snapshot.csv", columns: 5)
 
-        // D-EXPORT order: today, month, allTime; tools before models; names ascending.
+        // The sorted order: today, month, allTime; tools before models; names ascending.
         let rows = dataRows(output.data).map { parseCSVLine($0) }
         let periodRank = ["today": 0, "month": 1, "allTime": 2]
         let ordered = rows.map { (period: periodRank[$0[0]] ?? 9, dimension: $0[1] == "tool" ? 0 : 1, name: $0[2]) }
@@ -790,7 +790,7 @@ private let syntheticHistoryJSON = #"""
 }
 """#
 
-/// `exportFileSet` with the wire objects key-sorted (D-EXPORT); the final newline
+/// `exportFileSet` with the wire objects key-sorted, as iOS writes them; the final newline
 /// is not part of a multi-line literal, so the test appends it.
 private let syntheticExpectedJSON = #"""
 {

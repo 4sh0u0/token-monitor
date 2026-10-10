@@ -513,8 +513,9 @@ public enum LiveTokenRate {
         return cappedRate(timed * 60000 / duration)
     }
 
-    /// The scope that applies (D-LIVESCOPE): `.device` only while a device
-    /// is scoped; otherwise every device.
+    /// The scope that applies: `.device` only while a device is scoped
+    /// ("Selected device" with no device selected follows every device);
+    /// otherwise every device.
     public static func effectiveScope(rateScope: LiveRateScope, deviceScope: DeviceScope) -> LiveRateScope {
         rateScope == .device && deviceScope.deviceID != nil ? .device : .all
     }
@@ -539,7 +540,7 @@ public enum LiveTokenRate {
         return LiveTokenRateSelection(source: "device:" + deviceID, entries: entries)
     }
 
-    /// The plan's `entries(stats:rateScope:deviceScope:)`.
+    /// The entries of `selection(stats:rateScope:deviceScope:)`.
     public static func entries(stats: HubStats, rateScope: LiveRateScope, deviceScope: DeviceScope) -> [LiveTokenRateEntry] {
         selection(stats: stats, rateScope: rateScope, deviceScope: deviceScope).entries
     }

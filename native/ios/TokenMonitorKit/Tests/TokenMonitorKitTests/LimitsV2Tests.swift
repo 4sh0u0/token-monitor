@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import TokenMonitorKit
 
-/// The round-2 limits extras (`limits/core.js` normalization) and the
+/// The limits extras (`limits/core.js` normalization) and the
 /// `usageItems.js` port, against the v2 Hub capture and its desktop goldens.
 final class LimitsV2Tests: XCTestCase {
     // MARK: Fixtures
@@ -210,8 +210,8 @@ final class LimitsV2Tests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
-    func testRoundOneEncodingStillDecodes() throws {
-        // What a round-1 app wrote into the App Group: the combined plan
+    func testOlderEncodingStillDecodes() throws {
+        // What an older app wrote into the App Group: the combined plan
         // under `planLabel`, none of the extras.
         let json = """
         {"id":"deepseek-abc","provider":"deepseek","displayName":"DeepSeek","planLabel":"Pay-as-you-go",
@@ -227,7 +227,7 @@ final class LimitsV2Tests: XCTestCase {
         XCTAssertNil(row.sourceDeviceId)
         XCTAssertEqual(row.balance, LimitBalance(amount: 5, currency: "CNY", monthSpend: 2))
 
-        // And a round-1 reader of a new encoding finds the plan where it looks.
+        // And an older reader of a new encoding finds the plan where it looks.
         let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(try provider("deepseek"))) as? [String: Any]
         XCTAssertNil(encoded?["planLabel"])
         XCTAssertEqual(encoded?["accountLabel"] as? String, "Pay-as-you-go")

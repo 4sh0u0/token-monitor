@@ -10,7 +10,7 @@ import Foundation
 /// The compact and full token counts follow the desktop
 /// (`CompactNumberFormat`). Prefer `DisplayFormatter`, which also applies the
 /// user's units, currency and rates. The money and percent helpers here are
-/// the round-1 Foundation formatters, kept for compatibility. The desktop's
+/// the original Foundation formatters, kept for compatibility. The desktop's
 /// money rules are in `CurrencyFormat` and `BalanceFormat`.
 public enum TokenFormat {
     /// Unit system for compact numbers: the `compactTokenUnits` setting.

@@ -4,7 +4,7 @@ import XCTest
 
 /// Golden parity for the History presentation ports (Activity mosaic, trend
 /// bars / candles / area line, fixed ranges, stat cards) against the desktop
-/// modules run on the round-2 captures (`Fixtures/v2`, frozen clock
+/// modules run on the `Fixtures/v2` captures (frozen clock
 /// 2026-10-10T16:30:00Z, today 2026-10-10; see `Fixtures/v2/README.txt`).
 private enum HistFixtures {
     static let todayKey = "2026-10-10"
@@ -781,7 +781,7 @@ final class HistoryPresentationTests: XCTestCase {
         XCTAssertEqual(bars.keys, [])
     }
 
-    /// A4: the Hub omits a tool bucket's `unclassifiedTokens` when it is 0,
+    /// The Hub omits a tool bucket's `unclassifiedTokens` when it is 0,
     /// and the desktop then counts the whole bucket as unclassified.
     func testDerivedPeriodReadsBucketsWithoutUnclassifiedAsWhollyUnclassified() {
         let row = HubHistoryDay(
@@ -954,7 +954,7 @@ final class HistoryPresentationTests: XCTestCase {
         XCTAssertNil(snapshot.summaryActiveDays)
         XCTAssertEqual(snapshot.peakDayTokens, 12)
 
-        // The A1 initializer reads today from the generation date.
+        // The calendar initializer reads today from the generation date.
         var tokyo = Calendar(identifier: .gregorian)
         tokyo.timeZone = TimeZone(identifier: "Asia/Tokyo")!
         let ahead = ActivitySnapshot(daily: [], hubKey: nil, scopeDeviceID: nil, generatedAt: HistFixtures.now, calendar: tokyo)

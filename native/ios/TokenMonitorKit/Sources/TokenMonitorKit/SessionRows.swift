@@ -7,7 +7,7 @@ import Foundation
 //
 // Values only: the Kit says *what* a row shows and the targets word it.
 // "N call(s)", "N tok/s" and "N models" are untranslated literals on the
-// desktop (D-UNLOCALIZED), so targets print them with `Text(verbatim:)`;
+// desktop, so targets print them with `Text(verbatim:)` too;
 // "Archived", "Codex Auto Review", "{count} background runs", "Latest
 // {time}" and "Cache {minutes}m" are localized there.
 

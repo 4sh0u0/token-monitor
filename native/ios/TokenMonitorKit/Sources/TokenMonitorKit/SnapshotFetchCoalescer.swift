@@ -39,7 +39,7 @@ public actor SnapshotFetchCoalescer {
     ///     flight for the same Hub is still joined.
     ///   - now: the caller's clock, for the reuse window.
     ///   - fetch: reads the Hub. Returns a snapshot stamped with the Hub it was
-    ///     read from (`TokenSnapshot(stats:fetchedAt:hub:)`), or nil on any
+    ///     read from (`SnapshotBuilder.snapshot(from:fetchedAt:hub:)`), or nil on any
     ///     failure, including the saved Hub changing meanwhile. It runs in a
     ///     task of its own, so a caller that goes away does not cancel a fetch
     ///     others joined; it is cancelled only when another Hub's fetch

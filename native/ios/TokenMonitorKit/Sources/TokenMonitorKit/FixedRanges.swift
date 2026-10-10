@@ -7,8 +7,8 @@ import Foundation
 //
 // The aggregate reads `/api/history` with the aggregate live `today` keyed by
 // the phone's day; the desktop instead merges every device's History on each
-// device's own day keys, which differs only for fleets spanning time zones
-// (plan D-FIXEDRANGE). A scoped device uses its `/api/devices` record on its
+// device's own day keys, which differs only for fleets spanning time zones.
+// A scoped device uses its `/api/devices` record on its
 // own day (`deviceDayState`).
 
 /// An inclusive range of `yyyy-MM-dd` days.

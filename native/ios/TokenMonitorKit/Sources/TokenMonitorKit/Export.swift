@@ -5,8 +5,8 @@ import Foundation
 // is testable on Linux and never touches the file system.
 //
 // The desktop writes its objects in insertion order. Swift dictionaries cannot
-// keep wire order, so by decision D-EXPORT the output is content-equivalent but
-// deterministic instead: nested JSON object keys are sorted, and CSV rows are
+// keep wire order, so the output is content-equivalent but deterministic
+// instead: nested JSON object keys are sorted, and CSV rows are
 // sorted (snapshot by period, then tool before model, then name; daily files by
 // date, then name). Everything else - headers, column order, BOM, CRLF, number
 // text, which files exist - matches the desktop byte for byte.

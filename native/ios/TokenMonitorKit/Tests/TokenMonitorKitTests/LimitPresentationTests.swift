@@ -49,7 +49,7 @@ final class LimitPresentationTests: XCTestCase {
     }
 
     /// The desktop Limits page's own English status words (`limitStatusLabel`),
-    /// which iOS replaces with the Settings-tag vocabulary (D-STATUSWORDING).
+    /// which iOS replaces with the localized Settings-tag vocabulary.
     private static let pageStatusWords: Set<String> = [
         "Live", "Disabled", "Not signed in", "No synced data", "Sign in again", "Limited", "Usage API limited", "Unavailable", "Error"
     ]

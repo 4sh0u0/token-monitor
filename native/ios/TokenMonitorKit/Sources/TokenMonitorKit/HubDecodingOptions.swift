@@ -8,8 +8,8 @@ import Foundation
 /// app shows all of that; a widget or complication shows a handful of
 /// numbers and runs under a tight memory limit. The options travel through
 /// `JSONDecoder.userInfo[.hubDecodingOptions]`, so every nested decoder sees
-/// the same choice. A decoder without them decodes as `.compact`, the
-/// round-1 behaviour.
+/// the same choice. A decoder without them decodes as `.compact`, which is
+/// all a decoder could build before these options existed.
 public struct HubDecodingOptions: Sendable, Equatable {
     /// Which devices get their full periods in `DeviceSummary.details` (and
     /// their limits rows in `DeviceSummary.limits`).

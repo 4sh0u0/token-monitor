@@ -329,7 +329,7 @@ public enum DevicePresentation {
         )
     }
 
-    /// The tool rows alone (the plan's `toolRows(device:period:)`).
+    /// The tool rows of `toolBreakdown(device:period:)` alone.
     public static func toolRows(device: DeviceSummary, period: UsagePeriodKind) -> [DeviceToolRow] {
         toolBreakdown(device: device, period: period).tools
     }

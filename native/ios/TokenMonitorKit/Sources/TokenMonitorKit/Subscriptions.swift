@@ -21,9 +21,10 @@ import Foundation
 /// date, a ledger without a valid top-up) fails to decode and is dropped by
 /// `SubscriptionDocument`.
 ///
-/// The binding's `accountKey` is deliberately not kept (round-2 decision
-/// D-TOPUP): account matching uses the binding email, the profile name and the
-/// sole-account rule only.
+/// The binding's `accountKey` is deliberately not kept: limits rows never
+/// carry the raw account key either (only a hash of it), so the phone could
+/// not match on it. Account matching uses the binding email, the profile name
+/// and the sole-account rule only.
 public struct HubSubscription: Sendable, Hashable, Identifiable {
     /// What the user recorded: one recurring charge, or a ledger of irregular
     /// top-ups.
@@ -545,7 +546,8 @@ public enum SubscriptionMath {
 
     // MARK: Accounts
 
-    /// `matchProviderAccount()` without its `accountKey` rung (D-TOPUP): the
+    /// `matchProviderAccount()` without its `accountKey` rung (the key is
+    /// never decoded, see `HubSubscription`): the
     /// provider's account whose email equals the binding email, else the one
     /// account carrying the binding's profile name, else the provider's sole
     /// account; nil when the provider has none or the choice is ambiguous.

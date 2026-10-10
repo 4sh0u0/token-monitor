@@ -690,7 +690,7 @@ final class ModelAliasTests: XCTestCase {
     }
 }
 
-/// Round-2 fixtures (`Fixtures/v2`, goldens in `Fixtures/v2/golden`).
+/// The `Fixtures/v2` captures (goldens in `Fixtures/v2/golden`).
 private enum SyncFixture {
     static func data(_ name: String, golden: Bool = false) throws -> Data {
         let parts = name.split(separator: ".", maxSplits: 1).map(String.init)

@@ -9,9 +9,9 @@ import Foundation
 ///
 /// Build it with `SnapshotBuilder`, which applies the device scope, model
 /// aliases and the user's tool and Limits preferences and stamps
-/// `projectionKey`. Every field added since round 1 is optional and written
-/// only when set, so older readers decode new files and new readers treat
-/// an older file as all devices with no projection.
+/// `projectionKey`. Every field added after the first schema is optional
+/// and written only when set, so older readers decode new files and new
+/// readers treat an older file as all devices with no projection.
 public struct TokenSnapshot: Sendable, Equatable {
     /// Bump when a field changes meaning; readers ignore newer versions.
     public static let currentSchemaVersion = 1
@@ -32,7 +32,10 @@ public struct TokenSnapshot: Sendable, Equatable {
     public var today: PeriodSummary
     public var month: PeriodSummary
     public var allTime: PeriodSummary
-    /// `LimitProvider.sortedForDisplay`, each `compacted()`.
+    /// Limits rows, each `LimitProvider.compacted(maxWindows:hiddenItems:)`:
+    /// in the user's `limitProviderOrder` (catalog order when unset) when
+    /// built by `SnapshotBuilder.limits(_:)`; ready rows first, then catalog
+    /// order (`LimitProvider.sortedForDisplay`) from `init(stats:…)`.
     public var limits: [LimitProvider]
     public var devices: DeviceCounts
     /// Daily tokens/cost, oldest first, ending on the fetch day. Empty when
@@ -81,8 +84,8 @@ public struct TokenSnapshot: Sendable, Equatable {
         self.projectionKey = projectionKey
     }
 
-    /// Projects fresh stats the round-1 way: all devices, no aliases, the
-    /// usage order of tools and ready limits first. Surfaces that honour the
+    /// Projects fresh stats without any preference: all devices, no
+    /// aliases, the usage order of tools and ready limits first. Surfaces that honour the
     /// user's preferences use `SnapshotBuilder` instead.
     /// - Parameters:
     ///   - hub: the connection the stats were read from, recorded as `hubKey`

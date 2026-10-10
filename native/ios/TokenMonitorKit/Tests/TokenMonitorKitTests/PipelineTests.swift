@@ -5,7 +5,7 @@ import FoundationNetworking
 import XCTest
 @testable import TokenMonitorKit
 
-/// Round-2 fixtures (`Fixtures/v2`, goldens in `Fixtures/v2/golden`) for the
+/// The `Fixtures/v2` captures (goldens in `Fixtures/v2/golden`) for the
 /// presentation pipeline: device scope, model-alias projection, the
 /// presentation context and the shared-settings refresher.
 enum PipelineFixture {

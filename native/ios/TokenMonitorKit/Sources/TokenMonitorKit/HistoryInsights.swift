@@ -193,7 +193,8 @@ public enum HistoryInsights {
     /// of `daily` (already patched with live today), zero-filled, as a token
     /// line, with its axis dates and the long-range peak (`summary`'s peak or
     /// the busiest row of `daily`). The desktop takes the last 45 History
-    /// rows instead, which skips days without usage (plan D-RANGEFILL).
+    /// rows instead, which skips days without usage; here every calendar day
+    /// is on the line, as on the Trends charts.
     public static func homeTrend(
         daily: [HubHistoryDay],
         todayKey: String,

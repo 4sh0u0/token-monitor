@@ -178,7 +178,7 @@ final class SnapshotStoreTests: XCTestCase {
     }
 }
 
-/// `SnapshotBuilder` over the round-2 fixture (`Fixtures/v2`).
+/// `SnapshotBuilder` over the `Fixtures/v2` capture.
 final class SnapshotBuilderTests: XCTestCase {
     private let fetchedAt = PipelineFixture.now
 
@@ -385,7 +385,7 @@ final class SnapshotBuilderTests: XCTestCase {
         XCTAssertFalse(SnapshotBuilder().isCurrent(snapshot, hubKey: hub.snapshotKey), "another scope is due for a refresh")
 
         let legacy = TokenSnapshot(stats: try Fixture.stats(), fetchedAt: fetchedAt, hub: hub, calendar: Fixture.utc)
-        XCTAssertFalse(SnapshotBuilder().isCurrent(legacy, hubKey: hub.snapshotKey), "a round-1 snapshot predates the key")
+        XCTAssertFalse(SnapshotBuilder().isCurrent(legacy, hubKey: hub.snapshotKey), "a snapshot from before projections predates the key")
         XCTAssertTrue(legacy.belongs(to: hub), "but is still shown as a fallback")
     }
 
@@ -400,7 +400,7 @@ final class SnapshotBuilderTests: XCTestCase {
         XCTAssertTrue(json.contains(#""scope":{"deviceID":"old-laptop","deviceName":"old-laptop","isStale":true}"#), json)
         XCTAssertTrue(json.contains(#""aliasRevision":1"#))
 
-        // A round-1 file: no scope, no aliases, no key, no unpriced tokens.
+        // A file from the first schema: no scope, no aliases, no key, no unpriced tokens.
         let legacyJSON = #"""
         {"allTime":{"cacheReadTokens":0,"cacheWriteTokens":0,"costUsd":3,"kind":"allTime","models":[],"otherModelTokens":0,"otherToolTokens":0,"outputTokens":0,"tools":[],"totalTokens":30,"unclassifiedTokens":0},
          "devices":{"online":1,"total":1},"fetchedAt":"2026-10-09T02:50:00Z","hubKey":"k","isSourceStale":true,"limits":[],

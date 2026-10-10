@@ -167,7 +167,7 @@ final class FormattingParityTests: XCTestCase {
     }
 
     func testLocalizedSuffixesFollowTheUILanguage() {
-        // D-UNITS-LANG: the iOS UI language codes map like the desktop's.
+        // The iOS UI language codes map like the desktop's.
         // Edge tags computed with node against compactTokens.js.
         let cases: [(String, String)] = [
             ("zh-Hans", "1.23万"), ("zh-Hant", "1.23萬"), ("zh-Hans-CN", "1.23万"), ("zh-HK", "1.23萬"),

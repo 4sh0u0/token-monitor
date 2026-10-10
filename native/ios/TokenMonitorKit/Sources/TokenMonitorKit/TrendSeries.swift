@@ -550,7 +550,8 @@ public enum HistorySeries {
     /// A Trends range: N calendar days ending at `todayKey` (`.all`: from the
     /// first row), zero-filled. Pass rows already patched with live today.
     /// Unlike the desktop, which slices the last N History rows
-    /// (`clampDaily`), every day is on the axis (plan D-RANGEFILL).
+    /// (`clampDaily`), every calendar day is on the axis, so a quiet day
+    /// reads as zero instead of disappearing.
     public static func range(_ range: TrendRange, daily: [HubHistoryDay], todayKey: String) -> [HubHistoryDay] {
         guard let start = rangeStart(range, firstDay: daily.first?.date, todayKey: todayKey) else { return [] }
         return fill(daily, from: start, through: todayKey)

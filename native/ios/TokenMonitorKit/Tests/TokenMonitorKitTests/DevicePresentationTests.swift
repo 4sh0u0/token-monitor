@@ -438,7 +438,7 @@ final class LiveTokenRateTests: XCTestCase {
             XCTAssertEqual(selection.entries.map(\.name), entries.map { $0["name"] ?? "" }, name)
             XCTAssertEqual(LiveTokenRate.entries(stats: stats, rateScope: rateScope, deviceScope: deviceScope), selection.entries, name)
         }
-        // D-LIVESCOPE: "Selected device" without a scoped device means all.
+        // "Selected device" without a scoped device means all.
         XCTAssertEqual(LiveTokenRate.selection(stats: stats, rateScope: .device, deviceScope: .all).source, "devices:all")
         XCTAssertEqual(LiveTokenRate.effectiveScope(rateScope: .device, deviceScope: .all), .all)
         XCTAssertEqual(LiveTokenRate.effectiveScope(rateScope: .device, deviceScope: .device("x")), .device)
