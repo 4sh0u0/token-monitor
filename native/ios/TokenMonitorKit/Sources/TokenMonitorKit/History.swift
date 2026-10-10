@@ -7,14 +7,23 @@ public struct HistoryDay: Sendable, Hashable, Identifiable {
     /// calendar, so treat it as a calendar date, not an instant.
     public var date: String
     public var tokens: Int
+    /// The known (priced) subtotal in USD.
     public var costUsd: Double
+    /// Active time in milliseconds; nil when the wire says 0 or nothing
+    /// (the desktop reads both as 0).
+    public var activeTimeMs: Double?
+    /// Tokens with no price (`costUsd` excludes them), clamped to `tokens`
+    /// like the desktop's `unpricedTokensFor`; nil when there are none.
+    public var unpricedTokens: Int?
 
     public var id: String { date }
 
-    public init(date: String, tokens: Int, costUsd: Double) {
+    public init(date: String, tokens: Int, costUsd: Double, activeTimeMs: Double? = nil, unpricedTokens: Int? = nil) {
         self.date = date
         self.tokens = tokens
         self.costUsd = costUsd
+        self.activeTimeMs = activeTimeMs
+        self.unpricedTokens = unpricedTokens
     }
 
     /// The start of this day in `calendar` (for chart axes), nil when the key
@@ -26,7 +35,7 @@ public struct HistoryDay: Sendable, Hashable, Identifiable {
 
 extension HistoryDay: Codable {
     private enum CodingKeys: String, CodingKey {
-        case date, tokens, cost
+        case date, tokens, cost, activeTimeMs, unpricedTokens
     }
 
     public init(from decoder: Decoder) throws {
@@ -34,19 +43,26 @@ extension HistoryDay: Codable {
         guard let date = container.lenientString(.date), DayKey.isValid(date) else {
             throw DecodingError.dataCorruptedError(forKey: .date, in: container, debugDescription: "invalid day key")
         }
+        let tokens = nonNegative(container.lenientInt(.tokens) ?? 0)
         self.init(
             date: date,
-            tokens: nonNegative(container.lenientInt(.tokens) ?? 0),
-            costUsd: nonNegative(container.lenientDouble(.cost) ?? 0)
+            tokens: tokens,
+            costUsd: nonNegative(container.lenientDouble(.cost) ?? 0),
+            activeTimeMs: HistoryWire.positive(container.lenientDouble(.activeTimeMs)),
+            unpricedTokens: HistoryWire.unpriced(container.lenientDouble(.unpricedTokens), tokens: tokens)
         )
     }
 
     /// Wire field names (`cost`, not `costUsd`), like the History preview.
+    /// The optional fields are written only when present, so a day without
+    /// them encodes exactly as it did before they existed (cached snapshots).
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(date, forKey: .date)
         try container.encode(tokens, forKey: .tokens)
         try container.encode(costUsd, forKey: .cost)
+        try container.encodeIfPresent(activeTimeMs, forKey: .activeTimeMs)
+        try container.encodeIfPresent(unpricedTokens, forKey: .unpricedTokens)
     }
 }
 
@@ -107,10 +123,29 @@ public enum DayKey {
     }
 
     static func isValid(_ key: String) -> Bool {
+        date(from: key, calendar: utcCalendar) != nil
+    }
+
+    /// The key `days` calendar days after `key` (negative: before), stepped
+    /// in UTC like the desktop's `dayKeyAddDays`; nil for an invalid key.
+    public static func adding(days: Int, to key: String) -> String? {
+        guard let day = date(from: key, calendar: utcCalendar),
+              let moved = utcCalendar.date(byAdding: .day, value: days, to: day) else { return nil }
+        return string(from: moved, calendar: utcCalendar)
+    }
+
+    /// The valid `yyyy-MM-dd` prefix of `value` (the desktop's
+    /// `String(date).slice(0, 10)` plus validation), else nil.
+    static func normalized(_ value: String) -> String? {
+        let key = String(value.trimmingCharacters(in: .whitespacesAndNewlines).prefix(10))
+        return isValid(key) ? key : nil
+    }
+
+    static let utcCalendar: Calendar = {
         var utc = Calendar(identifier: .gregorian)
         utc.timeZone = TimeZone(identifier: "UTC") ?? utc.timeZone
-        return date(from: key, calendar: utc) != nil
-    }
+        return utc
+    }()
 }
 
 enum TrendBuilder {
@@ -130,7 +165,9 @@ enum TrendBuilder {
         let liveTokens = liveToday.totalTokens
         let liveCost = liveToday.costUsd
         guard !history.isEmpty || liveTokens > 0 || liveCost > 0 else { return [] }
-        let byDate = Dictionary(history.map { ($0.date, $0) }, uniquingKeysWith: { first, second in
+        // Rows carry date, tokens and cost only, as they always have: this
+        // series feeds the snapshot's sparkline, which has a size budget.
+        let byDate = Dictionary(history.map { ($0.date, HistoryDay(date: $0.date, tokens: $0.tokens, costUsd: $0.costUsd)) }, uniquingKeysWith: { first, second in
             HistoryDay(date: first.date, tokens: max(first.tokens, second.tokens), costUsd: max(first.costUsd, second.costUsd))
         })
         let today = calendar.startOfDay(for: endingAt)
