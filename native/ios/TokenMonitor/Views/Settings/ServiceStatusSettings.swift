@@ -2,13 +2,14 @@ import SwiftUI
 import TokenMonitorKit
 import TokenMonitorUI
 
-/// Settings › Service status (`renderServiceProviderList`): whether the
-/// Status tab shows (`showStatusTab`, hidden by default like the desktop's
-/// view), how often an open Status screen re-checks
-/// (`serviceStatusRefreshMs`: Manual, 1, 2, 5, 15 or 30 minutes), and which
-/// services it lists in which order (`hiddenServiceProviders`,
-/// `serviceProviderDisplayOrder`). `ServiceStatusStore` follows these on
-/// its own.
+/// Settings › Status options (`AppRoute.serviceStatusSettings`, also opened
+/// from the Status screen; `renderServiceProviderList`), the one place for
+/// every status preference: whether the Status tab shows (`showStatusTab`,
+/// hidden by default like the desktop's view), how often an open Status
+/// screen re-checks (`serviceStatusRefreshMs`: Manual, 1, 2, 5, 15 or 30
+/// minutes), and which services it lists in which order
+/// (`hiddenServiceProviders`, `serviceProviderDisplayOrder`).
+/// `ServiceStatusStore` follows these on its own.
 struct ServiceStatusSettingsView: View {
     @Environment(AppModel.self) private var model
 
@@ -21,9 +22,7 @@ struct ServiceStatusSettingsView: View {
             Section {
                 Toggle("Show Status tab", isOn: preference(\.showStatusTab))
                 if !prefs.showStatusTab {
-                    NavigationLink {
-                        ServiceStatusView()
-                    } label: {
+                    NavigationLink(value: AppRoute.serviceStatus) {
                         Label("Service status", systemImage: "waveform.path.ecg")
                     }
                 }
@@ -89,7 +88,7 @@ struct ServiceStatusSettingsView: View {
         .background {
             TMBackground().ignoresSafeArea()
         }
-        .navigationTitle("Service status")
+        .navigationTitle("Status options")
         .toolbar {
             // Reordering needs edit mode; a permanent one would disable the
             // Service status link above.

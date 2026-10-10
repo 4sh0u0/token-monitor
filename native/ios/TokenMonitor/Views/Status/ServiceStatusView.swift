@@ -76,9 +76,7 @@ struct ServiceStatusView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(store.isLoading || store.allHidden)
-                NavigationLink {
-                    ServiceStatusSettingsView()
-                } label: {
+                NavigationLink(value: AppRoute.serviceStatusSettings) {
                     Label("Status settings", systemImage: "slider.horizontal.3")
                 }
             }

@@ -451,7 +451,7 @@ final class AppModel {
         // The store also follows saves itself; this applies the order,
         // hidden providers and re-check interval without waiting for it.
         serviceStatus.apply(preferences: preferences)
-        if selectedTab == .status, !preferences.showStatusTab { selectedTab = .overview }
+        if previous.showStatusTab, !preferences.showStatusTab { statusTabHidden() }
         if selectedPeriod.monthMode != nil, selectedPeriod != middleSelection {
             selectedPeriod = middleSelection
         }
@@ -541,6 +541,17 @@ final class AppModel {
         context = next
         PhoneSessionBridge.shared.push(preferences: preferencesPayload())
         reloadWidgets(force: true)
+    }
+
+    /// The Status tab was turned off. Its switch lives on the Status options
+    /// page, which the Status tab can push: then that page stays on screen,
+    /// now under Settings, instead of the app jumping elsewhere.
+    private func statusTabHidden() {
+        if selectedTab == .status {
+            selectedTab = .settings
+            navigation.settings = NavigationPath([AppRoute.serviceStatusSettings])
+        }
+        navigation.status = NavigationPath()
     }
 
     private func visibleTab(_ tab: AppTab) -> AppTab {

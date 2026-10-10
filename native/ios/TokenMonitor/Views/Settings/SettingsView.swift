@@ -157,8 +157,7 @@ private struct DisplaySettingsSection: View {
     }
 }
 
-/// Limits, sessions, subscriptions, refresh and export: the SETTINGS-B pages
-/// and the refresh intervals.
+/// Limits, sessions, subscriptions, the refresh intervals and export.
 private struct DataSettingsSection: View {
     @Environment(AppModel.self) private var model
 
@@ -174,9 +173,8 @@ private struct DataSettingsSection: View {
             } label: {
                 SettingsPageLabel("Sessions", systemImage: "text.bubble")
             }
-            // Routes resolve to `SubscriptionsView()` (and `HubInfoView()` /
-            // `ServiceStatusView()` below), so deep links and
-            // `navigate(to:)` land on the same screens.
+            // Routes (here and for the Hub and status screens) so the
+            // screens a deep link or the model pushes are the same ones.
             NavigationLink(value: AppRoute.subscriptions) {
                 SettingsPageLabel("Subscriptions", systemImage: "creditcard")
             }
@@ -200,25 +198,21 @@ private struct DataSettingsSection: View {
     }
 }
 
-/// The Status tab switch, the status screen while the tab is hidden, and the
-/// status options (re-check interval, services).
+/// The status options page (the Status tab switch, the re-check interval and
+/// the services: every status preference lives there), and the status
+/// screen itself while its tab is hidden.
 private struct StatusSettingsSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Section {
-            Toggle(isOn: model.displayPreference(\.showStatusTab)) {
-                Label("Show Status tab", systemImage: "waveform.path.ecg")
+            NavigationLink(value: AppRoute.serviceStatusSettings) {
+                SettingsPageLabel("Status options", systemImage: "slider.horizontal.3")
             }
             if !model.preferences.showStatusTab {
                 NavigationLink(value: AppRoute.serviceStatus) {
                     SettingsPageLabel("Service status", systemImage: "checkmark.seal")
                 }
-            }
-            NavigationLink {
-                ServiceStatusSettingsView()
-            } label: {
-                SettingsPageLabel("Status options", systemImage: "slider.horizontal.3")
             }
         } header: {
             Text("Status")

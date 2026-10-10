@@ -22,6 +22,9 @@ enum AppRoute: Hashable {
     case subscriptions
     case hubInfo
     case serviceStatus
+    /// Settings › Status: the Status tab switch, the re-check interval and
+    /// the services listed.
+    case serviceStatusSettings
 }
 
 /// The view each route shows.
@@ -52,6 +55,8 @@ struct AppRouteDestination: View {
             HubInfoView()
         case .serviceStatus:
             ServiceStatusView()
+        case .serviceStatusSettings:
+            ServiceStatusSettingsView()
         }
     }
 }
