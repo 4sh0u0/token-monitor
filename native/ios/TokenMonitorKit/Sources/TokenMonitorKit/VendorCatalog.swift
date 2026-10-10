@@ -206,7 +206,8 @@ public enum VendorCatalog {
         for unit in model.lowercased().utf16 {
             hash = hash &* 31 &+ Int32(unit)
         }
-        let magnitude = hash == Int32.min ? Int(Int32.max) + 1 : Int(abs(hash))
-        return palette[magnitude % palette.count]
+        // `Math.abs(hash) % n` without `abs(Int32.min)` or `Int32.max + 1`,
+        // which trap (the latter where `Int` is 32-bit).
+        return palette[Int(hash.magnitude % UInt32(palette.count))]
     }
 }

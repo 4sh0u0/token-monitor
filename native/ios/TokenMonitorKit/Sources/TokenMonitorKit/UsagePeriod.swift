@@ -92,6 +92,37 @@ public struct UsageShare: Sendable, Hashable, Codable, Identifiable {
     }
 }
 
+// Read leniently like `PeriodSummary`: a token count beyond `Int` clamps
+// instead of dropping the row; the encoding is unchanged.
+extension UsageShare {
+    private enum CodingKeys: String, CodingKey {
+        case kind, id, label, tokens, costUsd, vendorID
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let id = try container.decode(String.self, forKey: .id)
+        self.init(
+            kind: try container.decode(Kind.self, forKey: .kind),
+            id: id,
+            label: (try? container.decode(String.self, forKey: .label)) ?? id,
+            tokens: container.lenientInt(.tokens) ?? 0,
+            costUsd: container.lenientDouble(.costUsd),
+            vendorID: try? container.decodeIfPresent(String.self, forKey: .vendorID)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(id, forKey: .id)
+        try container.encode(label, forKey: .label)
+        try container.encode(tokens, forKey: .tokens)
+        try container.encodeIfPresent(costUsd, forKey: .costUsd)
+        try container.encodeIfPresent(vendorID, forKey: .vendorID)
+    }
+}
+
 /// The token composition the desktop shows for a period (port of
 /// `tokenComponentBreakdown()` in `src/electron/renderer/fixedPeriodRanges.js`).
 ///
@@ -328,12 +359,12 @@ public struct UsagePeriod: Sendable, Equatable {
 
     /// Period tokens no Tool row accounts for.
     public var unattributedClientTokens: Int {
-        max(0, totalTokens - clients.reduce(0) { $0 + $1.tokens })
+        max(0, totalTokens - clients.saturatingSum(\.tokens))
     }
 
     /// Period tokens no Model row accounts for.
     public var unattributedModelTokens: Int {
-        max(0, totalTokens - models.reduce(0) { $0 + $1.tokens })
+        max(0, totalTokens - models.saturatingSum(\.tokens))
     }
 
     /// Tools plus a synthetic remainder row (named by the caller) when the

@@ -124,9 +124,10 @@ public enum TokenFormat {
         width: Duration.UnitsFormatStyle.UnitWidth = .narrow,
         locale: Locale = .autoupdatingCurrent
     ) -> String {
-        let seconds = max(0, date.timeIntervalSince(now))
-        let minutes = max(1, Int((seconds / 60).rounded(.up)))
-        return Duration.seconds(minutes * 60).formatted(
+        let seconds = date.timeIntervalSince(now)
+        // Whole minutes as a Double: a far-off reset must not overflow `Int`.
+        let minutes = seconds.isFinite ? max(1, (seconds / 60).rounded(.up)) : 1
+        return Duration.seconds(min(minutes, 1e12) * 60).formatted(
             .units(allowed: [.days, .hours, .minutes], width: width, maximumUnitCount: 2).locale(locale)
         )
     }

@@ -478,6 +478,7 @@ final class ModelAliasTests: XCTestCase {
             #"{"ok":true,"version":2,"revision":1,"updatedAt":"","value":null}"#,
             #"{"ok":true,"revision":1,"updatedAt":"","value":null}"#,
             #"{"ok":true,"version":1,"revision":-1,"updatedAt":"","value":null}"#,
+            #"{"ok":true,"version":1,"revision":9007199254740992,"updatedAt":"","value":null}"#,
             #"{"ok":true,"version":1,"revision":1.5,"updatedAt":"","value":null}"#,
             #"{"ok":true,"version":1,"revision":"1","updatedAt":"","value":null}"#,
             #"{"ok":true,"version":1,"revision":1,"updatedAt":""}"#,
@@ -487,6 +488,9 @@ final class ModelAliasTests: XCTestCase {
         for body in bodies {
             XCTAssertThrowsError(try ModelAliasDocument.decode(from: Data(body.utf8)), body)
         }
+        // `Number.MAX_SAFE_INTEGER` itself is still a revision.
+        let largest = try ModelAliasDocument.decode(from: Data(#"{"ok":true,"version":1,"revision":9007199254740991,"updatedAt":"","value":null}"#.utf8))
+        XCTAssertEqual(largest.revision, 9_007_199_254_740_991)
 
         // Inside a valid envelope the value is read leniently.
         let lenient = try ModelAliasDocument.decode(from: Data(#"{"version":1,"revision":2,"updatedAt":"bad","value":{"modelAliases":[1],"modelAliasGrouping":" PREFIX "}}"#.utf8))

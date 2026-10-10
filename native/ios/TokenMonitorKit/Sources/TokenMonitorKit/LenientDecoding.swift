@@ -236,6 +236,24 @@ extension KeyedEncodingContainer {
     }
 }
 
+// `Int` is 32-bit on the Apple Watch (arm64_32), where a heavy user's
+// all-time token counts pass `Int32.max`: the decoders clamp them to
+// `Int.max` there, and token sums that a watch or complication computes go
+// through `saturatingAdd` so two clamped values cannot trap.
+
+/// `left + right` clamped to `Int`'s range instead of trapping.
+func saturatingAdd(_ left: Int, _ right: Int) -> Int {
+    let (sum, overflow) = left.addingReportingOverflow(right)
+    return overflow ? (right > 0 ? Int.max : Int.min) : sum
+}
+
+extension Sequence {
+    /// The sum of `value` over the elements, saturating at `Int`'s bounds.
+    func saturatingSum(_ value: (Element) -> Int) -> Int {
+        reduce(0) { saturatingAdd($0, value($1)) }
+    }
+}
+
 func clampedInt(_ value: Double) -> Int {
     guard value.isFinite else { return 0 }
     let rounded = value.rounded()

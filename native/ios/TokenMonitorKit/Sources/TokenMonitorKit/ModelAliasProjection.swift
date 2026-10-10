@@ -168,7 +168,7 @@ private enum ModelFold {
 
     static func sum(_ left: Int?, _ right: Int?) -> Int? {
         guard left != nil || right != nil else { return nil }
-        return (left ?? 0) &+ (right ?? 0)
+        return saturatingAdd(left ?? 0, right ?? 0)
     }
 
     static func sum(_ left: Double?, _ right: Double?) -> Double? {
@@ -180,7 +180,7 @@ private enum ModelFold {
     /// carries is kept and two are added.
     static func entry(_ left: UsageBreakdownEntry, _ right: UsageBreakdownEntry) -> UsageBreakdownEntry {
         UsageBreakdownEntry(
-            tokens: left.tokens &+ right.tokens,
+            tokens: saturatingAdd(left.tokens, right.tokens),
             costUsd: left.costUsd + right.costUsd,
             unpricedTokens: sum(left.unpricedTokens, right.unpricedTokens),
             cacheReadTokens: sum(left.cacheReadTokens, right.cacheReadTokens),
@@ -208,7 +208,7 @@ private enum ModelFold {
         for row in rows.sorted(by: { ModelAliasResolver.utf16Less($0.id, $1.id) }) {
             let name = resolver.resolve(row.id)
             if let existing = grouped[name] {
-                grouped[name] = (existing.tokens &+ row.tokens, sum(existing.cost, row.costUsd))
+                grouped[name] = (saturatingAdd(existing.tokens, row.tokens), sum(existing.cost, row.costUsd))
             } else {
                 order.append(name)
                 grouped[name] = (row.tokens, row.costUsd)
@@ -225,14 +225,14 @@ private enum ModelFold {
     /// counts a bucket without the field as wholly unclassified).
     static func bucket(_ previous: HistoryBucket, _ bucket: HistoryBucket) -> HistoryBucket {
         var merged = previous
-        merged.tokens = previous.tokens &+ bucket.tokens
+        merged.tokens = saturatingAdd(previous.tokens, bucket.tokens)
         merged.costUsd = previous.costUsd + bucket.costUsd
-        merged.messages = previous.messages &+ bucket.messages
+        merged.messages = saturatingAdd(previous.messages, bucket.messages)
         merged.unpricedTokens = sum(previous.unpricedTokens, bucket.unpricedTokens)
         merged.cacheReadTokens = sum(previous.cacheReadTokens, bucket.cacheReadTokens)
         merged.cacheWriteTokens = sum(previous.cacheWriteTokens, bucket.cacheWriteTokens)
         merged.outputTokens = sum(previous.outputTokens, bucket.outputTokens)
-        merged.unclassifiedTokens = previous.resolvedUnclassifiedTokens &+ bucket.resolvedUnclassifiedTokens
+        merged.unclassifiedTokens = saturatingAdd(previous.resolvedUnclassifiedTokens, bucket.resolvedUnclassifiedTokens)
         return merged
     }
 
@@ -250,7 +250,7 @@ private enum ModelFold {
         for perModel in rows {
             for model in perModel.keys.sorted(by: ModelAliasResolver.utf16Less) {
                 let name = resolver.resolve(model)
-                totals[name, default: 0] &+= perModel[model]?.tokens ?? 0
+                totals[name] = saturatingAdd(totals[name] ?? 0, perModel[model]?.tokens ?? 0)
                 if firstSeen[name] == nil {
                     firstSeen[name] = position
                     position += 1
@@ -289,7 +289,7 @@ extension HubSession {
     public func projectingModelAliases(_ resolver: ModelAliasResolver) -> HubSession {
         guard resolver.isActive else { return self }
         var copy = self
-        copy.models = ModelFold.map(models, resolver, merge: { $0 &+ $1 })
+        copy.models = ModelFold.map(models, resolver, merge: saturatingAdd)
         copy.modelCosts = ModelFold.map(modelCosts, resolver, merge: +)
         return copy
     }

@@ -86,6 +86,9 @@ final class TokenFormatTests: XCTestCase {
         XCTAssertEqual(TokenFormat.countdown(to: now.addingTimeInterval(-60), from: now, locale: en), "1m")
         XCTAssertEqual(TokenFormat.countdown(to: now.addingTimeInterval(3 * 86_400 + 4 * 3600 + 5 * 60), from: now, locale: en), "3d 4h")
         XCTAssertFalse(TokenFormat.countdown(to: now.addingTimeInterval(9000), from: now, locale: Locale(identifier: "ja_JP")).contains("h"))
+        // A far-off reset (a provider's "never" sentinel) formats instead of
+        // overflowing the minute count.
+        XCTAssertFalse(TokenFormat.countdown(to: now.addingTimeInterval(4e10), from: now, locale: en).isEmpty)
     }
 
     func testRelativeAndMoment() {
@@ -181,6 +184,8 @@ final class VendorCatalogTests: XCTestCase {
         XCTAssertEqual(VendorCatalog.fallbackModelColorHex(for: "foo"), "#6ab4f0")
         XCTAssertEqual(VendorCatalog.fallbackModelColorHex(for: "Some-Very-Long-Model-Name-That-Overflows-Int32-Hash-2026"), "#5fbf8a")
         XCTAssertEqual(VendorCatalog.fallbackModelColorHex(for: "日本語モデル"), "#5fbf8a")
+        // A name whose hash is exactly Int32.min (node: Math.abs(hash) % 6 = 2).
+        XCTAssertEqual(VendorCatalog.fallbackModelColorHex(for: "dsujzr\u{8c19}\u{4e2a}\u{4e2d}"), "#a57df0")
         XCTAssertEqual(VendorCatalog.modelPaint(for: "claude-sonnet-4-5"), .hex("#cc7c5e"))
         XCTAssertEqual(VendorCatalog.modelPaint(for: "grok-4"), .ink)
     }

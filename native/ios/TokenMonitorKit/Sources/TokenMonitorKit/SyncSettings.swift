@@ -280,7 +280,9 @@ private enum SharedDocumentKeys: String, CodingKey {
 /// and a `value` key (null allowed).
 private struct SharedDocumentHeader {
     static let version = 1
-    static let maxSafeInteger = 9_007_199_254_740_991
+    /// `Number.MAX_SAFE_INTEGER`; `Int64` so the Kit still compiles where
+    /// `Int` is 32-bit (the watch's arm64_32).
+    static let maxSafeInteger: Int64 = 9_007_199_254_740_991
 
     let revision: Int
     let updatedAt: Date?
@@ -290,7 +292,7 @@ private struct SharedDocumentHeader {
         guard (try? container.decode(Int.self, forKey: .version)) == Self.version else {
             throw DecodingError.dataCorruptedError(forKey: .version, in: container, debugDescription: "unsupported shared settings version")
         }
-        guard let revision = try? container.decode(Int.self, forKey: .revision), (0...Self.maxSafeInteger).contains(revision) else {
+        guard let revision = try? container.decode(Int.self, forKey: .revision), revision >= 0, Int64(revision) <= Self.maxSafeInteger else {
             throw DecodingError.dataCorruptedError(forKey: .revision, in: container, debugDescription: "invalid shared settings revision")
         }
         guard container.contains(.value) else {

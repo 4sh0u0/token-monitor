@@ -99,7 +99,7 @@ public struct DisplayFormatter: Sendable, Equatable {
     /// non-finite value reads as 0.
     public func fullTokens(_ value: Double) -> String {
         let rounded = value.isFinite ? JSCompat.round(value) : 0
-        guard abs(rounded) < 9.2e18 else { return JSCompat.numberString(rounded) }
+        guard abs(rounded) < Double(Int.max) else { return JSCompat.numberString(rounded) }
         return Self.groupedInteger(Int(rounded))
     }
 

@@ -60,6 +60,51 @@ final class TokenSnapshotTests: XCTestCase {
         XCTAssertEqual(plain, original)
     }
 
+    /// Counts beyond `Int` (on the watch, anything past `Int32.max`) clamp
+    /// instead of zeroing the period, and sums of clamped counts saturate
+    /// instead of trapping. Simulated here with values past 64-bit `Int`.
+    func testOversizedCountsClampInsteadOfFailing() throws {
+        let json = #"""
+        {"schemaVersion":1,"fetchedAt":"2026-10-09T02:50:00Z",
+         "allTime":{"kind":"allTime","totalTokens":1e19,"costUsd":3,"outputTokens":0,"cacheReadTokens":2e19,"cacheWriteTokens":0,"unclassifiedTokens":0,
+           "tools":[{"kind":"client","id":"claude","label":"Claude","tokens":1e19,"vendorID":"claude"},{"kind":"client","id":"codex","label":"Codex","tokens":5}],
+           "models":[],"otherToolTokens":0,"otherModelTokens":0}}
+        """#
+        let snapshot = try TokenSnapshot(jsonData: Data(json.utf8))
+        XCTAssertEqual(snapshot.allTime.totalTokens, Int.max)
+        XCTAssertEqual(snapshot.allTime.cacheReadTokens, Int.max)
+        XCTAssertEqual(snapshot.allTime.tools.map(\.tokens), [Int.max, 5])
+        XCTAssertEqual(snapshot.allTime.tools.first?.vendorID, "claude")
+        XCTAssertNil(snapshot.allTime.tools.last?.vendorID)
+        XCTAssertEqual(snapshot.allTime.tokens(notIn: snapshot.allTime.tools), 0, "saturates, no trap")
+
+        let period = UsagePeriod(
+            totalTokens: Int.max,
+            clients: [UsageShare(kind: .client, id: "a", label: "A", tokens: Int.max), UsageShare(kind: .client, id: "b", label: "B", tokens: Int.max)],
+            models: [UsageShare(kind: .model, id: "m", label: "m", tokens: Int.max), UsageShare(kind: .model, id: "n", label: "n", tokens: 1)]
+        )
+        XCTAssertEqual(period.unattributedClientTokens, 0)
+        XCTAssertEqual(period.unattributedModelTokens, 0)
+        let summary = PeriodSummary(kind: .allTime, period: period)
+        XCTAssertEqual(summary.otherToolTokens, 0)
+        XCTAssertEqual(summary.otherModelTokens, 0)
+        XCTAssertEqual(summary.tokens(notIn: Array(summary.tools.prefix(1))), 0)
+        XCTAssertEqual(PeriodSummary(kind: .today, totalTokens: 10, tools: [UsageShare(kind: .client, id: "a", label: "A", tokens: 4)]).tokens(notIn: []), 10)
+
+        // Folding two clamped models saturates rather than wrapping negative.
+        let resolver = ModelAliasResolver(aliases: ["n": "m"], observedModels: [], grouping: .off)
+        var folded = period
+        folded.modelBreakdown = ["m": UsageBreakdownEntry(tokens: Int.max), "n": UsageBreakdownEntry(tokens: Int.max)]
+        folded.models = [UsageShare(kind: .model, id: "m", label: "m", tokens: Int.max), UsageShare(kind: .model, id: "n", label: "n", tokens: Int.max)]
+        let projected = folded.projectingModelAliases(resolver)
+        XCTAssertEqual(projected.models.map(\.tokens), [Int.max])
+        XCTAssertEqual(projected.modelBreakdown["m"]?.tokens, Int.max)
+
+        // The encoding is what the synthesized coders wrote.
+        let encoded = String(decoding: try JSONEncoder.sorted.encode(PeriodSummary(kind: .today, totalTokens: 7, tools: [UsageShare(kind: .client, id: "a", label: "A", tokens: 7)])), as: UTF8.self)
+        XCTAssertEqual(encoded, #"{"cacheReadTokens":0,"cacheWriteTokens":0,"costUsd":0,"kind":"today","models":[],"otherModelTokens":0,"otherToolTokens":0,"outputTokens":0,"tools":[{"id":"a","kind":"client","label":"A","tokens":7}],"totalTokens":7,"unclassifiedTokens":0}"#)
+    }
+
     func testDecodingToleratesMissingParts() throws {
         let snapshot = try TokenSnapshot(jsonData: Data(#"{"schemaVersion":1,"fetchedAt":"2026-10-09T02:50:00Z"}"#.utf8))
         XCTAssertEqual(snapshot.today.totalTokens, 0)
@@ -448,5 +493,13 @@ final class SnapshotBuilderTests: XCTestCase {
         XCTAssertEqual(builder.aliasRevision, 1)
         XCTAssertNil(SnapshotBuilder.load(preferences: store, aliasCache: cache, hubKey: "hub-b").aliases)
         XCTAssertNil(SnapshotBuilder.load(preferences: store, aliasCache: cache, hubKey: nil).aliases)
+    }
+}
+
+private extension JSONEncoder {
+    static var sorted: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
     }
 }

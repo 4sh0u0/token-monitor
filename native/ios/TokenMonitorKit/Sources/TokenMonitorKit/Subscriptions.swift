@@ -706,10 +706,7 @@ public enum SubscriptionMath {
 
     /// A Double that is already integral, as an `Int` (saturating, 0 for NaN).
     static func integer(_ value: Double) -> Int {
-        guard value.isFinite else { return 0 }
-        if value >= 9.2e18 { return Int.max }
-        if value <= -9.2e18 { return Int.min }
-        return Int(value.rounded())
+        clampedInt(value)
     }
 
     private static func pad2(_ value: Int) -> String {
@@ -719,11 +716,6 @@ public enum SubscriptionMath {
     private static func floorDivide(_ value: Int, _ divisor: Int) -> Int {
         let quotient = value / divisor
         return (value % divisor != 0 && (value < 0) != (divisor < 0)) ? quotient - 1 : quotient
-    }
-
-    private static func saturatingAdd(_ left: Int, _ right: Int) -> Int {
-        let (sum, overflow) = left.addingReportingOverflow(right)
-        return overflow ? (right > 0 ? Int.max : Int.min) : sum
     }
 
     private static func saturatingMultiply(_ left: Int, _ right: Int) -> Int {

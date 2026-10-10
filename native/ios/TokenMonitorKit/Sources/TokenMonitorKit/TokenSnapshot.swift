@@ -366,8 +366,8 @@ public struct PeriodSummary: Sendable, Equatable, Codable {
             outputTokensPerSecond: period.outputTokensPerSecond,
             tools: tools,
             models: models,
-            otherToolTokens: max(0, period.totalTokens - tools.reduce(0) { $0 + $1.tokens }),
-            otherModelTokens: max(0, period.totalTokens - models.reduce(0) { $0 + $1.tokens }),
+            otherToolTokens: max(0, period.totalTokens - tools.saturatingSum(\.tokens)),
+            otherModelTokens: max(0, period.totalTokens - models.saturatingSum(\.tokens)),
             unpricedTokens: period.unpricedTokens.flatMap { $0 > 0 ? $0 : nil }
         )
     }
@@ -381,6 +381,13 @@ public struct PeriodSummary: Sendable, Equatable, Codable {
         )
     }
 
+    /// The period's tokens that `shares` do not account for, never
+    /// negative: the "Other" row beside a tool list the caller filtered or
+    /// reordered again. Sums without overflowing on the watch's 32-bit `Int`.
+    public func tokens(notIn shares: [UsageShare]) -> Int {
+        max(0, totalTokens - shares.saturatingSum(\.tokens))
+    }
+
     /// Tools plus an "Other" remainder row named by the caller.
     public func tools(otherLabel label: String) -> [UsageShare] {
         otherToolTokens > 0 ? tools + [UsageShare.remainder(label: label, tokens: otherToolTokens)] : tools
@@ -389,6 +396,52 @@ public struct PeriodSummary: Sendable, Equatable, Codable {
     /// Models plus an "Other" remainder row named by the caller.
     public func models(otherLabel label: String) -> [UsageShare] {
         otherModelTokens > 0 ? models + [UsageShare.remainder(label: label, tokens: otherModelTokens)] : models
+    }
+}
+
+// Snapshots cross devices (App Group, WatchConnectivity), so counts are read
+// leniently: a count beyond `Int` where `Int` is 32-bit (the watch) clamps
+// instead of failing the whole period, and the encoding is unchanged.
+extension PeriodSummary {
+    private enum CodingKeys: String, CodingKey {
+        case kind, totalTokens, costUsd, outputTokens, cacheReadTokens, cacheWriteTokens, unclassifiedTokens
+        case outputTokensPerSecond, tools, models, otherToolTokens, otherModelTokens, unpricedTokens
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            kind: try container.decode(UsagePeriodKind.self, forKey: .kind),
+            totalTokens: container.lenientInt(.totalTokens) ?? 0,
+            costUsd: container.lenientDouble(.costUsd) ?? 0,
+            outputTokens: container.lenientInt(.outputTokens) ?? 0,
+            cacheReadTokens: container.lenientInt(.cacheReadTokens) ?? 0,
+            cacheWriteTokens: container.lenientInt(.cacheWriteTokens) ?? 0,
+            unclassifiedTokens: container.lenientInt(.unclassifiedTokens) ?? 0,
+            outputTokensPerSecond: container.lenientDouble(.outputTokensPerSecond),
+            tools: container.lenientArray(.tools, of: UsageShare.self),
+            models: container.lenientArray(.models, of: UsageShare.self),
+            otherToolTokens: container.lenientInt(.otherToolTokens) ?? 0,
+            otherModelTokens: container.lenientInt(.otherModelTokens) ?? 0,
+            unpricedTokens: container.lenientInt(.unpricedTokens)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(totalTokens, forKey: .totalTokens)
+        try container.encode(costUsd, forKey: .costUsd)
+        try container.encode(outputTokens, forKey: .outputTokens)
+        try container.encode(cacheReadTokens, forKey: .cacheReadTokens)
+        try container.encode(cacheWriteTokens, forKey: .cacheWriteTokens)
+        try container.encode(unclassifiedTokens, forKey: .unclassifiedTokens)
+        try container.encodeIfPresent(outputTokensPerSecond, forKey: .outputTokensPerSecond)
+        try container.encode(tools, forKey: .tools)
+        try container.encode(models, forKey: .models)
+        try container.encode(otherToolTokens, forKey: .otherToolTokens)
+        try container.encode(otherModelTokens, forKey: .otherModelTokens)
+        try container.encodeIfPresent(unpricedTokens, forKey: .unpricedTokens)
     }
 }
 

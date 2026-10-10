@@ -1544,7 +1544,9 @@ public enum LimitPeriodName: Sendable, Hashable {
     /// The cadence of a window: its `windowMinutes` when whole and positive,
     /// else its kind.
     public static func of(_ window: LimitWindow) -> LimitPeriodName {
-        if let minutes = window.windowMinutes, minutes.isFinite, minutes > 0, minutes == minutes.rounded(), minutes < 1e15 {
+        // `Double(Int.max)` bounds the conversion where `Int` is 32-bit.
+        if let minutes = window.windowMinutes, minutes.isFinite, minutes > 0, minutes == minutes.rounded(),
+           minutes < 1e15, minutes < Double(Int.max) {
             let value = Int(minutes)
             if value == 30 * 24 * 60 { return .named(.monthly) }
             if value == 5 * 60 { return .named(.fiveHour) }

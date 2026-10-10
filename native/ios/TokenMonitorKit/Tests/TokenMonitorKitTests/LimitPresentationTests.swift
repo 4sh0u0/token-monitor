@@ -737,6 +737,7 @@ final class LimitPresentationTests: XCTestCase {
         XCTAssertEqual(LimitPeriodName.of(LimitWindow(kind: .billing, windowMinutes: 43200)), .named(.monthly))
         XCTAssertEqual(LimitPeriodName.of(LimitWindow(kind: .daily)), .named(.daily))
         XCTAssertEqual(LimitPeriodName.of(LimitWindow(kind: .session, windowMinutes: 2.5)), .named(.session))
+        XCTAssertEqual(LimitPeriodName.of(LimitWindow(kind: .weekly, windowMinutes: 1e16)), .named(.weekly), "too large to be a cadence")
         XCTAssertEqual(
             LimitWindowName.group(name: "Gemini Pro", period: .fiveHour).usageItemLabel,
             .additional(limitID: "Gemini Pro", title: .kind(.fiveHour))
