@@ -149,6 +149,26 @@ final class LimitWindowTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
+    func testRoundOneFieldsKeepTheirMeaningBesideTheExtras() throws {
+        // The legacy plan fallback is unchanged; the raw labels sit beside it.
+        let deepSeek = try provider("deepseek")
+        XCTAssertEqual(deepSeek.planLabel, "Pay-as-you-go")
+        XCTAssertNil(deepSeek.explicitPlanLabel)
+        XCTAssertEqual(deepSeek.accountLabel, "Pay-as-you-go")
+        XCTAssertEqual(deepSeek.balance?.trackingSince, Fixture.date("2026-08-10T02:47:49.082Z"))
+        XCTAssertEqual(deepSeek.sourceDeviceId, "studio-mac")
+
+        let claude = try provider("claude")
+        XCTAssertEqual(claude.planLabel, "Max")
+        XCTAssertEqual(claude.balance?.amount, 37.5)
+        XCTAssertEqual(claude.balance?.tranches.map(\.amount), [25, 12.5])
+        XCTAssertEqual(claude.compacted().balance?.tranches, [], "per-grant detail stays out of shared containers")
+        XCTAssertEqual(claude.compacted().balance?.amount, 37.5)
+
+        // `balanceUsd` from producers that predate the balance block.
+        XCTAssertEqual(try provider("opencode").balance, LimitBalance(amount: 4.25, currency: "USD"))
+    }
+
     func testCompactedMasksIdentity() throws {
         let claude = try provider("claude").compacted()
         XCTAssertEqual(claude.accountEmail, "d***v@example.com")

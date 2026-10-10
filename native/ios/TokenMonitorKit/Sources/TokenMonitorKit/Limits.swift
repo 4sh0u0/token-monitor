@@ -114,6 +114,9 @@ public struct LimitWindow: Sendable, Equatable, Identifiable {
     public var limitId: String?
     /// Bounded display-only description from the provider.
     public var detail: String?
+    /// Provider wording for the boundary, shown when `resetsAt` is absent
+    /// (`resetDescription`).
+    public var resetDescription: String?
 
     public init(
         id: String? = nil,
@@ -132,7 +135,8 @@ public struct LimitWindow: Sendable, Equatable, Identifiable {
         showMeter: Bool = true,
         isAdditional: Bool = false,
         limitId: String? = nil,
-        detail: String? = nil
+        detail: String? = nil,
+        resetDescription: String? = nil
     ) {
         self.kind = kind
         self.label = label
@@ -150,6 +154,7 @@ public struct LimitWindow: Sendable, Equatable, Identifiable {
         self.isAdditional = isAdditional
         self.limitId = limitId
         self.detail = detail
+        self.resetDescription = resetDescription
         self.id = id ?? Self.baseID(kind: kind, metric: metric, limitId: limitId, label: label)
     }
 
@@ -194,7 +199,7 @@ extension LimitWindow: Codable {
         case used, limit, remaining, currency
         case resetsAt, resets_at, resetAt, reset_at
         case boundaryKind, boundary_kind, windowMinutes, window_minutes
-        case showMeter, meter, additional, limitId, limit_id, detail
+        case showMeter, meter, additional, limitId, limit_id, detail, resetDescription
     }
 
     /// Lenient, mirroring `normalizeLimitWindow()`; throws only when the kind
@@ -237,7 +242,8 @@ extension LimitWindow: Codable {
             showMeter: container.lenientBool(.showMeter) != false && container.lenientBool(.meter) != false,
             isAdditional: container.lenientBool(.additional) == true,
             limitId: container.lenientString(.limitId) ?? container.lenientString(.limit_id),
-            detail: container.lenientString(.detail)
+            detail: container.lenientString(.detail),
+            resetDescription: container.lenientString(.resetDescription)
         )
     }
 
@@ -261,10 +267,58 @@ extension LimitWindow: Codable {
         if isAdditional { try container.encode(true, forKey: .additional) }
         try container.encodeIfPresent(limitId, forKey: .limitId)
         try container.encodeIfPresent(detail, forKey: .detail)
+        try container.encodeIfPresent(resetDescription, forKey: .resetDescription)
     }
 }
 
-/// `limits.providers[].balance`, reduced to what a phone shows.
+/// `balance.planStatus`: whether a provider's token plan (MiMo) is current.
+public enum LimitPlanStatus: String, Sendable, Codable, CaseIterable {
+    case active
+    case expired
+}
+
+/// One prepaid credit grant with its own expiry (`balance.tranches[]`).
+public struct LimitBalanceTranche: Sendable, Hashable {
+    public var amount: Double
+    /// Uppercase code, nil when the grant names none (use the balance's).
+    public var currency: String?
+    public var expiresAt: Date?
+
+    public init(amount: Double, currency: String? = nil, expiresAt: Date? = nil) {
+        self.amount = amount
+        self.currency = currency
+        self.expiresAt = expiresAt
+    }
+}
+
+extension LimitBalanceTranche: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case amount, currency, expiresAt, expires_at
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard let amount = container.lenientDouble(.amount) else {
+            throw DecodingError.dataCorruptedError(forKey: .amount, in: container, debugDescription: "tranche without amount")
+        }
+        self.init(
+            amount: amount,
+            currency: container.lenientString(.currency).map(LimitBalance.currencyCode),
+            expiresAt: container.lenientDate(.expiresAt) ?? container.lenientDate(.expires_at)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(amount, forKey: .amount)
+        try container.encodeIfPresent(currency, forKey: .currency)
+        try container.encodeISODate(expiresAt, forKey: .expiresAt)
+    }
+}
+
+/// `limits.providers[].balance` (`normalizeProviderBalance`, limits/core.js):
+/// a provider-level money balance plus the spend and plan figures the desktop
+/// card shows around it.
 public struct LimitBalance: Sendable, Equatable {
     public var amount: Double?
     /// Uppercase code; `CREDITS` means provider points rather than money.
@@ -274,6 +328,22 @@ public struct LimitBalance: Sendable, Equatable {
     public var monthSpend: Double?
     public var allTimeSpend: Double?
     public var expiresAt: Date?
+    /// Requests counted by a relay (third-party APIs), truncated, ≥ 0.
+    public var requestCount: Int?
+    /// A relay's quota group name.
+    public var quotaGroup: String?
+    /// When Token Monitor started recording this balance's spend.
+    public var trackingSince: Date?
+    /// The month spend counts only from `trackingSince` (a partial month).
+    public var monthSinceTracking: Bool
+    public var giftBalance: Double?
+    public var cashBalance: Double?
+    public var planUsed: Double?
+    public var planLimit: Double?
+    public var planPercent: Double?
+    public var planStatus: LimitPlanStatus?
+    /// Prepaid grants, soonest expiry first, grants without one last.
+    public var tranches: [LimitBalanceTranche]
 
     public init(
         amount: Double? = nil,
@@ -282,7 +352,18 @@ public struct LimitBalance: Sendable, Equatable {
         weekSpend: Double? = nil,
         monthSpend: Double? = nil,
         allTimeSpend: Double? = nil,
-        expiresAt: Date? = nil
+        expiresAt: Date? = nil,
+        requestCount: Int? = nil,
+        quotaGroup: String? = nil,
+        trackingSince: Date? = nil,
+        monthSinceTracking: Bool = false,
+        giftBalance: Double? = nil,
+        cashBalance: Double? = nil,
+        planUsed: Double? = nil,
+        planLimit: Double? = nil,
+        planPercent: Double? = nil,
+        planStatus: LimitPlanStatus? = nil,
+        tranches: [LimitBalanceTranche] = []
     ) {
         self.amount = amount
         self.currency = currency
@@ -291,28 +372,95 @@ public struct LimitBalance: Sendable, Equatable {
         self.monthSpend = monthSpend
         self.allTimeSpend = allTimeSpend
         self.expiresAt = expiresAt
+        self.requestCount = requestCount
+        self.quotaGroup = quotaGroup
+        self.trackingSince = trackingSince
+        self.monthSinceTracking = monthSinceTracking
+        self.giftBalance = giftBalance
+        self.cashBalance = cashBalance
+        self.planUsed = planUsed
+        self.planLimit = planLimit
+        self.planPercent = planPercent
+        self.planStatus = planStatus
+        self.tranches = tranches
     }
 
+    /// Nothing worth keeping (the currency alone does not count).
     var isEmpty: Bool {
         amount == nil && todaySpend == nil && weekSpend == nil && monthSpend == nil && allTimeSpend == nil
+            && expiresAt == nil && requestCount == nil && quotaGroup == nil && trackingSince == nil
+            && !monthSinceTracking && giftBalance == nil && cashBalance == nil && planUsed == nil
+            && planLimit == nil && planPercent == nil && planStatus == nil && tranches.isEmpty
+    }
+
+    /// Any spend figure the card's Spend row would show.
+    public var hasSpend: Bool {
+        todaySpend != nil || weekSpend != nil || monthSpend != nil || allTimeSpend != nil
+    }
+
+    /// The copy kept in shared containers: per-grant detail and the relay's
+    /// group name dropped (the desktop's `publicLimits` drops both too).
+    func compacted() -> LimitBalance {
+        var copy = self
+        copy.tranches = []
+        copy.quotaGroup = nil
+        return copy
+    }
+
+    static func currencyCode(_ raw: String) -> String {
+        String(raw.uppercased().prefix(8))
+    }
+
+    /// `normalizeBalanceTranches`' order: by expiry, undated last, ties stable.
+    static func sortedTranches(_ tranches: [LimitBalanceTranche]) -> [LimitBalanceTranche] {
+        tranches.enumerated().sorted { left, right in
+            switch (left.element.expiresAt, right.element.expiresAt) {
+            case let (leftDate?, rightDate?) where leftDate != rightDate: return leftDate < rightDate
+            case (.some, nil): return true
+            case (nil, .some): return false
+            default: return left.offset < right.offset
+            }
+        }.map(\.element)
     }
 }
 
 extension LimitBalance: Codable {
     private enum CodingKeys: String, CodingKey {
         case amount, currency, todaySpend, weekSpend, monthSpend, allTimeSpend, expiresAt
+        case requestCount, quotaGroup, trackingSince, monthSinceTracking, giftBalance, cashBalance
+        case planUsed, planLimit, planPercent, planStatus, tranches
+        case today_spend, week_spend, month_spend, all_time_spend, expires_at, request_count, quota_group
+        case tracking_since, month_since_tracking, gift_balance, cash_balance
+        case plan_used, plan_limit, plan_percent, plan_status
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let requestCount = (container.lenientDouble(.requestCount) ?? container.lenientDouble(.request_count))
+            .map { clampedInt(max(0, $0.rounded(.towardZero))) }
+        let quotaGroup = (container.lenientString(.quotaGroup) ?? container.lenientString(.quota_group))
+            .map { String($0.prefix(64)) }
+        let planStatus = (container.lenientString(.planStatus) ?? container.lenientString(.plan_status))
+            .flatMap { LimitPlanStatus(rawValue: $0.lowercased()) }
         self.init(
             amount: container.lenientDouble(.amount),
-            currency: container.lenientString(.currency).map { String($0.uppercased().prefix(8)) },
-            todaySpend: container.lenientDouble(.todaySpend),
-            weekSpend: container.lenientDouble(.weekSpend),
-            monthSpend: container.lenientDouble(.monthSpend),
-            allTimeSpend: container.lenientDouble(.allTimeSpend),
-            expiresAt: container.lenientDate(.expiresAt)
+            currency: container.lenientString(.currency).map(Self.currencyCode),
+            todaySpend: container.lenientDouble(.todaySpend) ?? container.lenientDouble(.today_spend),
+            weekSpend: container.lenientDouble(.weekSpend) ?? container.lenientDouble(.week_spend),
+            monthSpend: container.lenientDouble(.monthSpend) ?? container.lenientDouble(.month_spend),
+            allTimeSpend: container.lenientDouble(.allTimeSpend) ?? container.lenientDouble(.all_time_spend),
+            expiresAt: container.lenientDate(.expiresAt) ?? container.lenientDate(.expires_at),
+            requestCount: requestCount,
+            quotaGroup: quotaGroup,
+            trackingSince: container.lenientDate(.trackingSince) ?? container.lenientDate(.tracking_since),
+            monthSinceTracking: container.lenientBool(.monthSinceTracking) ?? container.lenientBool(.month_since_tracking) ?? false,
+            giftBalance: container.lenientDouble(.giftBalance) ?? container.lenientDouble(.gift_balance),
+            cashBalance: container.lenientDouble(.cashBalance) ?? container.lenientDouble(.cash_balance),
+            planUsed: container.lenientDouble(.planUsed) ?? container.lenientDouble(.plan_used),
+            planLimit: container.lenientDouble(.planLimit) ?? container.lenientDouble(.plan_limit),
+            planPercent: container.lenientDouble(.planPercent) ?? container.lenientDouble(.plan_percent),
+            planStatus: planStatus,
+            tranches: Self.sortedTranches(container.lenientArray(.tranches, of: LimitBalanceTranche.self))
         )
     }
 
@@ -325,6 +473,311 @@ extension LimitBalance: Codable {
         try container.encodeIfPresent(monthSpend, forKey: .monthSpend)
         try container.encodeIfPresent(allTimeSpend, forKey: .allTimeSpend)
         try container.encodeISODate(expiresAt, forKey: .expiresAt)
+        try container.encodeIfPresent(requestCount, forKey: .requestCount)
+        try container.encodeIfPresent(quotaGroup, forKey: .quotaGroup)
+        try container.encodeISODate(trackingSince, forKey: .trackingSince)
+        if monthSinceTracking { try container.encode(true, forKey: .monthSinceTracking) }
+        try container.encodeIfPresent(giftBalance, forKey: .giftBalance)
+        try container.encodeIfPresent(cashBalance, forKey: .cashBalance)
+        try container.encodeIfPresent(planUsed, forKey: .planUsed)
+        try container.encodeIfPresent(planLimit, forKey: .planLimit)
+        try container.encodeIfPresent(planPercent, forKey: .planPercent)
+        try container.encodeIfPresent(planStatus?.rawValue, forKey: .planStatus)
+        if !tranches.isEmpty { try container.encode(tranches, forKey: .tranches) }
+    }
+}
+
+/// One labelled reset grant (`resetCredits.grants[]`): why it was issued,
+/// what it clears and whether it is spendable now. Only Claude sends these.
+public struct LimitResetGrant: Sendable, Hashable {
+    public var id: String?
+    /// Provider text ("Outage credit"), shown as is.
+    public var label: String?
+    public var resetsLeft: Int?
+    public var resetsTotal: Int?
+    public var startsAt: Date?
+    public var endsAt: Date?
+    /// Window kinds the reset clears (`session`, `weekly`, …), de-duplicated.
+    public var clears: [String]
+    public var usableNow: Bool?
+    public var useRequiresLimit: Bool?
+    public var paused: Bool?
+
+    public init(
+        id: String? = nil,
+        label: String? = nil,
+        resetsLeft: Int? = nil,
+        resetsTotal: Int? = nil,
+        startsAt: Date? = nil,
+        endsAt: Date? = nil,
+        clears: [String] = [],
+        usableNow: Bool? = nil,
+        useRequiresLimit: Bool? = nil,
+        paused: Bool? = nil
+    ) {
+        self.id = id
+        self.label = label
+        self.resetsLeft = resetsLeft
+        self.resetsTotal = resetsTotal
+        self.startsAt = startsAt
+        self.endsAt = endsAt
+        self.clears = clears
+        self.usableNow = usableNow
+        self.useRequiresLimit = useRequiresLimit
+        self.paused = paused
+    }
+}
+
+extension LimitResetGrant: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, label, resetsLeft, resetsTotal, startsAt, endsAt, clears, usableNow, useRequiresLimit, paused
+        case resets_left, resets_total, starts_at, ends_at, usable_now, use_requires_limit
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        func count(_ key: CodingKeys, _ alias: CodingKeys) -> Int? {
+            (container.lenientDouble(key) ?? container.lenientDouble(alias)).map { clampedInt(max(0, $0.rounded(.down))) }
+        }
+        var clears: [String] = []
+        for value in container.lenientStringArray(.clears) where !clears.contains(value) { clears.append(value) }
+        self.init(
+            id: container.lenientString(.id),
+            label: container.lenientString(.label),
+            resetsLeft: count(.resetsLeft, .resets_left),
+            resetsTotal: count(.resetsTotal, .resets_total),
+            startsAt: container.lenientDate(.startsAt) ?? container.lenientDate(.starts_at),
+            endsAt: container.lenientDate(.endsAt) ?? container.lenientDate(.ends_at),
+            clears: clears,
+            usableNow: container.lenientBool(.usableNow) ?? container.lenientBool(.usable_now),
+            useRequiresLimit: container.lenientBool(.useRequiresLimit) ?? container.lenientBool(.use_requires_limit),
+            paused: container.lenientBool(.paused)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encodeIfPresent(label, forKey: .label)
+        try container.encodeIfPresent(resetsLeft, forKey: .resetsLeft)
+        try container.encodeIfPresent(resetsTotal, forKey: .resetsTotal)
+        try container.encodeISODate(startsAt, forKey: .startsAt)
+        try container.encodeISODate(endsAt, forKey: .endsAt)
+        if !clears.isEmpty { try container.encode(clears, forKey: .clears) }
+        try container.encodeIfPresent(usableNow, forKey: .usableNow)
+        try container.encodeIfPresent(useRequiresLimit, forKey: .useRequiresLimit)
+        try container.encodeIfPresent(paused, forKey: .paused)
+    }
+}
+
+/// `resetCredits` (`normalizeProviderResetCredits`): banked quota resets
+/// (Codex, Claude) and when they lapse.
+public struct LimitResetCredits: Sendable, Hashable {
+    public var availableCount: Int?
+    /// The soonest of the wire `nextExpiresAt` and the first expiration.
+    public var nextExpiresAt: Date?
+    /// Available credits' expiries, de-duplicated, soonest first.
+    public var expirations: [Date]
+    public var grants: [LimitResetGrant]
+
+    public init(availableCount: Int? = nil, nextExpiresAt: Date? = nil, expirations: [Date] = [], grants: [LimitResetGrant] = []) {
+        self.availableCount = availableCount
+        self.nextExpiresAt = nextExpiresAt
+        self.expirations = expirations
+        self.grants = grants
+    }
+}
+
+extension LimitResetCredits: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case availableCount, available_count, available, remainingCount, remaining_count
+        case nextExpiresAt, next_expires_at, nextExpirationAt, next_expiration_at, expiresAt, expires_at
+        case expirations, expirationTimes, expiresAtList, expires_at_list, credits
+        case grants
+    }
+
+    /// One `expirations[]` entry: a timestamp, or an object whose `status`
+    /// (when set) must be `available`.
+    private struct Expiration: Decodable {
+        let date: Date?
+
+        private enum Keys: String, CodingKey {
+            case status, expiresAt, expires_at, nextExpiresAt, next_expires_at
+        }
+
+        init(from decoder: Decoder) throws {
+            if let container = try? decoder.container(keyedBy: Keys.self) {
+                if let status = container.lenientString(.status), status.lowercased() != "available" {
+                    date = nil
+                    return
+                }
+                date = container.lenientDate(.expiresAt) ?? container.lenientDate(.expires_at)
+                    ?? container.lenientDate(.nextExpiresAt) ?? container.lenientDate(.next_expires_at)
+                return
+            }
+            let single = try decoder.singleValueContainer()
+            if let string = try? single.decode(String.self) {
+                date = ISODate.parse(string)
+            } else if let number = try? single.decode(Double.self) {
+                date = ISODate.fromEpoch(number)
+            } else {
+                date = nil
+            }
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let available = container.lenientDouble(.availableCount) ?? container.lenientDouble(.available_count)
+            ?? container.lenientDouble(.available) ?? container.lenientDouble(.remainingCount)
+            ?? container.lenientDouble(.remaining_count)
+        let wireNext = container.lenientDate(.nextExpiresAt) ?? container.lenientDate(.next_expires_at)
+            ?? container.lenientDate(.nextExpirationAt) ?? container.lenientDate(.next_expiration_at)
+            ?? container.lenientDate(.expiresAt) ?? container.lenientDate(.expires_at)
+        let listKey = [CodingKeys.expirations, .expirationTimes, .expiresAtList, .expires_at_list, .credits]
+            .first { !container.isNullOrMissing($0) }
+        var expirations: [Date] = []
+        var seen: Set<String> = []
+        for entry in listKey.map({ container.lenientArray($0, of: Expiration.self) }) ?? [] {
+            // Identity at millisecond precision, as the desktop compares ISO strings.
+            guard let date = entry.date, seen.insert(ISODate.string(from: date)).inserted else { continue }
+            expirations.append(date)
+        }
+        expirations.sort()
+        let next = [wireNext, expirations.first].compactMap { $0 }.min()
+        let grants = container.lenientArray(.grants, of: LimitResetGrant.self)
+        guard available != nil || next != nil || !expirations.isEmpty || !grants.isEmpty else {
+            throw DecodingError.dataCorruptedError(forKey: .availableCount, in: container, debugDescription: "empty reset credits")
+        }
+        self.init(
+            availableCount: available.map { clampedInt(max(0, $0.rounded(.down))) },
+            nextExpiresAt: next,
+            expirations: expirations,
+            grants: grants
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(availableCount, forKey: .availableCount)
+        try container.encodeISODate(nextExpiresAt, forKey: .nextExpiresAt)
+        if !expirations.isEmpty { try container.encode(expirations.map(ISODate.string(from:)), forKey: .expirations) }
+        if !grants.isEmpty { try container.encode(grants, forKey: .grants) }
+    }
+}
+
+/// `usageSummary.period`: what the summary's totals cover.
+public enum LimitUsageSummaryPeriod: String, Sendable, Codable, CaseIterable {
+    case today
+    case week
+    case month
+    case allTime
+}
+
+/// `usageSummary` (`normalizeProviderUsageSummary`): a relay's or TypeSafe's
+/// own token and request totals. Counts are truncated and ≥ 0.
+public struct LimitUsageSummary: Sendable, Hashable {
+    public var period: LimitUsageSummaryPeriod?
+    public var requests: Int?
+    public var todayTokens: Int?
+    public var weekTokens: Int?
+    public var inputTokens: Int?
+    public var outputTokens: Int?
+    public var cacheReadTokens: Int?
+    public var cacheCreationTokens: Int?
+    public var totalTokens: Int?
+    /// Cost at list prices, in the balance currency.
+    public var standardCost: Double?
+    /// What the relay charged.
+    public var actualCost: Double?
+    public var averageDurationMs: Double?
+
+    public init(
+        period: LimitUsageSummaryPeriod? = nil,
+        requests: Int? = nil,
+        todayTokens: Int? = nil,
+        weekTokens: Int? = nil,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        cacheReadTokens: Int? = nil,
+        cacheCreationTokens: Int? = nil,
+        totalTokens: Int? = nil,
+        standardCost: Double? = nil,
+        actualCost: Double? = nil,
+        averageDurationMs: Double? = nil
+    ) {
+        self.period = period
+        self.requests = requests
+        self.todayTokens = todayTokens
+        self.weekTokens = weekTokens
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.cacheCreationTokens = cacheCreationTokens
+        self.totalTokens = totalTokens
+        self.standardCost = standardCost
+        self.actualCost = actualCost
+        self.averageDurationMs = averageDurationMs
+    }
+
+    var isEmpty: Bool {
+        period == nil && requests == nil && todayTokens == nil && weekTokens == nil && inputTokens == nil
+            && outputTokens == nil && cacheReadTokens == nil && cacheCreationTokens == nil && totalTokens == nil
+            && standardCost == nil && actualCost == nil && averageDurationMs == nil
+    }
+}
+
+extension LimitUsageSummary: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case period, requests, todayTokens, weekTokens, inputTokens, outputTokens, cacheReadTokens
+        case cacheCreationTokens, totalTokens, standardCost, actualCost, averageDurationMs
+        case today_tokens, week_tokens, input_tokens, output_tokens, cache_read_tokens
+        case cache_creation_tokens, total_tokens, standard_cost, actual_cost, average_duration_ms
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        func count(_ key: CodingKeys, _ alias: CodingKeys? = nil) -> Int? {
+            (container.lenientDouble(key) ?? alias.flatMap { container.lenientDouble($0) })
+                .map { clampedInt(max(0, $0.rounded(.towardZero))) }
+        }
+        func amount(_ key: CodingKeys, _ alias: CodingKeys) -> Double? {
+            (container.lenientDouble(key) ?? container.lenientDouble(alias)).map { max(0, $0) }
+        }
+        let summary = LimitUsageSummary(
+            period: container.lenientString(.period).flatMap(LimitUsageSummaryPeriod.init(rawValue:)),
+            requests: count(.requests),
+            todayTokens: count(.todayTokens, .today_tokens),
+            weekTokens: count(.weekTokens, .week_tokens),
+            inputTokens: count(.inputTokens, .input_tokens),
+            outputTokens: count(.outputTokens, .output_tokens),
+            cacheReadTokens: count(.cacheReadTokens, .cache_read_tokens),
+            cacheCreationTokens: count(.cacheCreationTokens, .cache_creation_tokens),
+            totalTokens: count(.totalTokens, .total_tokens),
+            standardCost: amount(.standardCost, .standard_cost),
+            actualCost: amount(.actualCost, .actual_cost),
+            averageDurationMs: amount(.averageDurationMs, .average_duration_ms)
+        )
+        guard !summary.isEmpty else {
+            throw DecodingError.dataCorruptedError(forKey: .period, in: container, debugDescription: "empty usage summary")
+        }
+        self = summary
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(period?.rawValue, forKey: .period)
+        try container.encodeIfPresent(requests, forKey: .requests)
+        try container.encodeIfPresent(todayTokens, forKey: .todayTokens)
+        try container.encodeIfPresent(weekTokens, forKey: .weekTokens)
+        try container.encodeIfPresent(inputTokens, forKey: .inputTokens)
+        try container.encodeIfPresent(outputTokens, forKey: .outputTokens)
+        try container.encodeIfPresent(cacheReadTokens, forKey: .cacheReadTokens)
+        try container.encodeIfPresent(cacheCreationTokens, forKey: .cacheCreationTokens)
+        try container.encodeIfPresent(totalTokens, forKey: .totalTokens)
+        try container.encodeIfPresent(standardCost, forKey: .standardCost)
+        try container.encodeIfPresent(actualCost, forKey: .actualCost)
+        try container.encodeIfPresent(averageDurationMs, forKey: .averageDurationMs)
     }
 }
 
@@ -345,21 +798,35 @@ public struct LimitProvider: Sendable, Equatable, Identifiable {
     public var adapterId: String?
     public var accountEmail: String?
     public var accountName: String?
-    /// The plan ("Max", "Plus", "Zen"); falls back to the legacy
-    /// `accountLabel` for producers that predate `planLabel`.
-    public var planLabel: String?
+    /// The wire `planLabel` alone ("Max", "GLM Coding Pro"), nil when the
+    /// producer sent none. `planLabel` adds the legacy fallback.
+    public var explicitPlanLabel: String?
+    /// The wire `accountLabel`: a legacy plan name, a product (MiMo
+    /// "Console"), or a key's label ("API key"). Never an email or URL.
+    public var accountLabel: String?
+    /// `personal` for a personal workspace, else nil.
+    public var workspaceKind: String?
     public var status: LimitStatus
     /// `accountVerification` or `appSessionEncrypted`, when the provider needs
     /// the user to act outside Token Monitor.
     public var actionRequired: String?
     /// `oauth`, `cli`, `web`, `rpc`, `local` or `api`.
     public var source: String?
+    /// Which login a Codex reading came from: `app`, `cli`, `ide`, `managed`
+    /// or `unknown`.
+    public var sourceDetail: String?
+    /// Provider region or plan variant (`cn`, `global`, `cn-personal`, …).
+    public var region: String?
+    /// The Hub device whose reading won the aggregation.
+    public var sourceDeviceId: String?
     public var updatedAt: Date?
     /// The Hub's freshness verdict for this reading ("Data may be stale").
     public var isStale: Bool
     /// In the Hub's order (canonical lanes before additional Codex buckets).
     public var windows: [LimitWindow]
     public var balance: LimitBalance?
+    public var resetCredits: LimitResetCredits?
+    public var usageSummary: LimitUsageSummary?
 
     public init(
         id: String,
@@ -375,7 +842,14 @@ public struct LimitProvider: Sendable, Equatable, Identifiable {
         updatedAt: Date? = nil,
         isStale: Bool = false,
         windows: [LimitWindow] = [],
-        balance: LimitBalance? = nil
+        balance: LimitBalance? = nil,
+        accountLabel: String? = nil,
+        workspaceKind: String? = nil,
+        sourceDetail: String? = nil,
+        region: String? = nil,
+        sourceDeviceId: String? = nil,
+        resetCredits: LimitResetCredits? = nil,
+        usageSummary: LimitUsageSummary? = nil
     ) {
         self.id = id
         self.provider = provider
@@ -383,14 +857,29 @@ public struct LimitProvider: Sendable, Equatable, Identifiable {
         self.adapterId = adapterId
         self.accountEmail = accountEmail
         self.accountName = accountName
-        self.planLabel = planLabel
+        self.explicitPlanLabel = planLabel
+        self.accountLabel = accountLabel
+        self.workspaceKind = workspaceKind
         self.status = status
         self.actionRequired = actionRequired
         self.source = source
+        self.sourceDetail = sourceDetail
+        self.region = region
+        self.sourceDeviceId = sourceDeviceId
         self.updatedAt = updatedAt
         self.isStale = isStale
         self.windows = windows
         self.balance = balance
+        self.resetCredits = resetCredits
+        self.usageSummary = usageSummary
+    }
+
+    /// The plan ("Max", "Plus", "Zen"); falls back to the legacy
+    /// `accountLabel` for producers that predate `planLabel`. Setting it sets
+    /// `explicitPlanLabel`.
+    public var planLabel: String? {
+        get { explicitPlanLabel ?? accountLabel }
+        set { explicitPlanLabel = newValue }
     }
 
     public var statusCategory: LimitStatusCategory { status.category }
@@ -442,14 +931,45 @@ public struct LimitProvider: Sendable, Equatable, Identifiable {
         return min(1, max(0, funds / (funds + spend)))
     }
 
-    /// A copy safe for shared containers (App Group, WatchConnectivity): the
-    /// email masked, path- or URL-like names dropped, and only the first
-    /// `maxWindows` primary windows kept.
-    public func compacted(maxWindows: Int = 4) -> LimitProvider {
+    /// The visible-items checklist id of one of this provider's windows
+    /// (`LimitUsageItems.itemID(for:provider:)`).
+    public func usageItemID(for window: LimitWindow) -> String {
+        LimitUsageItems.itemID(for: window, provider: provider)
+    }
+
+    /// Whether the user hid `window` in the `limitProviderHiddenItems` setting.
+    public func isHidden(_ window: LimitWindow, hiddenItems: [String: [String]]) -> Bool {
+        LimitUsageItems.isHidden(window, provider: provider, hiddenItems: hiddenItems)
+    }
+
+    /// `windows` minus the ones hidden in `limitProviderHiddenItems`, in order.
+    public func visibleWindows(hiddenItems: [String: [String]]) -> [LimitWindow] {
+        let hidden = LimitUsageItems.hiddenSet(hiddenItems, provider: provider)
+        guard !hidden.isEmpty else { return windows }
+        return windows.filter { !hidden.contains(usageItemID(for: $0)) }
+    }
+
+    /// A copy safe and small enough for shared containers (App Group,
+    /// WatchConnectivity): the email masked, path- or URL-like names
+    /// dropped, only primary windows the user has not hidden (at most
+    /// `maxWindows`), and the extras only the app shows stripped —
+    /// `resetCredits`, `usageSummary`, the balance's `tranches` and
+    /// `quotaGroup`, and `sourceDeviceId`. The account key was never kept.
+    ///
+    /// Hidden items remove windows only; the balance stays, so a credits
+    /// meter keeps measuring against the month's spend.
+    public func compacted(maxWindows: Int = 4, hiddenItems: [String: [String]] = [:]) -> LimitProvider {
         var copy = self
         copy.accountEmail = accountEmail.flatMap(Self.maskedEmail)
         copy.accountName = accountName.flatMap(Self.safeDisplayName)
-        copy.windows = Array(primaryWindows.prefix(max(0, maxWindows)))
+        copy.accountLabel = accountLabel.flatMap(Self.safeDisplayName)
+        let hidden = LimitUsageItems.hiddenSet(hiddenItems, provider: provider)
+        let visible = primaryWindows.filter { hidden.isEmpty || !hidden.contains(usageItemID(for: $0)) }
+        copy.windows = Array(visible.prefix(max(0, maxWindows)))
+        copy.balance = balance?.compacted()
+        copy.sourceDeviceId = nil
+        copy.resetCredits = nil
+        copy.usageSummary = nil
         return copy
     }
 
@@ -523,8 +1043,10 @@ public struct LimitProvider: Sendable, Equatable, Identifiable {
 
 extension LimitProvider: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, provider, displayName, adapterId, accountKey, accountEmail, accountName, accountLabel, planLabel
-        case status, actionRequired, source, updatedAt, checkedAt, stale, windows, balance, balanceUsd
+        case id, provider, displayName, adapterId, adapter_id, accountKey, accountEmail, accountName, accountLabel, planLabel
+        case workspaceKind, status, actionRequired, source, sourceDetail, source_detail, region, sourceDeviceId
+        case updatedAt, checkedAt, stale, windows, balance, balanceUsd
+        case resetCredits, rateLimitResetCredits, rate_limit_reset_credits, usageSummary, usage_summary
     }
 
     /// Decodes both the Hub's wire row and the Kit's own encoding. On the wire
@@ -551,24 +1073,38 @@ extension LimitProvider: Codable {
         if balance == nil, let usd = container.lenientDouble(.balanceUsd) {
             balance = LimitBalance(amount: usd, currency: "USD")
         }
+        let resetCredits = container.lenientObject(.resetCredits, as: LimitResetCredits.self)
+            ?? container.lenientObject(.rateLimitResetCredits, as: LimitResetCredits.self)
+            ?? container.lenientObject(.rate_limit_reset_credits, as: LimitResetCredits.self)
         self.init(
             id: container.lenientString(.id) ?? derivedID,
             provider: provider,
             displayName: container.lenientString(.displayName),
-            adapterId: container.lenientString(.adapterId),
+            adapterId: (container.lenientString(.adapterId) ?? container.lenientString(.adapter_id))?.lowercased(),
             accountEmail: container.lenientString(.accountEmail),
             accountName: container.lenientString(.accountName),
-            planLabel: container.lenientString(.planLabel) ?? container.lenientString(.accountLabel),
+            planLabel: container.lenientString(.planLabel),
             status: LimitStatus(wire: container.lenientString(.status)),
             actionRequired: container.lenientString(.actionRequired),
-            source: container.lenientString(.source),
+            source: container.lenientString(.source)?.lowercased(),
             updatedAt: container.lenientDate(.updatedAt) ?? container.lenientDate(.checkedAt),
             isStale: container.lenientBool(.stale) ?? false,
             windows: windows,
-            balance: balance
+            balance: balance,
+            accountLabel: container.lenientString(.accountLabel),
+            workspaceKind: container.lenientString(.workspaceKind)?.lowercased(),
+            sourceDetail: (container.lenientString(.sourceDetail) ?? container.lenientString(.source_detail))?.lowercased(),
+            region: container.lenientString(.region)?.lowercased(),
+            sourceDeviceId: container.lenientString(.sourceDeviceId),
+            resetCredits: resetCredits,
+            usageSummary: container.lenientObject(.usageSummary, as: LimitUsageSummary.self)
+                ?? container.lenientObject(.usage_summary, as: LimitUsageSummary.self)
         )
     }
 
+    /// Writes the wire field names, so a stored copy decodes through the same
+    /// lenient path; an older reader still finds the plan under `planLabel`
+    /// or `accountLabel`.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -577,13 +1113,20 @@ extension LimitProvider: Codable {
         try container.encodeIfPresent(adapterId, forKey: .adapterId)
         try container.encodeIfPresent(accountEmail, forKey: .accountEmail)
         try container.encodeIfPresent(accountName, forKey: .accountName)
-        try container.encodeIfPresent(planLabel, forKey: .planLabel)
+        try container.encodeIfPresent(explicitPlanLabel, forKey: .planLabel)
+        try container.encodeIfPresent(accountLabel, forKey: .accountLabel)
+        try container.encodeIfPresent(workspaceKind, forKey: .workspaceKind)
         try container.encode(status.rawValue, forKey: .status)
         try container.encodeIfPresent(actionRequired, forKey: .actionRequired)
         try container.encodeIfPresent(source, forKey: .source)
+        try container.encodeIfPresent(sourceDetail, forKey: .sourceDetail)
+        try container.encodeIfPresent(region, forKey: .region)
+        try container.encodeIfPresent(sourceDeviceId, forKey: .sourceDeviceId)
         try container.encodeISODate(updatedAt, forKey: .updatedAt)
         if isStale { try container.encode(true, forKey: .stale) }
         try container.encode(windows, forKey: .windows)
         try container.encodeIfPresent(balance, forKey: .balance)
+        try container.encodeIfPresent(resetCredits, forKey: .resetCredits)
+        try container.encodeIfPresent(usageSummary, forKey: .usageSummary)
     }
 }
