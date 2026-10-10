@@ -58,7 +58,7 @@ struct SessionsModule: View {
                     ForEach(recent.rows) { row in
                         Button {
                             let period: UsagePeriodKind = stats.month.sessions.contains { $0.id == row.id } ? .month : .today
-                            SessionDetailOrigin.open(row.id, period: period, model: model)
+                            model.navigate(to: .sessionDetail(row.id, period: period))
                         } label: {
                             RecentSessionRow(row: row, now: now, metric: model.preferences.sessionContextMetric)
                         }

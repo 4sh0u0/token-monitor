@@ -178,7 +178,7 @@ private struct SessionsList: View {
             if row.isReviewGroup {
                 model.navigate(to: .backgroundReviews(kind))
             } else if let session = row.session {
-                SessionDetailOrigin.open(session.id, period: kind, model: model)
+                model.navigate(to: .sessionDetail(session.id, period: kind))
             }
         } label: {
             SessionListRow(row: row, maximum: maximum, metric: model.preferences.sessionContextMetric)

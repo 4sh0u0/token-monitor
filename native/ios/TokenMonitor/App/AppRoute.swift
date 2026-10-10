@@ -10,8 +10,10 @@ enum AppRoute: Hashable {
     case models
     case projects
     case sessions
-    /// A session's detail, by `HubSession.id` (`client:sessionId`).
-    case sessionDetail(String)
+    /// A session's detail, by `HubSession.id` (`client:sessionId`). The same
+    /// session can have a today and a month entry with different totals;
+    /// `period` is the one the opening screen showed (nil: month, else today).
+    case sessionDetail(String, period: UsagePeriodKind? = nil)
     /// The collapsed background-review sessions of one period.
     case backgroundReviews(UsagePeriodKind)
     case trends
@@ -20,23 +22,9 @@ enum AppRoute: Hashable {
     case subscriptions
     case hubInfo
     case serviceStatus
-
-    /// The tab a deep link or `navigate(to:in:)` opens this route in when
-    /// none is named.
-    var homeTab: AppTab {
-        switch self {
-        case .tools, .models, .projects, .sessions, .sessionDetail, .backgroundReviews, .trends:
-            return .overview
-        case .deviceDetail:
-            return .devices
-        case .subscriptions, .hubInfo, .serviceStatus:
-            return .settings
-        }
-    }
 }
 
-/// The view for each route. Each name is the view its Phase-3b owner
-/// creates; until then `Views/Shared/PendingViews/` holds a placeholder.
+/// The view each route shows.
 struct AppRouteDestination: View {
     let route: AppRoute
 
@@ -50,8 +38,8 @@ struct AppRouteDestination: View {
             ProjectsView()
         case .sessions:
             SessionsView()
-        case .sessionDetail(let id):
-            SessionDetailView(sessionID: id)
+        case let .sessionDetail(id, period):
+            SessionDetailView(sessionID: id, initialPeriod: period)
         case .backgroundReviews(let period):
             BackgroundReviewsView(period: period)
         case .trends:

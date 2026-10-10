@@ -13,10 +13,12 @@ import TokenMonitorUI
 ///
 /// The same session can have a today and a month entry with different
 /// totals; a picker switches between them. It opens on the period the
-/// screen that pushed it was showing (`SessionDetailOrigin`), else month.
+/// screen that pushed it was showing (`initialPeriod`), else month.
 struct SessionDetailView: View {
     @Environment(AppModel.self) private var model
     let sessionID: String
+    /// The period the opening screen showed (`AppRoute.sessionDetail`).
+    var initialPeriod: UsagePeriodKind? = nil
     @State private var chosenPeriod: UsagePeriodKind?
 
     var body: some View {
@@ -69,7 +71,7 @@ struct SessionDetailView: View {
 
     private func resolvedPeriod(_ entries: [Entry]) -> UsagePeriodKind? {
         let available = Set(entries.map(\.period))
-        for candidate in [chosenPeriod, SessionDetailOrigin.period(for: sessionID), .month, .today] {
+        for candidate in [chosenPeriod, initialPeriod, .month, .today] {
             if let candidate, available.contains(candidate) { return candidate }
         }
         return nil

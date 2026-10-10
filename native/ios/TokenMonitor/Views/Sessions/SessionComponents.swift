@@ -38,27 +38,6 @@ struct SessionLiveSchedule: TimelineSchedule {
     }
 }
 
-// MARK: Navigation
-
-/// Which period a session's detail opens on. `AppRoute.sessionDetail` carries
-/// only the session's id, but the same session has a today entry and a month
-/// entry with different totals; the screen that opens it records the one it
-/// showed. A detail pushed from anywhere else opens on the month entry.
-@MainActor
-enum SessionDetailOrigin {
-    private static var periods: [String: UsagePeriodKind] = [:]
-
-    /// Pushes `sessionID`'s detail on the current tab, showing `period`.
-    static func open(_ sessionID: String, period: UsagePeriodKind, model: AppModel) {
-        periods[sessionID] = period
-        model.navigate(to: .sessionDetail(sessionID))
-    }
-
-    static func period(for sessionID: String) -> UsagePeriodKind? {
-        periods[sessionID]
-    }
-}
-
 // MARK: Marks and colours
 
 enum SessionColor {

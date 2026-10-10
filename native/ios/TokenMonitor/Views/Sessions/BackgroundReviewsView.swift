@@ -75,7 +75,7 @@ struct BackgroundReviewsView: View {
                             }
                             Button {
                                 if let session = run.session {
-                                    SessionDetailOrigin.open(session.id, period: period, model: model)
+                                    model.navigate(to: .sessionDetail(session.id, period: period))
                                 }
                             } label: {
                                 BackgroundReviewRunRow(run: run, maximum: maximum, now: now)
