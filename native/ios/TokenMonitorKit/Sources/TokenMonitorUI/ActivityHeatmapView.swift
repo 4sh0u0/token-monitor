@@ -150,14 +150,21 @@ public struct ActivityHeatmapView: View {
         return ZStack(alignment: .topLeading) {
             ForEach(layout.cells) { cell in
                 let rect = layout.rect(for: cell)
-                Color.clear
+                let element = Color.clear
                     .frame(width: rect.width, height: rect.height)
                     .position(x: rect.midX, y: rect.midY)
                     .accessibilityElement()
                     .accessibilityLabel(cellLabel(cell))
                     .accessibilityAddTraits(selected == cell.date ? .isSelected : [])
-                    .accessibilityAddTraits(isInteractive ? .isButton : [])
-                    .accessibilityAction { if isInteractive { toggle(cell) } }
+                // Only a mosaic that selects offers an action; otherwise a
+                // double tap would announce a button that does nothing.
+                if isInteractive {
+                    element
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { toggle(cell) }
+                } else {
+                    element
+                }
             }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
