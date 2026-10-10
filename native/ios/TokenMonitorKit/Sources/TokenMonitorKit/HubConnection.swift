@@ -178,4 +178,12 @@ public enum HubEndpoint: String, Sendable {
     case health = "api/health"
     case stats = "api/stats"
     case statsStream = "api/stats/stream"
+    /// `{daily[], monthly[], summary}`; an older Hub answers 404.
+    case history = "api/history"
+    /// Per-device records, including each device's history.
+    case devices = "api/devices"
+    case subscriptions = "api/subscriptions"
+    case syncContent = "api/sync/content"
+    case syncSettingsModelAliases = "api/sync/settings/modelAliases"
+    case syncSettingsCustomPricing = "api/sync/settings/customPricing"
 }

@@ -126,7 +126,8 @@ public struct HubClient: @unchecked Sendable {
             // Deliberately no `x-token-monitor-stream: 2`: with it the Hub sends
             // `freshness` deltas that must be merged into a held snapshot;
             // without it every update is a complete `stats` event.
-        case .health, .stats:
+        case .health, .stats, .history, .devices, .subscriptions, .syncContent,
+             .syncSettingsModelAliases, .syncSettingsCustomPricing:
             request.timeoutInterval = timeout
             request.setValue("application/json", forHTTPHeaderField: "Accept")
         }
@@ -155,6 +156,16 @@ public struct HubClient: @unchecked Sendable {
     /// The raw stats body, for callers that cache the response themselves.
     public func statsData() async throws -> Data {
         try await fetch(.stats)
+    }
+
+    /// The raw body of a JSON endpoint: a GET with `Accept: application/json`
+    /// and, except for `.health`, `Authorization: Bearer`. Not for
+    /// `.statsStream`, which never finishes; use `statsStream()`.
+    /// - Throws: `HubClientError` (`.http(status: 404)` from a Hub that lacks
+    ///   the endpoint), or `CancellationError` when the calling task was
+    ///   cancelled.
+    public func data(for endpoint: HubEndpoint) async throws -> Data {
+        try await fetch(endpoint)
     }
 
     /// "Test connection": the public health check, then an authenticated
