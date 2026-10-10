@@ -20,7 +20,7 @@ struct ModelsModule: View {
                 VStack(alignment: .leading, spacing: 12) {
                     ModuleHeader(title: "Models", route: .models)
                     if items.isEmpty {
-                        Text("No model usage in this period.")
+                        Text("No model usage in this period")
                             .font(.subheadline)
                             .foregroundStyle(TMTheme.muted)
                     } else {

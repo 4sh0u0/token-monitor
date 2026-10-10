@@ -68,15 +68,12 @@ extension AppTab {
 }
 
 enum AppFormat {
-    /// "5 min. ago", never "in …": a timestamp later than `now` (data newer
-    /// than the last TimelineView tick, or a device clock running ahead)
-    /// reads as just now, and so does anything under a minute, which the
-    /// views only re-render every 30 s anyway.
+    /// "just now", "5m ago", "3h ago", "2d ago": the desktop's ages
+    /// (`settings.age.*`), as every other age in the app reads. Never
+    /// "in …": a timestamp later than `now` (data newer than the last
+    /// TimelineView tick, or a device clock running ahead) reads as just now.
     static func ago(_ date: Date, now: Date) -> String {
-        guard now.timeIntervalSince(date) >= 60 else { return String(localized: "just now") }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: now)
+        DeviceWording.age(DevicePresentation.syncedAge(since: date, now: now) ?? .justNow)
     }
 
     /// The Hub runtime a health check reported, for "Connected to …".

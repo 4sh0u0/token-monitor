@@ -6121,46 +6121,6 @@
         }
       }
     },
-    "Cost excludes %@ tokens without a known price." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cost excludes %@ tokens without a known price."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "価格不明の %@ トークンはコストに含まれていません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "가격을 알 수 없는 %@ 토큰은 비용에 포함되지 않습니다."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O custo não inclui %@ tokens sem preço conhecido."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "成本不含价格未知的 %@ Tokens。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "成本不含價格未知的 %@ Tokens。"
-          }
-        }
-      }
-    },
     "Costs are always in USD, as on the desktop, whatever currency the app shows. The export covers every device on the Hub." : {
       "localizations" : {
         "en" : {
@@ -6637,6 +6597,47 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自訂模型單價"
+          }
+        }
+      }
+    },
+    "Custom plan" : {
+      "comment" : "A third-party relay's preset plan (desktop settings.thirdparty.presetCustom), shown as “Custom”.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カスタム"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용자 지정"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personalizada"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自定义"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自訂"
           }
         }
       }
@@ -9601,12 +9602,12 @@
         }
       }
     },
-    "How much of the model's context window running sessions have used, or have left." : {
+    "How much of the model’s context window running sessions have used, or have left." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "How much of the model's context window running sessions have used, or have left."
+            "value" : "How much of the model’s context window running sessions have used, or have left."
           }
         },
         "ja" : {
@@ -13241,46 +13242,6 @@
         }
       }
     },
-    "No model usage in this period." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No model usage in this period."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "この期間のモデル使用量はありません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 기간에 모델 사용량이 없습니다."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nenhum uso de modelo neste período."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此周期内没有模型用量。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此期間內沒有模型用量。"
-          }
-        }
-      }
-    },
     "No overrides yet." : {
       "localizations" : {
         "en" : {
@@ -13517,46 +13478,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此期間尚無工具使用"
-          }
-        }
-      }
-    },
-    "No tool usage in this period." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No tool usage in this period."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "この期間のツール使用量はありません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 기간에 도구 사용량이 없습니다."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nenhum uso de ferramenta neste período."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此周期内没有工具用量。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此期間內沒有工具用量。"
           }
         }
       }

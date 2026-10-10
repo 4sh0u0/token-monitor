@@ -31,7 +31,7 @@ struct SessionsSettingsView: View {
                     Text("Remaining").tag(ContextMetric.remaining)
                 }
             } footer: {
-                Text("How much of the model's context window running sessions have used, or have left.")
+                Text("How much of the model’s context window running sessions have used, or have left.")
             }
             .listRowBackground(TMTheme.card)
         }

@@ -175,7 +175,7 @@ private struct SessionDetailContent: View {
                     )
                 }
                 if let unpriced = session.unpricedTokens, unpriced > 0 {
-                    Text("Cost excludes \(formatter.fullTokens(unpriced)) tokens without a known price.")
+                    Text("\(formatter.fullTokens(unpriced)) tokens excluded from the cost estimate")
                         .font(.caption)
                         .foregroundStyle(TMTheme.muted)
                         .fixedSize(horizontal: false, vertical: true)

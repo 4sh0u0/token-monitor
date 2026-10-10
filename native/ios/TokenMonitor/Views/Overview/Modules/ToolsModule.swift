@@ -21,7 +21,7 @@ struct ToolsModule: View {
                 VStack(alignment: .leading, spacing: 12) {
                     ModuleHeader(title: "Tools", route: .tools)
                     if items.isEmpty {
-                        Text("No tool usage in this period.")
+                        Text("No tool usage in this period")
                             .font(.subheadline)
                             .foregroundStyle(TMTheme.muted)
                     } else {

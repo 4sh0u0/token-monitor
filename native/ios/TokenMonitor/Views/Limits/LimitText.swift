@@ -112,7 +112,7 @@ enum LimitText {
         case .newAPIAccount: return String(localized: "New API · Account")
         case .newAPIKey: return String(localized: "New API · API key")
         case .sub2APIAccount: return String(localized: "Sub2API · Account")
-        case .custom: return String(localized: "Custom")
+        case .custom: return String(localized: "Custom plan", comment: "A third-party relay's preset plan (desktop settings.thirdparty.presetCustom), shown as “Custom”.")
         case .account: return String(localized: "Account")
         case .apiKey: return String(localized: "API key")
         }
