@@ -73,7 +73,8 @@ extension TokenSnapshot {
             fetchedAt: now,
             today: today,
             month: PeriodSummary(kind: .month, totalTokens: 1_284_000_000, costUsd: 2_210.5),
-            allTime: PeriodSummary(kind: .allTime, totalTokens: 4_233_100_000, costUsd: 7_196.27),
+            // Under `Int32.max`: `Int` is 32-bit on Apple Watch hardware.
+            allTime: PeriodSummary(kind: .allTime, totalTokens: 1_933_100_000, costUsd: 3_286.27),
             limits: limits,
             devices: DeviceCounts(online: 2, total: 3),
             trend: trend

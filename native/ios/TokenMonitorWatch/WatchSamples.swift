@@ -26,9 +26,11 @@ extension TokenSnapshot {
             scaled.tokens *= 17
             return scaled
         }, unpricedTokens: 2_400_000)
-        let allTime = PeriodSummary(kind: .allTime, totalTokens: 4_233_100_000, costUsd: 7_196.27, tools: tools.map { share in
+        // `Int` is 32-bit on Apple Watch hardware: every count here, and
+        // every product below, stays under `Int32.max` (2_147_483_647).
+        let allTime = PeriodSummary(kind: .allTime, totalTokens: 1_933_100_000, costUsd: 3_286.27, tools: tools.map { share in
             var scaled = share
-            scaled.tokens *= 58
+            scaled.tokens *= 26
             return scaled
         })
         let calendar = Calendar.current
@@ -64,7 +66,7 @@ extension TokenSnapshot {
                 scaled.tokens /= 3
                 return scaled
             }
-            summary.otherToolTokens = max(0, summary.totalTokens - summary.tools.reduce(0) { $0 + $1.tokens })
+            summary.otherToolTokens = summary.tokens(notIn: summary.tools)
             switch kind {
             case .today: snapshot.today = summary
             case .month: snapshot.month = summary

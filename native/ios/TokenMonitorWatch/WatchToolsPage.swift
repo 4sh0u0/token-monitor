@@ -24,7 +24,7 @@ struct WatchToolsPage: View {
                     preferences: presentation.preferences,
                     known: VendorCatalog.trackedClientIDs
                 )
-                let other = max(0, summary.totalTokens - tools.reduce(0) { $0 + $1.tokens })
+                let other = summary.tokens(notIn: tools)
                 VStack(alignment: .leading, spacing: 8) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(WatchText.periodTitle(period))
