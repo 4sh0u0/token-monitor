@@ -348,7 +348,7 @@ Response includes:
 - `periodProjectsOmitted`, when a daily or monthly project rollup was itself too large to fit; the aggregate and affected devices expose omitted project counts and the widget marks that period's project breakdown incomplete
 - `projectsIncomplete` plus the corresponding `devices[].allTimeProjectsOmitted`, `devices[].allTimeProjectsIncomplete`, or `devices[].projectsEnabled` diagnostic
 - `historyPreview.daily[].activeTimeMs`, `historyPreview.monthly[].activeTimeMs`, and `historyPreview.summary.activeTimeMs` when tokscale graph exposes session active-time metrics
-- `historyRevision`, a compact invalidation hash for the aggregate History preview, and `deviceHistoryRevision`, a device-identity-aware hash used to invalidate per-device fixed-range caches when History ownership or availability changes
+- `historyRevision`, a compact invalidation hash of the full aggregate History served by `GET /api/history` (`historyPreview` is trimmed from it), and `deviceHistoryRevision`, a device-identity-aware hash used to invalidate per-device fixed-range caches when History ownership or availability changes
 - `limits.providers` aggregated by provider account
 - `subscriptionsUpdatedAt`, the `updatedAt` of the hub's shared subscription list, or `""` if nothing has been written to it. The version only, never the records: a device compares it against the copy it holds and re-reads `/api/subscriptions` only when it has been overtaken. This is how an edit made on one device reaches the others, so a client that does not consult it will only see the shared list as it stood when it connected. Omitted from public Worker stats. An absent field means "no news" rather than an empty list.
 - `syncSettingsRevisions`, `{modelAliases: <integer>, customPricing: <integer>}` on authenticated stats/SSE only. A revision mismatch invalidates the cached shared group; its contents are fetched separately. An absent marker means no news from an older Hub.
@@ -367,7 +367,70 @@ Official clients send `x-token-monitor-stream: 2`. For those clients, a timestam
 
 ## `GET /api/devices`
 
-Returns normalized records for all stored devices.
+Returns normalized records for all stored devices as `{ "devices": [...] }`. Each record also carries `history`, `historyAvailable` and `periodWindows` as described under `POST /api/ingest`; clients use them to build fixed ranges on one device's own day keys, which the merged aggregate in [`GET /api/history`](#get-apihistory) can no longer provide, and refetch when `deviceHistoryRevision` in stats changes.
+
+## `GET /api/history`
+
+Returns the complete aggregate History: the document `historyRevision` in `/api/stats` hashes and `historyPreview` is trimmed from. It requires the shared secret like every data route and is never part of public Worker stats, which carry only `historyPreview` and `historyRevision`. The Node hub answers `GET` only (`HEAD` is a 404); the Worker also answers `HEAD`. Both gzip the body when `Accept-Encoding` allows it and it reaches 1 KiB, which any real History does. A hub without the route answers `404` `{"error":"not_found"}`, so a client should fall back to `historyPreview`.
+
+```json
+{
+  "daily": [
+    {
+      "date": "2026-10-10",
+      "tokens": 1000000,
+      "cost": 2.5,
+      "messages": 40,
+      "activeTimeMs": 600000,
+      "cacheReadTokens": 800000,
+      "cacheWriteTokens": 100000,
+      "outputTokens": 50000,
+      "unclassifiedTokens": 0,
+      "tokenComponentsAvailable": true,
+      "perClient": { "claude": { "tokens": 1000000, "cost": 2.5, "messages": 40, "cacheReadTokens": 800000, "cacheWriteTokens": 100000, "outputTokens": 50000 } },
+      "perModel": { "claude-sonnet-4-5": { "tokens": 1000000, "cost": 2.5, "cacheReadTokens": 800000, "cacheWriteTokens": 100000, "outputTokens": 50000, "unclassifiedTokens": 0 } },
+      "tokenIntensity": 4,
+      "costIntensity": 4,
+      "intensity": 4
+    }
+  ],
+  "monthly": [
+    {
+      "month": "2026-10",
+      "tokens": 1000000,
+      "cost": 2.5,
+      "activeTimeMs": 600000,
+      "perClient": { "claude": { "tokens": 1000000, "cost": 2.5, "messages": 40 } },
+      "perModel": { "claude-sonnet-4-5": { "tokens": 1000000, "cost": 2.5 } }
+    }
+  ],
+  "summary": {
+    "totalTokens": 1000000,
+    "totalCost": 2.5,
+    "activeDays": 1,
+    "currentStreak": 1,
+    "longestStreak": 1,
+    "peakDayTokens": 1000000,
+    "favoriteModel": "claude-sonnet-4-5",
+    "messages": 40,
+    "activeTimeMs": 600000
+  }
+}
+```
+
+`daily[]` is ascending and covers the 370 calendar days ending at the aggregate's today. A day on which no device reported usage has no row, so readers zero-fill. Today is not the hub's clock: it is the latest `periodWindows.today.key` among devices that sent daily rows (a window that has already ended counts as the following day, and a key no time zone could be naming right now is ignored), falling back to the hub's own local day, which is UTC on the Worker. Rows dated after it are dropped. Every `date` is the producing device's local calendar day, and devices are merged by that string, never re-zoned.
+
+Devices merge into one row per day. A stored device keeps contributing while it is offline, because History is durable and only `DELETE /api/devices/:id` removes it; a device whose `history` is `null` or absent contributes nothing, and `historyAvailable` is not consulted here (fixed-range readers do require it). `perClient` keys are folded onto canonical tracked-client ids (for example `devin-cli` becomes `devin`). `perModel` keys are the producers' model names as reported: the hub never applies `modelAliases`, clients do.
+
+- `tokens` and `cost` are totals; `cost` is the USD subtotal of priced usage. Optional `unpricedTokens`, present only when positive and also on buckets, months and `summary`, counts tokens with no available price. Zero cost alone never implies a missing price.
+- `cacheReadTokens`, `cacheWriteTokens`, `outputTokens`, `unclassifiedTokens` and `tokenComponentsAvailable` are always present on daily rows, but components only reach the hub for each device's latest 30 days, and not at all when a payload had to shed them to fit the ingest limit. A device's older rows arrive with zero components and all of their tokens in `unclassifiedTokens`, which also makes the merged row's `tokenComponentsAvailable` false. Zero cache therefore does not mean no caching; the `historyAvailable` and component paragraphs under `POST /api/ingest` describe the producer side. Inside `perClient` and `perModel` buckets the optional component fields are omitted when zero, except that `perModel` always carries `unclassifiedTokens`.
+- `tokenIntensity` and `costIntensity` bucket the day against the busiest day in the served window: 0 for no usage, otherwise 1 to 4 by quartile of that maximum (above 0, then at least 25%, 50% and 75%). `intensity` is the legacy cost-based copy of `costIntensity`. A renderer that overlays live usage, picks another range or switches metric recomputes them instead of trusting these.
+
+`monthly[]` is not capped. It is merged from each device's own monthly tier rather than derived from `daily[]`, so it reaches back past the daily window. Rows are `month` (`YYYY-MM`), `tokens`, `cost`, `activeTimeMs`, optional `unpricedTokens`, and `perClient` (`tokens`, `cost`, `messages`) and `perModel` (`tokens`, `cost`) buckets; there are no components and no month-level `messages`.
+
+`summary.totalTokens`, `totalCost`, `messages`, `unpricedTokens` and `activeTimeMs` are lifetime sums over `monthly[]`, so they exceed the sum of `daily[]` once the cap bites. `activeDays`, `peakDayTokens`, `favoriteModel`, `currentStreak` and `longestStreak` are computed from the capped `daily[]`; `currentStreak` counts back from the window's end and is 0 when that day has no tokens. The aggregate summary has no `timeMetrics`, which only a single device's own summary may carry.
+
+`historyRevision` in `/api/stats` is a hash of this same aggregate, so it changes whenever any served field does, including intensities and rows aging out of the window. Clients refetch when it differs from the copy they hold rather than on every stats frame.
 
 ## `DELETE /api/devices/:id`
 
