@@ -189,15 +189,18 @@ const {
   normalizeHomeModuleOrder
 } = require('./renderer/homeModulePreferences');
 const {
+  APP_UPDATE_STARTUP_DELAY_MS,
   appUpdateInstallSupport,
   classifyAppUpdateError,
   checkLatestRelease,
   deriveAppUpdateAvailability,
   downloadedAppUpdateMatchesLatest,
   installFailureErrorKind,
+  latestForCurrentVersion,
   latestFromUpdaterInfo,
   mergeLatestReleaseMetadata,
   providerUpdateCheckAvailability,
+  RELEASES_URL,
   resolveAppUpdateCheckError,
   shouldDownloadAutomaticAppUpdate,
   shouldSkipAppUpdateCheck,
@@ -414,7 +417,11 @@ const {
   restoreFloatingBubbleWindow
 } = require('./floatingBubble');
 const { applyWindowsChrome } = require('./windowsChrome');
+const { installWindowsNonActivatingInput } = require('./windowsNonActivatingInput');
 const { canUseEdgeDock, createEdgeDockController, edgeDockSupported } = require('./edgeDock/controller');
+const { createNotchController, normalizeNotchStyle, normalizeNotchShape, normalizeNotchDetailSide } = require('./notch/controller');
+const { buildNotchData, summaryLayout: notchSummaryLayout } = require('./notch/data');
+const trayLayoutApi = require('../shared/trayLayout');
 const { createFullScreenProbe } = require('./edgeDock/fullScreenProbe');
 const {
   normalizeEdgeDockCustomScale,
@@ -434,7 +441,7 @@ const { rasterizeMask } = require('./edgeDock/mask');
 const { applyVibrancyMask } = require('./edgeDock/macVibrancyMask');
 const { performMacHaptic } = require('./edgeDock/macHaptics');
 const { primaryButtonDown } = require('./edgeDock/pointerButtons');
-const { setMoveToActiveSpace } = require('./macosSpaceBehavior');
+const { preventAppActivation, setMoveToActiveSpace } = require('./macosSpaceBehavior');
 const {
   WINDOWS_BACKDROP_ACCENT,
   normalizeWindowsBackdropMode
@@ -546,6 +553,10 @@ function normalizePeriodMonthMode(value) {
   return PERIOD_MONTH_MODES.has(value) ? value : 'month';
 }
 
+function normalizeProjectBreakdownMode(value) {
+  return value === 'model' ? 'model' : 'tool';
+}
+
 function normalizeHomeLimitAccountCount(value) {
   const count = Math.trunc(Number(value));
   if (!Number.isFinite(count)) return HOME_LIMIT_ACCOUNT_COUNT_DEFAULT;
@@ -607,6 +618,23 @@ function defaultSettings() {
     floatingBubbleContent: 'icon',
     floatingBubbleCustomLayout: createDefaultTrayLayout(),
     floatingBubbleBounds: null,
+    notchEnabled: false,
+    notchStyle: 'black',
+    notchShape: 'auto',
+    notchFollowTray: true,
+    notchSummaryEnabled: true,
+    notchCustomLayout: createDefaultTrayLayout(),
+    notchDisplayId: null,
+    notchItems: null,
+    notchDetailSide: 'right',
+    notchRunningIndicatorEnabled: false,
+    notchExpandOnApproach: true,
+    notchAvoidMenuBar: true,
+    notchHaptic: false,
+    notchHideSummaryInFullScreen: true,
+    notchRefreshEnabled: false,
+    notchSize: 'medium',
+    notchCustomScale: 1,
     edgeDockEnabled: false,
     edgeDockRefreshEnabled: false,
     edgeDockRunningIndicatorEnabled: true,
@@ -640,6 +668,7 @@ function defaultSettings() {
     homeLimitDisplayMode: 'text',
     showHomeLimitProviderNames: false,
     projectsEnabled: parseBoolean(process.env.TOKEN_MONITOR_PROJECTS_ENABLED, true),
+    projectBreakdownMode: 'tool',
     historyEnabled: true,
     historyIntervalMs: normalizeHistoryIntervalMs(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS),
     sessionUsageArchiveEnabled: parseBoolean(process.env.TOKEN_MONITOR_SESSION_USAGE_ARCHIVE_ENABLED, true),
@@ -2429,6 +2458,7 @@ function setZoomFactor(value) {
   settings.zoomFactor = next;
   saveSettings();
   applyZoomFactor();
+  if (notchController?.isRunning()) syncNotch(settingsForRenderer());
 }
 
 function adjustZoom(delta) {
@@ -2627,6 +2657,7 @@ function readSettings() {
     if (saved.projectsEnabled !== undefined) {
       merged.projectsEnabled = parseBoolean(saved.projectsEnabled, true);
     }
+    merged.projectBreakdownMode = normalizeProjectBreakdownMode(merged.projectBreakdownMode);
     if (saved.sessionUsageArchiveEnabled !== undefined) {
       merged.sessionUsageArchiveEnabled = parseBoolean(saved.sessionUsageArchiveEnabled, true);
     }
@@ -2694,6 +2725,23 @@ function readSettings() {
     merged.floatingBubbleTrigger = merged.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
     merged.floatingBubbleContent = normalizeTrayContent(merged.floatingBubbleContent, 'icon');
     merged.floatingBubbleCustomLayout = normalizeTrayLayout(merged.floatingBubbleCustomLayout);
+    merged.notchEnabled = parseBoolean(merged.notchEnabled, false);
+    merged.notchStyle = normalizeNotchStyle(merged.notchStyle);
+    merged.notchShape = normalizeNotchShape(merged.notchShape);
+    merged.notchSize = normalizeEdgeDockSize(merged.notchSize);
+    merged.notchCustomScale = normalizeEdgeDockCustomScale(merged.notchCustomScale);
+    merged.notchItems = normalizeEdgeDockItems(merged.notchItems);
+    merged.notchDetailSide = normalizeNotchDetailSide(merged.notchDetailSide);
+    merged.notchRunningIndicatorEnabled = parseBoolean(merged.notchRunningIndicatorEnabled, false);
+    merged.notchExpandOnApproach = parseBoolean(merged.notchExpandOnApproach, true);
+    merged.notchAvoidMenuBar = parseBoolean(merged.notchAvoidMenuBar, true);
+    merged.notchHaptic = parseBoolean(merged.notchHaptic, false);
+    merged.notchHideSummaryInFullScreen = parseBoolean(merged.notchHideSummaryInFullScreen, true);
+    merged.notchRefreshEnabled = parseBoolean(merged.notchRefreshEnabled, false);
+    merged.notchFollowTray = parseBoolean(merged.notchFollowTray, true);
+    merged.notchSummaryEnabled = parseBoolean(merged.notchSummaryEnabled, true);
+    merged.notchCustomLayout = normalizeTrayLayout(merged.notchCustomLayout);
+    merged.notchDisplayId = normalizeEdgeDockDisplayId(merged.notchDisplayId);
     merged.edgeDockEnabled = parseBoolean(merged.edgeDockEnabled, false);
     merged.edgeDockRefreshEnabled = parseBoolean(merged.edgeDockRefreshEnabled, false);
     merged.edgeDockRunningIndicatorEnabled = parseBoolean(merged.edgeDockRunningIndicatorEnabled, true);
@@ -2846,7 +2894,22 @@ const usageTransform = createUsageTransform({
 // in-process collector and `usageTransform` above runs on this thread.
 let latestUsageHost = null;
 function createElectronUsageRuntime(options) {
-  latestUsageHost = createUsageHost(options, {
+  // A transformed delivery confirms the worker has taken over projection.
+  // The cold anchor's main-thread archive is then redundant. In-process
+  // deliveries have no such marker and keep/reload their own archive instead.
+  const releaseOnWorkerDelivery = (callback) => (summary, reason, meta) => {
+    if (meta?.transformed === true) {
+      try { usageTransform.release(); } catch (error) {
+        console.log(`[session-archive] release failed: ${error.message}`);
+      }
+    }
+    return callback?.(summary, reason, meta);
+  };
+  latestUsageHost = createUsageHost({
+    ...options,
+    onUpdate: releaseOnWorkerDelivery(options.onUpdate),
+    ...(options.onPreview ? { onPreview: releaseOnWorkerDelivery(options.onPreview) } : {})
+  }, {
     agentPidPath: AGENT_PID_PATH,
     transformSettings: usageTransformSettings(settings)
   });
@@ -5061,11 +5124,17 @@ function primeLocalStatsFromAnchor(usageOptions, widgetProducerOwner) {
   // reads low for anyone with an un-tracked client or retained sessions, and then
   // jumps when the first scan lands. Read-only on purpose: the capture step
   // records a fresh observation, and an anchor from hours ago is not one.
-  const visible = usageTransform.project(
-    deviceRecord,
-    settings?.sessionUsageArchiveEnabled === false ? null : usageTransform.ensureLoaded(),
-    sessionUsageArchiveDate(deviceRecord)
-  );
+  let visible;
+  try {
+    visible = usageTransform.project(
+      deviceRecord,
+      settings?.sessionUsageArchiveEnabled === false ? null : usageTransform.ensureLoaded(),
+      sessionUsageArchiveDate(deviceRecord)
+    );
+  } catch (error) {
+    sendStatus(false, { reason: `session-archive:${error.message}` });
+    return;
+  }
   localDevice = visible;
   localStats = withHistoryPreview(aggregateDevices([visible], 0), [visible]);
   // Through the normal publisher, not straight to the renderer: the tray reads
@@ -5461,7 +5530,7 @@ async function pushSystemUiThemeAfterChange() {
 
 function pushSettingsToRenderer() {
   const payload = settingsForRenderer();
-  syncEdgeDock(payload);
+  syncDockSurfaces(payload);
   if (mainWindow && !mainWindow.isDestroyed()) {
     try { mainWindow.webContents.send('settings:push', payload); } catch (_) {}
   }
@@ -5475,6 +5544,109 @@ function pushSettingsToRenderer() {
 }
 
 let edgeDockController = null;
+let notchController = null;
+let notchRateTimer = null;
+const notchRateTrackers = new Map();
+
+function notchDataFor(visibleStats, cells) {
+  clearTimeout(notchRateTimer);
+  notchRateTimer = null;
+  if (settings.notchSummaryEnabled === false) {
+    notchRateTrackers.clear();
+    return buildNotchData(visibleStats, cells, settings);
+  }
+  const layout = notchSummaryLayout(settings);
+  const rateItems = trayLayoutApi.liveTokenRateItems(layout);
+  const liveTokenRates = {};
+  let nextExpiry = 0;
+  const scopes = new Set(rateItems.map((item) => item.rateScope));
+  for (const scope of notchRateTrackers.keys()) {
+    if (!scopes.has(scope)) notchRateTrackers.delete(scope);
+  }
+  for (const scope of scopes) {
+    const selection = tokenRateApi.selectLiveTokenRatePeriods(visibleStats, settings.deviceId, settings.hubMode, scope);
+    const context = [mode, settings.hubMode, settings.hubUrl, settings.deviceId, selection.source].join('|');
+    let held = notchRateTrackers.get(scope);
+    if (!held || held.context !== context) {
+      held = { context, tracker: tokenRateApi.createLiveTokenRateGroupTracker({ now: Date.now }) };
+      held.tracker.reset(selection.entries);
+      notchRateTrackers.set(scope, held);
+    } else held.tracker.observe(selection.entries);
+    liveTokenRates[scope] = held.tracker.getSample();
+    const expiry = held.tracker.nextExpiryAt();
+    if (expiry && (!nextExpiry || expiry < nextExpiry)) nextExpiry = expiry;
+  }
+  if (nextExpiry && notchController?.isRunning()) {
+    notchRateTimer = setTimeout(() => {
+      notchRateTimer = null;
+      repaintDockSurfaces();
+    }, Math.max(1000, nextExpiry - Date.now() + 20));
+  }
+  const codexManagedAccounts = codexAccountsForRenderer();
+  const activeCodexAccountId = codexPresentationPendingAccountId || codexPresentationActiveAccountId;
+  return buildNotchData(visibleStats, cells, settings, {
+    ...compactTokenDisplayOptions(), currency: normalizeCurrency(settings.currency), liveTokenRates,
+    activeAccountKeys: { codex: codexManagedAccounts.find((account) => account.id === activeCodexAccountId)?.accountKey },
+    cellOptions: { codexManagedAccounts, activeCodexAccountId, localDeviceId: settings.deviceId, syncActive: syncProvenanceActive() }
+  });
+}
+
+function toggleDockRateMode() {
+  settings.tokenRateMode = settings.tokenRateMode === 'burn' ? 'speed' : 'burn';
+  saveSettings();
+  pushSettingsToRenderer();
+}
+
+function ensureNotchController() {
+  if (notchController) return notchController;
+  notchController = createNotchController({
+    BrowserWindow, ipcMain, screen, platform: process.platform,
+    rendererDir: path.join(__dirname, 'renderer'),
+    preloadPath: path.join(__dirname, 'notch', 'preload.js'),
+    getSettings: () => settings,
+    onCapabilitiesChanged: (value) => sendMainWindowEvent('topNotch:capabilities', value, () => notchController?.getCapabilities() === value),
+    nativeGlass: () => nativeBlurEnabled(),
+    liquidGlass: () => {
+      const options = nativeMaterialOptions();
+      return options.enabled && !options.reducedTransparency && Number.parseInt(os.release(), 10) >= 25
+        ? { dark: options.dark } : null;
+    },
+    createGlass: (win) => createMacLiquidGlass(win, { shaped: true }),
+    applyShapeMask: (win, commands, width, height, display) => {
+      const { buffer, pixelWidth, pixelHeight } = rasterizeMask(toPolygons(commands), width, height, display?.scaleFactor || 2);
+      return applyVibrancyMask(win, nativeImage.createFromBitmap(buffer, { width: pixelWidth, height: pixelHeight }).toPNG(), width, height);
+    },
+    prefersReducedMotion: () => motionPreferenceApi.shouldReduceMotion(settings?.reduceMotion, systemPreferences.getAnimationSettings?.().prefersReducedMotion === true),
+    onToggleRateMode: toggleDockRateMode,
+    canRefreshLimits: () => canRefreshEdgeDockStats(),
+    onRefreshLimits: () => refreshStatsFromEdgeDock(),
+    installNonActivatingInput: (win) => preventAppActivation(win),
+    primaryButtonDown: () => primaryButtonDown(process.platform),
+    performHaptic: (pattern, performanceTime) => performMacHaptic({ pattern, performanceTime }),
+    isFullScreen: createFullScreenProbe({ platform: process.platform, screen, logger: (message) => console.log(message) }),
+    onSwitchCodexAccount: (accountId) => switchCodexAccountFromEdgeDock(accountId),
+    onOpenResetForecastSource: () => {
+      if (isAllowedExternalUrl(CODEX_RESET_FORECAST_SOURCE_URL)) void shell.openExternal(CODEX_RESET_FORECAST_SOURCE_URL);
+    },
+    logger: (message) => console.log(message)
+  });
+  return notchController;
+}
+
+function syncNotch(rendererSettings) {
+  if (process.platform !== 'darwin' || settings?.notchEnabled !== true) {
+    notchController?.stop();
+    clearTimeout(notchRateTimer);
+    notchRateTimer = null;
+    notchRateTrackers.clear();
+    return;
+  }
+  const controller = ensureNotchController();
+  controller.setAppearance(edgeDockAppearance(rendererSettings));
+  controller.sync();
+  const stats = edgeDockStats();
+  if (stats) pushNotchCells(electronPresentationStats(stats));
+}
 
 // The dock renderer is a floating surface outside the widget, so it gets an
 // allowlisted appearance projection instead of the full renderer settings.
@@ -5529,8 +5701,13 @@ let edgeDockRateTracker = null;
 let edgeDockRateContext = '';
 let edgeDockRateTimer = null;
 
+function configuredDockItemLists() {
+  return [...(settings?.edgeDockEnabled !== false ? [settings?.edgeDockItems] : []),
+    ...(settings?.notchEnabled === true && process.platform === 'darwin' ? [settings?.notchItems] : [])];
+}
+
 function edgeDockShowsLiveRate() {
-  const items = Array.isArray(settings?.edgeDockItems) ? settings.edgeDockItems : [];
+  const items = configuredDockItemLists().flatMap((list) => Array.isArray(list) ? list : []);
   // A live-rate item needs the sample for its own headline; a sessions item needs
   // it only when its rail cell was set to show the rate instead of tool marks. The
   // tracker is the same either way, so this is the one gate that has to know both.
@@ -5555,14 +5732,9 @@ function edgeDockLiveRateSample(visibleStats) {
   const context = [mode, hubMode || '', settings?.hubUrl || '', settings?.deviceId || '', scope, selection.source].join('|');
   if (!edgeDockRateTracker) {
     edgeDockRateTracker = tokenRateApi.createLiveTokenRateGroupTracker({
-      // Epoch time, not the module's default monotonic clock. This tracker is the
-      // only one whose expiry is compared against a timer scheduled here
-      // (`expiresAt - Date.now()`), and the two scales are not interchangeable:
-      // `performance.now()` on this process starts near zero, so the difference is a
-      // huge negative number that clamps to the 20ms floor and re-projects the dock
-      // about fifty times a second for as long as a sample is retained. The renderer's
-      // own tracker keeps the default, since it only ever compares its clock with
-      // itself.
+      // Expiry timers subtract Date.now(), so samples must use epoch time too.
+      // The default monotonic clock would produce a negative delay and repeatedly
+      // repaint at the timer floor while a sample is retained.
       now: Date.now,
       activeMs: EDGE_DOCK_RATE_ACTIVE_MS,
       clearMs: EDGE_DOCK_RATE_CLEAR_MS
@@ -5579,7 +5751,7 @@ function edgeDockLiveRateSample(visibleStats) {
   if (expiresAt) {
     edgeDockRateTimer = setTimeout(() => {
       edgeDockRateTimer = null;
-      repaintEdgeDockCells();
+      repaintDockSurfaces();
     }, Math.max(0, expiresAt - Date.now()) + 20);
   }
   return edgeDockRateTracker.getSample();
@@ -5600,13 +5772,13 @@ function edgeDockStats() {
     ? edgeDockManualStats.stats : latestStats;
 }
 
-function repaintEdgeDockCells() {
+function repaintDockSurfaces() {
   const stats = edgeDockStats();
   if (stats) updateEdgeDockCells(electronPresentationStats(stats));
 }
 
 function edgeDockDerivedSelections() {
-  const items = Array.isArray(settings?.edgeDockItems) ? settings.edgeDockItems : [];
+  const items = configuredDockItemLists().flatMap((list) => Array.isArray(list) ? list : []);
   return EDGE_DOCK_DERIVED_PERIODS.filter((period) => items.some((item) => item.type === 'stat' && item.metric === period));
 }
 
@@ -5664,14 +5836,15 @@ let edgeDockForecastInFlight = false;
 
 function edgeDockForecastWanted() {
   if (settings?.codexResetForecastEnabled !== true) return false;
-  const items = settings?.edgeDockItems;
-  // Automatic items follow the connected providers, which may include Codex.
-  return !Array.isArray(items) || items.some((item) => item.type === 'limit' && item.provider === 'codex');
+  // Automatic selections may contain Codex; either independent surface can ask.
+  return configuredDockItemLists().some((items) => !Array.isArray(items)
+    || items.some((item) => item.type === 'limit' && item.provider === 'codex'));
 }
 
 function refreshEdgeDockForecast() {
   if (!edgeDockForecastWanted()) {
     edgeDockForecast = null;
+    edgeDockForecastAt = 0;
     return;
   }
   if (edgeDockForecastInFlight || Date.now() - edgeDockForecastAt < EDGE_DOCK_FORECAST_REFRESH_MS) return;
@@ -5679,9 +5852,10 @@ function refreshEdgeDockForecast() {
   edgeDockForecastAt = Date.now();
   Promise.resolve(codexResetForecastClient.getForecast({ force: false }))
     .then((forecast) => {
+      if (!edgeDockForecastWanted()) return;
       const changed = JSON.stringify(forecast || null) !== JSON.stringify(edgeDockForecast);
       edgeDockForecast = forecast || null;
-      if (changed) repaintEdgeDockCells();
+      if (changed) repaintDockSurfaces();
     })
     .catch((error) => console.log(`[edge-dock] reset forecast failed: ${error.message}`))
     .finally(() => { edgeDockForecastInFlight = false; });
@@ -5696,18 +5870,19 @@ async function refreshStatsFromEdgeDock() {
   return { ok: true };
 }
 
-function edgeDockCellsFor(visibleStats) {
+function edgeDockCellsFor(visibleStats, items = settings?.edgeDockItems, options = {}) {
   refreshEdgeDockDerivedPeriods(visibleStats);
   refreshEdgeDockForecast();
   syncCodexPresentationActiveAccount();
   return buildEdgeDockCells(visibleStats, {
+    includeUnavailableAccounts: options.includeUnavailableAccounts === true,
     derivedPeriods: edgeDockDerivedPeriods,
     codexResetForecast: edgeDockForecastWanted() ? edgeDockForecast : null,
     localDeviceId: settings?.deviceId,
     // What the card's rows need to name the device a reading came from. The
     // dock window is handed cells and nothing else, so both ride the cell.
     syncActive: syncProvenanceActive(),
-    items: settings?.edgeDockItems,
+    items,
     showCodexAdditionalLimits: settings?.showCodexAdditionalLimits,
     codexManagedAccounts: codexAccountsForRenderer(),
     activeCodexAccountId: codexPresentationPendingAccountId || codexPresentationActiveAccountId,
@@ -5720,9 +5895,9 @@ function edgeDockCellsFor(visibleStats) {
 }
 
 function updateEdgeDockCells(visibleStats) {
-  if (!edgeDockController?.isRunning() || !visibleStats) return;
-  const cells = edgeDockCellsFor(visibleStats);
-  pushEdgeDockCells(cells);
+  if ((!edgeDockController?.isRunning() && !notchController?.isRunning()) || !visibleStats) return;
+  if (edgeDockController?.isRunning()) pushEdgeDockCells(edgeDockCellsFor(visibleStats));
+  if (notchController?.isRunning()) pushNotchCells(visibleStats);
 }
 
 // Hand cells to the controller and arm the expiry timer from them. Split out from
@@ -5732,7 +5907,7 @@ function updateEdgeDockCells(visibleStats) {
 function pushEdgeDockCells(cells) {
   edgeDockLastCells = cells;
   edgeDockController?.setCells(cells);
-  scheduleEdgeDockSessionExpiry();
+  scheduleSessionExpiry();
 }
 
 // Running is a function of time: a session crosses the ten-minute window with no
@@ -5747,6 +5922,13 @@ const EDGE_DOCK_EXPIRY_FLOOR_MS = 1_000;
 // The cells most recently handed to the controller, so the expiry timer can be
 // armed from what is actually on screen rather than re-projecting to find out.
 let edgeDockLastCells = [];
+let notchLastCells = [];
+
+function pushNotchCells(visibleStats) {
+  notchLastCells = edgeDockCellsFor(visibleStats, settings.notchItems, { includeUnavailableAccounts: true });
+  notchController.setData(notchDataFor(visibleStats, notchLastCells));
+  scheduleSessionExpiry();
+}
 
 // The soonest moment any sessions cell stops reading as running, or 0 when none
 // of them does. A quiet cell never becomes running on its own, so 0 means there
@@ -5765,16 +5947,18 @@ function edgeDockNextSessionExpiry(cells) {
   return soonest;
 }
 
-function scheduleEdgeDockSessionExpiry() {
+function scheduleSessionExpiry() {
   if (edgeDockSessionExpiryTimer) clearTimeout(edgeDockSessionExpiryTimer);
   edgeDockSessionExpiryTimer = null;
-  if (!edgeDockController?.isRunning()) return;
-  const expiresAt = edgeDockNextSessionExpiry(edgeDockLastCells);
+  if (!edgeDockController?.isRunning() && !notchController?.isRunning()) return;
+  const cells = [...(edgeDockController?.isRunning() ? edgeDockLastCells : []),
+    ...(notchController?.isRunning() ? notchLastCells : [])];
+  const expiresAt = edgeDockNextSessionExpiry(cells);
   if (!expiresAt) return;
   const delay = Math.max(EDGE_DOCK_EXPIRY_FLOOR_MS, expiresAt - Date.now() + 50);
   edgeDockSessionExpiryTimer = setTimeout(() => {
     edgeDockSessionExpiryTimer = null;
-    repaintEdgeDockCells();
+    repaintDockSurfaces();
   }, delay);
 }
 
@@ -5816,6 +6000,8 @@ function ensureEdgeDockController() {
       return applyVibrancyMask(win, png, width, height);
     },
     primaryButtonDown: () => primaryButtonDown(process.platform),
+    installNonActivatingInput: (win) => process.platform === 'darwin' ? preventAppActivation(win)
+      : installWindowsNonActivatingInput(win, { logger: (message) => console.log(message) }),
     performHaptic: (pattern, performanceTime) => performMacHaptic({ pattern, performanceTime }),
     isFullScreen: createFullScreenProbe({ platform: process.platform, screen, logger: (message) => console.log(message) }),
     // The dock card's Switch button runs the same swap the Limits view does,
@@ -5827,11 +6013,7 @@ function ensureEdgeDockController() {
       if (isAllowedExternalUrl(CODEX_RESET_FORECAST_SOURCE_URL)) void shell.openExternal(CODEX_RESET_FORECAST_SOURCE_URL);
     },
     // The same setting the widget's rate readout toggles, so both stay in step.
-    onToggleRateMode: () => {
-      settings.tokenRateMode = settings.tokenRateMode === 'burn' ? 'speed' : 'burn';
-      saveSettings();
-      pushSettingsToRenderer();
-    },
+    onToggleRateMode: toggleDockRateMode,
     onPlacementChange: ({ side, offset, displayId }) => {
       settings.edgeDockSide = normalizeEdgeDockSide(side);
       settings.edgeDockOffset = normalizeEdgeDockOffset(offset);
@@ -5844,12 +6026,16 @@ function ensureEdgeDockController() {
   return edgeDockController;
 }
 
-function syncEdgeDock(rendererSettings) {
+function syncDockSurfaces(rendererSettings) {
   if (!settings) return;
+  syncNotch(rendererSettings);
   if (!canUseEdgeDock(settings)) {
     edgeDockController?.stop();
-    if (edgeDockRateTimer) clearTimeout(edgeDockRateTimer);
-    edgeDockRateTimer = null;
+    // The same sample feeds top-only rate and sessions items.
+    if (!notchController?.isRunning()) {
+      if (edgeDockRateTimer) clearTimeout(edgeDockRateTimer);
+      edgeDockRateTimer = null;
+    }
     return;
   }
   const controller = ensureEdgeDockController();
@@ -5864,7 +6050,7 @@ function syncEdgeDock(rendererSettings) {
   controller.sync();
   // Now that the controller is running (sync() starts it when enabled), arm the
   // timer against the cells that were just handed over.
-  scheduleEdgeDockSessionExpiry();
+  scheduleSessionExpiry();
 }
 
 function refreshLimitStatsPresentation() {
@@ -5872,7 +6058,7 @@ function refreshLimitStatsPresentation() {
   const visibleStats = electronPresentationStats(latestStats);
   migrateCodexAdditionalLimits(visibleStats);
   scheduleMacWidgetSnapshot(visibleStats, captureMacWidgetProducerOwner());
-  repaintEdgeDockCells();
+  repaintDockSurfaces();
   updateTrayDisplay();
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
@@ -5969,6 +6155,7 @@ function setTrayContentFromMenu(value) {
 }
 
 function setEdgeDockFromMenu(patch = {}) {
+  if (patch.notchEnabled !== undefined) settings.notchEnabled = parseBoolean(patch.notchEnabled, false);
   if (patch.edgeDockEnabled !== undefined) settings.edgeDockEnabled = parseBoolean(patch.edgeDockEnabled, false);
   if (patch.edgeDockMode !== undefined) settings.edgeDockMode = normalizeEdgeDockMode(patch.edgeDockMode);
   if (patch.edgeDockSide !== undefined) settings.edgeDockSide = normalizeEdgeDockSide(patch.edgeDockSide);
@@ -6125,6 +6312,8 @@ function ensureTray() {
         codexSwitching: codex.switching,
         maskAccountEmails: Boolean(settings?.maskLimitAccountEmails),
         edgeDockSupported: edgeDockSupported(process.platform),
+        notchSupported: process.platform === 'darwin',
+        notchEnabled: settings?.notchEnabled === true,
         edgeDockEnabled: settings?.edgeDockEnabled === true,
         edgeDockMode: settings?.edgeDockMode,
         edgeDockSide: settings?.edgeDockSide,
@@ -6499,7 +6688,7 @@ function refreshManualStats() {
     // pending has already taken over, so a late read must not replace it.
     if (runtime === deviceRuntimeHandle && generation === hubModeGeneration && revision === statsPushRevision) {
       edgeDockManualStats = { stats, generation, runtime };
-      repaintEdgeDockCells();
+      repaintDockSurfaces();
     }
     return stats;
   }).finally(() => {
@@ -6632,6 +6821,9 @@ function configureNativeAppUpdater() {
   appUpdateNativeConfigured = true;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+  // Notes for every release between this version and the latest, not only the
+  // latest's, so the update card covers everything the user is about to receive.
+  autoUpdater.fullChangelog = true;
   autoUpdater.logger = console;
   autoUpdater.on('download-progress', (progress) => {
     setNativeAppUpdateState({
@@ -6718,7 +6910,7 @@ async function checkAppUpdateProvider() {
 function deriveAppUpdateState() {
   const block = settings?.appUpdate || {};
   const currentVersion = app.getVersion();
-  const latest = block.lastKnownLatest || null;
+  const latest = latestForCurrentVersion(block.lastKnownLatest || null, currentVersion);
   const dismissedVersion = block.dismissedVersion || null;
   const installSupport = appUpdateInstallSupport({ isPackaged: app.isPackaged, platform: process.platform, env: process.env });
   const availability = deriveAppUpdateAvailability({
@@ -6731,6 +6923,7 @@ function deriveAppUpdateState() {
   return {
     currentVersion,
     latest,
+    releasesUrl: RELEASES_URL,
     hasUpdate: availability.hasUpdate,
     showUpdateNotice: availability.showUpdateNotice,
     dismissedVersion,
@@ -6879,10 +7072,21 @@ function maybeRunBackgroundUpdateCheck() {
   runAppUpdateCheck({ force: false }).catch(() => {});
 }
 
+function scheduleStartupAppUpdateCheck() {
+  const timer = setTimeout(() => {
+    runAppUpdateCheck({ bypassCooldown: true }).catch(() => {});
+  }, APP_UPDATE_STARTUP_DELAY_MS);
+  timer.unref?.();
+}
+
 function startAppUpdateBackgroundChecks() {
   if (appUpdateBackgroundTimer) return;
   appUpdateBackgroundTimer = setInterval(maybeRunBackgroundUpdateCheck, 60 * 60 * 1000);
   appUpdateBackgroundTimer.unref?.();
+  // A machine that slept overnight should not wait for the next hourly tick to
+  // notice a release. Both still go through the cooldown.
+  powerMonitor.on('resume', maybeRunBackgroundUpdateCheck);
+  powerMonitor.on('unlock-screen', maybeRunBackgroundUpdateCheck);
 }
 
 function dismissAppUpdateVersion(version) {
@@ -7199,7 +7403,7 @@ function createWindow(boundsOverride, options = {}) {
   // last real window closes, which window-all-closed relies on for quitting.
   win.on('closed', () => {
     if (quitRequested || process.platform === 'darwin') return;
-    if (BrowserWindow.getAllWindows().every((other) => edgeDockController?.owns(other))) app.quit();
+    if (BrowserWindow.getAllWindows().every((other) => (edgeDockController?.owns(other) || notchController?.owns(other)))) app.quit();
   });
   win.on('show', () => sendMainWindowVisibility(win));
   win.on('hide', () => sendMainWindowVisibility(win));
@@ -7414,6 +7618,8 @@ function rebuildWindow() {
 app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_ICON_PATH);
   ensureSettingsLoaded();
+  powerMonitor.on('lock-screen', () => notchController?.setLocked(true));
+  powerMonitor.on('unlock-screen', () => notchController?.setLocked(false));
   // Switching the OS between light and dark repaints the taskbar underneath an
   // icon we have already handed to the shell, so the renderer has to recompose
   // it — nothing else in the app would notice the change.
@@ -7421,6 +7627,7 @@ app.whenReady().then(() => {
     applyNativeMaterial();
     // Rebuilds the dock only when Reduce Transparency moved its material.
     if (edgeDockController?.isRunning()) edgeDockController.sync();
+    if (notchController?.isRunning()) notchController.sync();
     void pushSystemUiThemeAfterChange();
   });
   const widgetRuntime = macWidgetRuntimeSupport({
@@ -7476,7 +7683,7 @@ app.whenReady().then(() => {
   applyEffectiveRates();                 // use cache/defaults immediately, avoid first-paint gap
   refreshExchangeRates();                // non-blocking: only fetches when stale
   rateRefreshTimer = setInterval(() => { refreshExchangeRates(); }, 6 * 60 * 60 * 1000);
-  syncEdgeDock();
+  syncDockSurfaces();
   ipcMain.handle('settings:get', () => settingsForRenderer());
   ipcMain.handle('appearance:getBackgroundImage', () => getBackgroundImage(app.getPath('userData')));
   ipcMain.handle('appearance:chooseBackgroundImage', async () => {
@@ -7502,7 +7709,7 @@ app.whenReady().then(() => {
   ipcMain.handle('subscriptions:adoptOrphans', async () => {
     try {
       const next = await adoptOrphanedSubscriptions();
-      syncEdgeDock();
+      syncDockSurfaces();
       return next;
     } catch (error) {
       throw new Error(subscriptionWriteFailureCode(error), { cause: error });
@@ -7511,14 +7718,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle('subscriptions:discardOrphans', () => {
     const next = discardOrphanedSubscriptions();
-    syncEdgeDock();
+    syncDockSurfaces();
     return next;
   });
 
   ipcMain.handle('subscriptions:save', async (_event, subscriptions, base) => {
     try {
       const next = await saveSubscriptions(subscriptions, base);
-      syncEdgeDock();
+      syncDockSurfaces();
       return next;
     } catch (error) {
       // The renderer has to tell "another device won" apart from "the hub is
@@ -7690,6 +7897,23 @@ app.whenReady().then(() => {
       ),
       tokenRateMode: normalizeTokenRateMode(patch.tokenRateMode ?? settings.tokenRateMode),
       floatingBubbleEnabled: parseBoolean(patch.floatingBubbleEnabled ?? settings.floatingBubbleEnabled, false),
+      notchEnabled: parseBoolean(patch.notchEnabled ?? settings.notchEnabled, false),
+      notchStyle: normalizeNotchStyle(patch.notchStyle ?? settings.notchStyle),
+      notchShape: normalizeNotchShape(patch.notchShape ?? settings.notchShape),
+      notchSize: normalizeEdgeDockSize(patch.notchSize ?? settings.notchSize),
+      notchCustomScale: normalizeEdgeDockCustomScale(patch.notchCustomScale ?? settings.notchCustomScale),
+      notchItems: normalizeEdgeDockItems('notchItems' in (patch || {}) ? patch.notchItems : settings.notchItems),
+      notchDetailSide: normalizeNotchDetailSide(patch.notchDetailSide ?? settings.notchDetailSide),
+      notchRunningIndicatorEnabled: parseBoolean(patch.notchRunningIndicatorEnabled ?? settings.notchRunningIndicatorEnabled, false),
+      notchExpandOnApproach: parseBoolean(patch.notchExpandOnApproach ?? settings.notchExpandOnApproach, true),
+      notchAvoidMenuBar: parseBoolean(patch.notchAvoidMenuBar ?? settings.notchAvoidMenuBar, true),
+      notchHaptic: parseBoolean(patch.notchHaptic ?? settings.notchHaptic, false),
+      notchHideSummaryInFullScreen: parseBoolean(patch.notchHideSummaryInFullScreen ?? settings.notchHideSummaryInFullScreen, true),
+      notchRefreshEnabled: parseBoolean(patch.notchRefreshEnabled ?? settings.notchRefreshEnabled, false),
+      notchFollowTray: parseBoolean(patch.notchFollowTray ?? settings.notchFollowTray, true),
+      notchSummaryEnabled: parseBoolean(patch.notchSummaryEnabled ?? settings.notchSummaryEnabled, true),
+      notchCustomLayout: normalizeTrayLayout(patch.notchCustomLayout ?? settings.notchCustomLayout),
+      notchDisplayId: normalizeEdgeDockDisplayId(patch.notchDisplayId ?? settings.notchDisplayId),
       edgeDockEnabled: parseBoolean(patch.edgeDockEnabled ?? settings.edgeDockEnabled, false),
       edgeDockRefreshEnabled: parseBoolean(patch.edgeDockRefreshEnabled ?? settings.edgeDockRefreshEnabled, false),
       edgeDockRunningIndicatorEnabled: parseBoolean(patch.edgeDockRunningIndicatorEnabled ?? settings.edgeDockRunningIndicatorEnabled, true),
@@ -7746,6 +7970,7 @@ app.whenReady().then(() => {
       sessionContextMetric: normalizeSessionContextMetric(patch.sessionContextMetric ?? settings.sessionContextMetric),
       historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, false),
       projectsEnabled: parseBoolean(patch.projectsEnabled ?? settings.projectsEnabled, true),
+      projectBreakdownMode: normalizeProjectBreakdownMode(patch.projectBreakdownMode ?? settings.projectBreakdownMode),
       historyIntervalMs: normalizeHistoryIntervalMs(patch.historyIntervalMs ?? settings.historyIntervalMs),
       sessionUsageArchiveEnabled: parseBoolean(patch.sessionUsageArchiveEnabled ?? settings.sessionUsageArchiveEnabled, true),
       wslScanEnabled: parseBoolean(patch.wslScanEnabled ?? settings.wslScanEnabled, true),
@@ -7842,7 +8067,7 @@ app.whenReady().then(() => {
     ) && latestStats) updateDiscordRpcDisplay(latestStats);
     applyWindowSettings();
     syncFloatingBubbleAvailability();
-    syncEdgeDock();
+    syncDockSurfaces();
     const nextNativeMaterial = nativeBlurEnabled();
     const nextWindowsBackdrop = normalizeWindowsBackdropMode(settings?.windowsBackdrop);
     const windowsBackdropChanged = previousWindowsBackdrop !== nextWindowsBackdrop
@@ -7949,6 +8174,9 @@ app.whenReady().then(() => {
     }
     if (patch && patch.edgeDockCustomScale !== undefined && edgeDockController?.isRunning()) {
       edgeDockController.previewScale(patch.edgeDockCustomScale);
+    }
+    if (patch && patch.notchCustomScale !== undefined && notchController?.isRunning()) {
+      notchController.previewScale(patch.notchCustomScale);
     }
     return true;
   });
@@ -8132,6 +8360,7 @@ app.whenReady().then(() => {
     return getNativeMaterialState(win);
   });
   ipcMain.handle('app:getInfo', () => ({
+    notchCapabilities: notchController?.getCapabilities() || null,
     version: app.getVersion(),
     platform: process.platform,
     arch: process.arch,
@@ -9181,7 +9410,7 @@ app.whenReady().then(() => {
     const action = activateWindowAction({
       mainWindow,
       windows: BrowserWindow.getAllWindows(),
-      isDockOwned: (win) => Boolean(edgeDockController?.owns(win))
+      isDockOwned: (win) => Boolean(edgeDockController?.owns(win) || notchController?.owns(win))
     });
     if (action === 'focusWindow') focusExistingWindow();
     else if (action === 'createWindow') {
@@ -9193,7 +9422,7 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
-  maybeRunBackgroundUpdateCheck();
+  scheduleStartupAppUpdateCheck();
   startAppUpdateBackgroundChecks();
 });
 
@@ -9213,6 +9442,8 @@ app.on('before-quit', () => {
   stopTaskbarZOrderKeeper();
   unregisterWindowToggleShortcut();
   edgeDockController?.stop();
+  notchController?.dispose();
+  clearTimeout(notchRateTimer);
   electronWorkbuddyLocalAuth.dispose();
   if (skipForcedQuit) return;
   performQuit();
