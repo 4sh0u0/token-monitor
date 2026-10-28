@@ -20,6 +20,16 @@ Device collection, transforms and archives live in `src/shared/usage/`. The neig
 
 Cloudflare deployment isolates `worker/` into its own repository. Its portable closure, `WORKER_SHARED_MODULES` in `scripts/hub-build-manifest.js`, must not import Node built-ins or anything above `worker/`. Edit the originals in `src/shared/`, then run `npm run sync:worker`; the mirrored `worker/src/shared/` files are generated and CI rejects drift.
 
+## Desktop plugins
+
+`electron/plugins/runtime.js` owns plugin management, host data routing and native demand; `manager.js` owns revision trust and the shared backend lifecycle. Author UI runs in the existing renderer with context isolation and no Node integration; the optional Node utility process has OS-user authority. Host DTO filtering is not a security boundary against trusted local code. Same-page author JS cannot be independently terminated while preserving its renderer. Native controllers retain rendering, window shells and input geometry; plugins extend content through host outlets. See [execution and UI contracts](plugins/README.md) and [content composition](plugins/author-ui-options.md).
+
+Native visibility and page activity cap each owner's demand without discarding retained controls or drafts; other visible owners remain independent. All surfaces of a plugin share its backend. Last demand stops it unless explicitly enabled background work or a pending call remains. When no plugins are active, the host starts no plugin process, sampler or recurring projection. This does not guarantee byte-identical baseline memory or control arbitrary author timers.
+
+Business data reads reuse selected-source snapshots and existing history resolution, never launch provider probes or duplicate collectors, and remain independent of native session rendering. Active ownership, explicit query filters and host privacy preferences apply; there are no per-resource grants or plugin-specific account/device scopes. Ordinary updates preserve admitted immutable cursors; source/privacy changes revoke them. Work and memory limits protect host reads, not unrestricted backend work.
+
+Package transactions and lifecycle checks must affect the same plugin: unrelated mounts, drafts and backends stay live, including during rollback. Preserve existing App data and credential contracts. Renderer-independent safe mode must remain available for recovery; it cannot undo arbitrary plugin filesystem effects. See [management and recovery](plugins/distribution-design.md).
+
 ## Generated and registered state
 
 Hub update checks use `src/shared/hubBuildRegistry.json`, which hashes the portable core and separate Node/Worker adapters, rather than the product version. A desktop-only release must not require Hub redeployment. This is a registered build identity, not attestation; divergent metadata is unrecognized, not proof that every fork is detectable. Run `npm run update:hub-build` after the final Hub/shared change, including limits-provider registry changes. Never edit generated Worker metadata directly.
