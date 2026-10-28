@@ -41,6 +41,8 @@ function parseIndex(bytes, publicKey) {
     seen.add(entry.id);
     const name = normalizeLocalized(entry.name, 80);
     if (!name || !Array.isArray(entry.versions) || !entry.versions.length || entry.versions.length > 32) throw new Error(`${entry.id}: name and 1–32 versions are required`);
+    const repository = entry.repository === undefined ? '' : httpsUrl(entry.repository);
+    if (repository && !/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/.test(repository)) throw new Error('repository must be a GitHub repository URL');
     const versionsSeen = new Set();
     const versions = entry.versions.map(v => {
       if (typeof v?.version !== 'string' || !semver.valid(v.version) || versionsSeen.has(v.version)) throw new Error(`${entry.id}: invalid or duplicate version`);
@@ -51,13 +53,13 @@ function parseIndex(bytes, publicKey) {
       return { types: normalizeTypes(v.types), version: v.version, sha256: v.sha256, url: httpsUrl(v.url), compatible: !range || semver.satisfies(HOST_VERSION, range),
         changelog: normalizeLocalized(v.changelog, 2000), engines: range || '*' };
     }).sort((a, b) => semver.rcompare(a.version, b.version));
-    return { id: entry.id, name, description: normalizeLocalized(entry.description, 500), author: cleanText(entry.author, 100), identityIcon: normalizeIdentityIcon(entry.identityIcon), versions };
+    return { id: entry.id, name, repository, description: normalizeLocalized(entry.description, 500), author: cleanText(entry.author, 100), identityIcon: normalizeIdentityIcon(entry.identityIcon), versions };
   });
   return { title, plugins };
 }
-async function download(fetchImpl, url, limit, signal) {
+async function download(fetchImpl, url, limit, signal, accept = 'application/json') {
   const response = await fetchImpl(httpsUrl(url), { redirect: 'manual', credentials: 'omit', cache: 'no-store', signal,
-    headers: { Accept: 'application/json' } });
+    headers: { Accept: accept } });
   if (!response.ok || response.status < 200 || response.status >= 300) throw new Error(`download failed (HTTP ${response.status}); redirects are not followed`);
   if (Number(response.headers?.get('content-length')) > limit) { await response.body?.cancel(); throw new Error('download exceeds size limit'); }
   if (!response.body?.getReader) throw new Error('streaming download is unavailable');
@@ -76,7 +78,7 @@ async function download(fetchImpl, url, limit, signal) {
 function createCatalogSources({ root, fetchImpl, cancelPreviews = () => {}, getLocale = () => 'en', now = Date.now }) {
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   const configFile = path.join(root, 'sources.json');
-  const sources = new Map(), cache = new Map(), active = new Map();
+  const sources = new Map(), cache = new Map(), activeRefreshes = new Map(), activePackages = new Map();
   let loadError = '';
   function cacheFile(id) { return path.join(root, `${id}.json`); }
   function persist() { atomicJson(configFile, [...sources.values()].map(({ id, url, publicKey, fingerprint }) => ({ id, url, publicKey, fingerprint }))); }
@@ -103,9 +105,9 @@ function createCatalogSources({ root, fetchImpl, cancelPreviews = () => {}, getL
     return { error: loadError, sources: [...sources.values()].map(s => ({ id: s.id, kind: 'community', url: s.url,
       label: localize(cache.get(s.id)?.title, getLocale()) || new URL(s.url).hostname,
       fingerprint: s.fingerprint, signed: Boolean(s.publicKey && cache.has(s.id)), lastFetched: s.lastFetched,
-      cached: cache.has(s.id), error: s.error, refreshing: active.has(s.id) })) };
+      cached: cache.has(s.id), error: s.error, refreshing: activeRefreshes.has(s.id) })) };
   }
-  async function request(id, url, limit) {
+  async function request(id, url, limit, active) {
     const source = sources.get(id); if (!source) throw new Error('unknown catalog source');
     if (active.has(id)) throw new Error('this source already has a download in progress');
     const controller = new AbortController(); active.set(id, controller);
@@ -119,7 +121,7 @@ function createCatalogSources({ root, fetchImpl, cancelPreviews = () => {}, getL
   async function refresh(id) {
     requireWritable(); const s = sources.get(id); if (!s) throw new Error('unknown catalog source');
     try {
-      const bytes = await request(id, s.url, MAX_INDEX_BYTES);
+      const bytes = await request(id, s.url, MAX_INDEX_BYTES, activeRefreshes);
       const index = parseIndex(bytes, s.publicKey);
       atomicJson(cacheFile(id), { url: s.url, at: now(), bytes: bytes.toString('base64') });
       cache.set(id, index); s.lastFetched = now(); s.error = '';
@@ -127,7 +129,10 @@ function createCatalogSources({ root, fetchImpl, cancelPreviews = () => {}, getL
     return list();
   }
   return {
-    list, refresh, request,
+    list, refresh,
+    // Index refreshes and package previews may overlap. Keep each bounded to
+    // one request per source, with independent deadlines and cancellation.
+    request: (id, url, limit) => request(id, url, limit, activePackages),
     entries() { return [...sources.values()].flatMap(s => (cache.get(s.id)?.plugins || []).map(p => ({ ...p, origin: {
       id: s.id, kind: 'community', label: localize(cache.get(s.id).title, getLocale()), url: s.url, fingerprint: s.fingerprint,
       signed: Boolean(s.publicKey), cached: true, lastFetched: s.lastFetched, error: s.error } }))); },
@@ -143,10 +148,10 @@ function createCatalogSources({ root, fetchImpl, cancelPreviews = () => {}, getL
     remove(id) {
       requireWritable(); const source = sources.get(id); if (!source) throw new Error('unknown catalog source');
       sources.delete(id); try { persist(); } catch (error) { sources.set(id, source); throw error; }
-      active.get(id)?.abort(); cache.delete(id); cancelPreviews(id);
+      activeRefreshes.get(id)?.abort(); activePackages.get(id)?.abort(); cache.delete(id); cancelPreviews(id);
       fs.rmSync(cacheFile(id), { force: true }); return list();
     },
-    dispose() { for (const controller of active.values()) controller.abort(); active.clear(); }
+    dispose() { for (const active of [activeRefreshes, activePackages]) { for (const controller of active.values()) controller.abort(); active.clear(); } }
   };
 }
 module.exports = { MAX_INDEX_BYTES, httpsUrl, signingKey, parseIndex, download, createCatalogSources };

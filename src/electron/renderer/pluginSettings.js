@@ -39,6 +39,9 @@
     let operation = null;
     let catalogData = null, activeTab = 'installed', query = '', sourcesOpen = false;
     let selectedPluginId = '', diagnostics = false, installedPosition = null;
+    let catalogModal = null;
+    let catalogRefreshing = false, catalogRefreshPending = null, catalogRefreshError = '', disposed = false;
+    let updateCatalog = null, catalogResultsDirty = false;
     let catalogReview = null, menuId = 0, aboutOpen = false;
     let actionError = null;
     const sourceDraft = { url: '', publicKey: '' };
@@ -159,7 +162,7 @@
       node.type = 'button'; node.disabled = busy; node.addEventListener('click', action); return node;
     }
 
-    function identity(name, author, origin, iconName, image) {
+    function identity(name, author, origin, iconName, image, official = false) {
       const group = el(document, 'div', 'plugin-identity');
       const art = el(document, 'span', 'plugin-identity-art'); art.setAttribute('aria-hidden', 'true');
       if (typeof image === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(image) && image.length <= 90000) {
@@ -168,10 +171,15 @@
         art.append(img);
       } else art.append(window.TokenMonitorPluginViews.iconNode(document, iconName || 'dot', null, 20));
       const title = el(document, 'div', 'plugin-card-title');
-      const source = el(document, 'span', 'plugin-source');
-      if (author) source.append(el(document, 'span', 'plugin-author', author));
-      if (origin) {
-        const label = el(document, 'span', 'plugin-origin-label', origin);
+      const source = el(document, 'span', official ? 'plugin-source plugin-source-official' : 'plugin-source');
+      if (author && !official) source.append(el(document, 'span', 'plugin-author', author));
+      if (origin || official) {
+        const label = el(document, 'span', `plugin-origin-label${official ? ' plugin-origin-official' : ''}`);
+        if (official) {
+          const shield = el(document, 'span', 'plugin-shield'); shield.setAttribute('aria-hidden', 'true');
+          label.append(shield);
+        }
+        label.append(document.createTextNode(official ? `Token Monitor ${t('plugins.origin.official')}` : origin));
         source.append(label);
       }
       title.append(el(document, 'span', 'plugin-name', name), source);
@@ -245,6 +253,11 @@
       packagePreview = await api.catalogPreview(entry.origin.id, entry.id, version);
     }
 
+    function catalogVersion(entry) {
+      const remembered = chosenVersions.get(`${entry.origin.id}/${entry.id}`);
+      return entry.versions?.some(version => version.version === remembered && version.installable) ? remembered : entry.version;
+    }
+
     function catalogReviewPanel() {
       const entry = catalogReview;
       const wrap = el(document, 'section', 'plugin-detail plugin-catalog-review');
@@ -253,7 +266,7 @@
         packagePreview = null; catalogReview = null; render(); tabControls.get(activeTab)?.focus({ preventScroll: true });
       }, 'plugin-back'));
       const key = `${entry.origin.id}/${entry.id}`;
-      const version = chosenVersions.get(key) || entry.version;
+      const version = catalogVersion(entry);
       if (entry.versions?.length) {
         const row = el(document, 'label', 'plugin-version-picker', t('plugins.catalog.version'));
         const select = el(document, 'select'); select.dataset.controlKey = 'review-version';
@@ -268,9 +281,9 @@
             // pending. Drain to its latest choice before enabling installation.
             let requested;
             do {
-              requested = chosenVersions.get(key);
+              requested = catalogVersion(entry);
               await previewCatalog(entry, requested);
-            } while (requested !== chosenVersions.get(key));
+            } while (requested !== catalogVersion(entry));
             return null;
           });
         });
@@ -302,18 +315,21 @@
 
     function packagePanel() {
       const p = packagePreview;
+      const official = p.origin.kind === 'official';
       const panel = el(document, 'section', 'plugin-consent plugin-package-preview');
       panel.dataset.errorTarget = 'package';
       panel.setAttribute('aria-label', t('plugins.package.review'));
-      panel.append(identity(p.name, p.author || p.id, t(`plugins.origin.${p.origin.kind}`), p.icon, p.identityIcon));
+      panel.append(identity(p.name, p.author || p.id, t(`plugins.origin.${p.origin.kind}`), p.icon, p.identityIcon, p.origin.kind === 'official'));
       const meta = el(document, 'div', 'plugin-card-meta');
       meta.append(el(document, 'span', 'plugin-version', `${p.installedVersion ? `${p.installedVersion} → ` : ''}${p.version}`), typeLabels(p)); panel.append(meta);
       panel.append(el(document, 'p', 'plugin-description', p.description));
       if (p.origin.kind !== 'local') panel.append(el(document, 'p', 'plugin-description', p.origin.label));
       if (p.origin.url) panel.append(el(document, 'code', 'plugin-log', p.origin.url));
       if (p.origin.packageUrl) panel.append(el(document, 'code', 'plugin-log', p.origin.packageUrl));
-      panel.append(el(document, 'p', 'plugin-risk', t('plugins.trusted.warning')));
-      panel.append(el(document, 'p', 'settings-note', t(p.operation === 'install' ? (list.enabled ? 'plugins.package.installConsent' : 'plugins.package.enableLater') : 'plugins.package.grants')));
+      if (!official) panel.append(el(document, 'p', 'plugin-risk', t('plugins.trusted.warning')));
+      panel.append(el(document, 'p', 'settings-note', t(official
+        ? p.operation === 'update' ? 'plugins.package.officialUpdate' : list.enabled ? 'plugins.package.officialInstall' : 'plugins.package.officialEnableLater'
+        : p.operation === 'install' ? (list.enabled ? 'plugins.package.installConsent' : 'plugins.package.enableLater') : 'plugins.package.grants')));
       if (p.operation === 'install' && !p.placementsRetained && p.views?.some(view => view.surfaces.some(surface => SURFACE_ORDER.includes(surface)))) {
         p.placements ??= p.views.flatMap(view => (view.defaultSurfaces || []).map(surface => ({ ref: view.ref, surface })));
         const locations = el(document, 'fieldset', 'plugin-default-placements');
@@ -342,7 +358,7 @@
       }, 'package');
       actions.append(button(t('settings.plugins.cancel'), () => { void api.cancelInstall(p.token); packagePreview = null; catalogReview = null; render(); }));
       if (p.operation === 'install' && list.enabled) actions.append(button(t('plugins.package.installOnly'), () => install(false)));
-      actions.append(button(t(p.operation === 'update' ? 'plugins.package.trustUpdate' : list.enabled ? 'plugins.package.trustInstall' : 'plugins.package.installOnly'),
+      actions.append(button(t(p.operation === 'update' ? official ? 'plugins.package.update' : 'plugins.package.trustUpdate' : list.enabled ? official ? 'plugins.package.installEnable' : 'plugins.package.trustInstall' : 'plugins.package.installOnly'),
         () => install(p.operation === 'install' && list.enabled), 'plugin-allow'));
       panel.append(actions); return panel;
     }
@@ -394,44 +410,237 @@
       actions.append(copy, guide); panel.append(actions, prompt, status); return panel;
     }
 
+    function catalogDialog(entry) {
+      catalogModal?.close();
+      const previousFocus = document.activeElement;
+      const dialog = el(document, 'dialog', 'plugin-catalog-dialog');
+      catalogModal = dialog;
+      const heading = el(document, 'header', 'plugin-catalog-dialog-head');
+      heading.append(identity(entry.name, entry.author,
+        entry.origin.id === 'github-discovery' ? '' : t(`plugins.origin.${entry.origin.kind}`), entry.icon, entry.identityIcon, entry.origin.kind === 'official'));
+      const close = button('×', () => dialog.close(), 'plugin-dialog-close');
+      close.setAttribute('aria-label', t('settings.plugins.cancel')); heading.append(close);
+      const body = el(document, 'div', 'plugin-catalog-dialog-body');
+      body.append(el(document, 'p', 'plugin-description', entry.description));
+      const meta = el(document, 'div', 'plugin-card-meta');
+      if (entry.version) meta.append(el(document, 'span', 'plugin-version', `v${entry.version}`));
+      meta.append(typeLabels(entry));
+      if (Number.isSafeInteger(entry.stars)) {
+        const stars = el(document, 'span', 'plugin-stars', `☆ ${entry.stars.toLocaleString(getLocale())}`);
+        stars.setAttribute('aria-label', `${t('plugins.catalog.stars')}: ${entry.stars}`); meta.append(stars);
+      }
+      body.append(meta);
+      if (entry.repository) body.append(button(t('plugins.catalog.openRepository'), () => void onOpenExternal(entry.repository), 'plugin-inline-action'));
+      if (entry.origin.kind !== 'official') body.append(el(document, 'p', 'settings-note', t('plugins.catalog.unreviewed')));
+      const selected = entry.versions?.find(v => v.version === entry.version);
+      if (selected?.changelog) body.append(el(document, 'h3', 'plugin-detail-heading', t('plugins.catalog.changelog')), el(document, 'p', 'plugin-description', selected.changelog));
+      const readme = el(document, 'div', 'plugin-catalog-readme', t('plugins.view.loading'));
+      body.append(readme);
+      void api.catalogDetails(entry.origin.id, entry.id).then(result => {
+        if (!dialog.isConnected) return;
+        // Main supplies Markdown-generated markup with author HTML disabled.
+        readme.innerHTML = result.html || '';
+        if (!result.html) readme.textContent = t('plugins.catalog.noReadme');
+        for (const link of readme.querySelectorAll('a[href]')) {
+          link.addEventListener('click', event => {
+            event.preventDefault();
+            void Promise.resolve(onOpenExternal(link.href)).catch(() => {});
+          });
+        }
+        if (!result.imageCount) return;
+        const loadImages = button(t('plugins.catalog.loadImages'), async () => {
+          loadImages.disabled = true; loadImages.textContent = t('plugins.view.loading');
+          for (const slot of readme.querySelectorAll('[data-readme-image]')) {
+            if (!dialog.isConnected) return;
+            const index = Number(slot.dataset.readmeImage);
+            try {
+              const data = await api.catalogReadmeImage(result.documentId, index);
+              if (!dialog.isConnected) return;
+              const image = el(document, 'img'); image.src = data; image.alt = slot.getAttribute('aria-label') || t('plugins.catalog.screenshot', { index: index + 1 });
+              const zoom = button('', event => {
+                event.preventDefault(); event.stopPropagation();
+                const lightbox = el(document, 'dialog', 'plugin-catalog-dialog plugin-image-dialog');
+                const bar = el(document, 'header', 'plugin-catalog-dialog-head');
+                const exit = button('×', () => lightbox.close(), 'plugin-dialog-close'); exit.setAttribute('aria-label', t('settings.plugins.cancel')); bar.append(exit);
+                const imageBody = el(document, 'div', 'plugin-catalog-dialog-body');
+                const large = el(document, 'img'); large.src = data; large.alt = image.alt; imageBody.append(large);
+                lightbox.append(bar, imageBody); dialog.append(lightbox);
+                dismissOnOutside(lightbox);
+                lightbox.addEventListener('close', () => { lightbox.remove(); if (zoom.isConnected) zoom.focus({ preventScroll: true }); });
+                lightbox.showModal();
+              }, 'plugin-screenshot'); zoom.setAttribute('aria-label', image.alt); zoom.append(image); slot.replaceWith(zoom);
+            } catch { if (dialog.isConnected) slot.textContent = t('plugins.catalog.imageUnavailable'); }
+          }
+          loadImages.remove();
+        }, 'plugin-inline-action plugin-readme-load');
+        readme.before(loadImages);
+      }).catch(() => { if (dialog.isConnected) readme.textContent = t('plugins.catalog.noReadme'); });
+      const footer = el(document, 'footer', 'plugin-catalog-dialog-footer');
+      if (selected ? selected.installable : ['available', 'update'].includes(entry.status)) {
+        footer.append(button(t(entry.installedVersion ? 'plugins.package.update' : 'plugins.package.install'), () => {
+          dialog.close();
+          void run(async () => { activeTab = 'discover'; sourcesOpen = false; catalogReview = entry; await previewCatalog(entry, catalogVersion(entry)); return null; });
+        }, 'plugin-allow'));
+      } else if (entry.status === 'repository') footer.append(el(document, 'span', 'settings-note', t('plugins.catalog.repositoryOnly')));
+      else if (entry.status === 'incompatible') footer.append(el(document, 'span', 'plugin-risk', t('plugins.catalog.incompatible')));
+      footer.append(button(t('settings.plugins.cancel'), () => dialog.close()));
+      dialog.append(heading, body, footer); container.append(dialog);
+      dialog.setAttribute('aria-label', entry.name);
+      dismissOnOutside(dialog);
+      dialog.addEventListener('close', () => {
+        dialog.remove(); if (catalogModal === dialog) {
+          catalogModal = null; void api.closeCatalogDetails().catch(() => {});
+        }
+        if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+        applyCatalogResults();
+      });
+      dialog.showModal();
+    }
+
+    function dismissOnOutside(dialog) {
+      // Chromium may group programmatically opened close watchers. Handle the
+      // key on the focused dialog so one Escape cannot close both layers.
+      dialog.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || event.target.closest('dialog') !== dialog) return;
+        event.preventDefault(); event.stopPropagation(); dialog.close();
+      });
+      let startedOutside = false;
+      const outside = event => {
+        const rect = dialog.getBoundingClientRect();
+        return event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom);
+      };
+      dialog.addEventListener('pointerdown', event => { startedOutside = outside(event); });
+      dialog.addEventListener('click', event => { if (startedOutside && outside(event)) dialog.close(); startedOutside = false; });
+    }
+
     function catalogPanel() {
       const wrap = el(document, 'div', 'plugin-catalog');
       if (!catalogData) { wrap.append(el(document, 'p', 'settings-note', t('plugins.view.loading'))); return wrap; }
-      if (catalogData.error) wrap.append(el(document, 'p', 'plugin-risk', catalogData.error));
+      const errors = el(document, 'div');
       const search = el(document, 'input', 'plugin-catalog-search');
       search.type = 'search'; search.value = query;
       search.placeholder = t('plugins.catalog.search'); search.setAttribute('aria-label', t('plugins.catalog.search'));
       const results = el(document, 'div', 'plugin-catalog-results');
       function renderResults() {
-        const entries = catalogData.entries.filter(p => `${p.name} ${p.description} ${p.author} ${p.id}`.toLowerCase().includes(query.toLowerCase()));
-        const cards = entries.map(entry => {
-          const card = el(document, 'article', 'plugin-card'); card.dataset.catalogId = entry.id;
-          const head = el(document, 'div', 'plugin-card-head');
-          head.append(identity(entry.name, entry.author || entry.id, t(`plugins.origin.${entry.origin.kind}`), entry.icon, entry.identityIcon));
-          card.append(head, el(document, 'p', 'plugin-description', entry.description));
-          const meta = el(document, 'div', 'plugin-card-meta');
-          meta.append(el(document, 'span', 'plugin-version', `v${entry.version}`), typeLabels(entry));
-          if (entry.origin.kind === 'community') meta.append(el(document, 'span', 'plugin-origin-note', entry.origin.label));
-          card.append(meta);
-          const key = `${entry.origin.id}/${entry.id}`;
-          const version = entry.versions?.find(v => v.version === chosenVersions.get(key)) || entry.versions?.find(v => v.version === entry.version);
-          const actions = el(document, 'div', 'settings-actions');
-          const available = version ? version.installable : ['available', 'update'].includes(entry.status);
-          if (available) actions.append(button(t(entry.installedVersion ? 'plugins.package.update' : 'plugins.package.install'), () => void run(async () => {
-            catalogReview = entry; await previewCatalog(entry, version?.version || entry.version); return null;
-          })));
-          if (entry.installedVersion) actions.append(button(t('plugins.catalog.installed'), () => { activeTab = 'installed'; selectedPluginId = ''; diagnostics = false; render(); container.querySelector(`[data-plugin-id="${entry.id}"]`)?.scrollIntoView({ block: 'nearest' }); }, 'plugin-installed-link plugin-installed-check'));
-          if (!entry.installedVersion && !available) actions.append(el(document, 'span', 'settings-note', t('plugins.catalog.incompatible')));
-          head.append(actions); return card;
-        });
-        if (!cards.length) cards.push(el(document, 'p', 'settings-note', t('plugins.catalog.noResults')));
-        results.replaceChildren(...cards);
+        const matches = p => `${p.name} ${p.description} ${p.author || ''} ${p.id}`.toLowerCase().includes(query.toLowerCase());
+        const sections = [];
+        const groups = [
+          ['plugins.catalog.official', catalogData.entries.filter(p => p.origin.kind === 'official')],
+          ['plugins.catalog.github', catalogData.github?.entries || []],
+          ['plugins.catalog.custom', catalogData.entries.filter(p => p.origin.kind !== 'official')]
+        ];
+        for (const [label, all] of groups) {
+          if (label === 'plugins.catalog.github' && !catalogData.github?.enabled) continue;
+          if (label === 'plugins.catalog.custom' && !all.length) continue;
+          const section = el(document, 'section', 'plugin-catalog-group');
+          section.append(el(document, 'h3', 'plugin-detail-heading', t(label)));
+          if (label === 'plugins.catalog.github') {
+            section.append(el(document, 'p', 'settings-note', t('plugins.catalog.githubNote')));
+            if (catalogData.github?.error) section.append(el(document, 'p', 'settings-note', t('plugins.catalog.githubFailed', { error: catalogData.github.error })));
+            if (catalogData.github?.limited) section.append(el(document, 'p', 'settings-note', t('plugins.catalog.githubLimited')));
+          }
+          const grid = el(document, 'div', 'plugin-catalog-grid');
+          for (const entry of all.filter(matches)) {
+            const card = el(document, 'article', 'plugin-card'); card.dataset.catalogId = entry.id;
+            const head = el(document, 'div', 'plugin-card-head');
+            const title = button('', () => catalogDialog(entry), 'plugin-catalog-title');
+            title.append(identity(entry.name, entry.author, '', entry.icon, entry.identityIcon, entry.origin.kind === 'official'));
+            head.append(title);
+            const actions = el(document, 'div', 'settings-actions');
+            const available = entry.versions?.find(v => v.version === entry.version)?.installable ?? ['available', 'update'].includes(entry.status);
+            if (available) actions.append(button(t(entry.installedVersion ? 'plugins.package.update' : 'plugins.package.install'), () => void run(async () => { catalogReview = entry; await previewCatalog(entry, catalogVersion(entry)); return null; })));
+            else actions.append(button(t('plugins.catalog.details'), () => catalogDialog(entry)));
+            if (entry.installedVersion) actions.append(button(t('plugins.catalog.installed'), () => { activeTab = 'installed'; selectedPluginId = ''; diagnostics = false; render(); container.querySelector(`[data-plugin-id="${entry.id}"]`)?.scrollIntoView({ block: 'nearest' }); }, 'plugin-installed-link plugin-installed-check'));
+            head.append(actions);
+            card.append(head, el(document, 'p', 'plugin-description', entry.description));
+            const meta = el(document, 'div', 'plugin-card-meta');
+            if (entry.version) meta.append(el(document, 'span', 'plugin-version', `v${entry.version}`));
+            meta.append(typeLabels(entry));
+            if (entry.status === 'incompatible') meta.append(el(document, 'span', 'plugin-risk', t('plugins.catalog.incompatible')));
+            if (Number.isSafeInteger(entry.stars)) {
+              const stars = el(document, 'span', 'plugin-stars', `☆ ${entry.stars.toLocaleString(getLocale())}`);
+              stars.setAttribute('aria-label', `${t('plugins.catalog.stars')}: ${entry.stars}`); meta.append(stars);
+            } else if (entry.origin.kind === 'community' && entry.origin.id !== 'github-discovery') meta.append(el(document, 'span', 'plugin-origin-note', entry.origin.label));
+            card.append(meta);
+            card.addEventListener('click', event => { if (!event.target.closest('button')) catalogDialog(entry); });
+            grid.append(card);
+          }
+          if (!grid.children.length) grid.append(el(document, 'p', 'settings-note', t('plugins.catalog.noResults')));
+          section.append(grid); sections.push(section);
+        }
+        results.replaceChildren(...sections);
         if (content?.contains(results)) identifyContent();
       }
       search.addEventListener('input', () => { query = search.value; renderResults(); });
-      wrap.append(search, results); renderResults();
+      wrap.append(errors, search, results);
+      const refresh = el(document, 'div', 'settings-actions plugin-catalog-refresh');
+      const canRefresh = catalogData.github?.enabled || catalogData.sources.some(source => source.kind === 'community');
+      if (canRefresh) refresh.append(button(t('plugins.catalog.refresh'), () => void refreshCatalog(true)));
+      const lastChecked = el(document, 'span', 'settings-note'); refresh.append(lastChecked);
+      updateCatalog = () => {
+        errors.replaceChildren();
+        for (const error of [catalogData.error, catalogRefreshError, ...catalogData.sources.filter(source => source.kind === 'community' && source.error).map(source => `${source.label}: ${source.error}`)].filter(Boolean)) {
+          errors.append(el(document, 'p', 'plugin-risk', error));
+        }
+        lastChecked.textContent = catalogData.github?.lastFetched ? t('plugins.catalog.lastChecked', { time: new Date(catalogData.github.lastFetched).toLocaleString(getLocale()) }) : '';
+        renderResults();
+        catalogResultsDirty = false;
+      };
+      if (canRefresh) wrap.append(refresh);
+      updateCatalog(); return wrap;
+    }
 
-      return wrap;
+    function catalogRefreshControls() {
+      const control = container.querySelector('.plugin-catalog-refresh button');
+      if (!control) return;
+      control.disabled = busy || catalogRefreshing;
+      control.textContent = t(catalogRefreshing ? 'plugins.view.loading' : 'plugins.catalog.refresh');
+      control.setAttribute('aria-busy', String(catalogRefreshing));
+    }
+
+    function applyCatalogResults() {
+      if (!catalogResultsDirty || disposed || busy || activeTab !== 'discover' || catalogReview || sourcesOpen || aboutOpen || catalogModal) return;
+      const saved = rememberPosition();
+      updateCatalog?.();
+      restorePosition(saved);
+    }
+
+    function refreshCatalog(force = false) {
+      if (disposed || catalogRefreshPending || (!force && !catalogData.github?.enabled)) return catalogRefreshPending;
+      catalogRefreshing = true; catalogRefreshError = ''; catalogRefreshControls();
+      catalogRefreshPending = (async () => {
+        try {
+          // Sources own their per-request deadlines. Bound concurrent custom
+          // requests, and let GitHub run alongside them without locking writes.
+          const sources = force ? catalogData.sources.filter(source => source.kind === 'community') : [];
+          const failures = [];
+          let next = 0;
+          const workers = Array.from({ length: Math.min(4, sources.length) }, async () => {
+            while (!disposed && next < sources.length) {
+              const source = sources[next++];
+              try { await api.refreshSource(source.id); }
+              catch (error) { failures.push(`${source.label}: ${actionErrorMessage(error, t)}`); }
+            }
+          });
+          if (catalogData.github?.enabled) workers.push(api.discoverCatalog(force));
+          const results = await Promise.allSettled(workers);
+          if (disposed) return;
+          catalogData = await api.catalog();
+          const failure = results.find(result => result.status === 'rejected');
+          if (failure) failures.push(actionErrorMessage(failure.reason, t));
+          catalogRefreshError = failures.join('\n');
+        } catch (error) { if (!disposed) catalogRefreshError = actionErrorMessage(error, t); }
+        finally {
+          catalogRefreshing = false; catalogRefreshPending = null;
+          // A package review/settings draft can stay open while results arrive.
+          if (!disposed) {
+            catalogResultsDirty = true;
+            applyCatalogResults();
+            catalogRefreshControls();
+          }
+        }
+      })();
+      return catalogRefreshPending;
     }
 
     function sourcesPanel() {
@@ -470,20 +679,21 @@
 
     function statusChip(plugin) {
       const status = plugin.status;
-      const chip = el(document, 'span', `plugin-status plugin-status-${status}`, t(`settings.plugins.status.${status}`));
+      const chip = el(document, 'span', `plugin-status plugin-status-${status}`, t(status === 'needsApproval' && plugin.installation?.origin.kind === 'official' ? 'plugins.package.enableRequired' : `settings.plugins.status.${status}`));
       if (status === 'active' && plugin.runtime?.state === 'running') chip.classList.add('is-live');
       return chip;
     }
 
     function consentPanel(plugin) {
       const panel = el(document, 'div', 'plugin-consent');
-      panel.append(el(document, 'div', 'plugin-consent-title', t('settings.plugins.consentTitle', { name: plugin.name })));
-      panel.append(el(document, 'p', 'plugin-risk', t('plugins.trusted.warning')));
+      const official = plugin.installation?.origin.kind === 'official';
+      panel.append(el(document, 'div', 'plugin-consent-title', t(official ? 'settings.plugins.enable' : 'settings.plugins.consentTitle', { name: plugin.name })));
+      if (!official) panel.append(el(document, 'p', 'plugin-risk', t('plugins.trusted.warning')));
       const actions = el(document, 'div', 'settings-actions plugin-consent-actions');
       const cancel = el(document, 'button', '', t('settings.plugins.cancel'));
       cancel.type = 'button';
       cancel.addEventListener('click', () => { consentFor = ''; render(); });
-      const allow = el(document, 'button', 'plugin-allow', t('settings.plugins.allow'));
+      const allow = el(document, 'button', 'plugin-allow', t(official ? 'settings.plugins.enable' : 'settings.plugins.allow', { name: plugin.name }));
       allow.type = 'button';
       allow.addEventListener('click', () => {
         consentFor = '';
@@ -560,7 +770,7 @@
 
     function pluginIdentity(plugin) {
       const head = el(document, 'div', 'plugin-card-head');
-      head.append(identity(plugin.name, plugin.author, t(plugin.installation ? `plugins.origin.${plugin.installation.origin.kind}` : `settings.plugins.source.${plugin.source}`), plugin.views?.[0]?.icon, plugin.identityIcon));
+      head.append(identity(plugin.name, plugin.author, t(plugin.installation ? `plugins.origin.${plugin.installation.origin.kind}` : `settings.plugins.source.${plugin.source}`), plugin.views?.[0]?.icon, plugin.identityIcon, plugin.installation?.origin.kind === 'official'));
       if (!plugin.managementOnly && !['invalid', 'missing'].includes(plugin.status)) {
         const toggle = el(document, 'input', 'plugin-enable');
         toggle.type = 'checkbox'; toggle.checked = plugin.enabled; toggle.disabled = !list?.enabled;
@@ -610,12 +820,14 @@
         count.setAttribute('aria-label', `${t('settings.plugins.views')}: ${t('plugins.ui.locationCount', { count: surfaces.length })}`);
         summary.append(count); footer.append(summary);
       }
-      const manage = button(t(plugin.status === 'needsApproval' ? 'settings.plugins.reapprove' : 'plugins.ui.manage'), () => {
+      const manage = button(t(plugin.status === 'needsApproval' ? plugin.installation?.origin.kind === 'official' ? 'settings.plugins.enable' : 'settings.plugins.reapprove' : 'plugins.ui.manage', { name: plugin.name }), () => {
         if (plugin.status === 'needsApproval') consentFor = plugin.id;
         openPlugin(plugin.id);
       }, 'plugin-manage');
       manage.setAttribute('aria-label', t('plugins.ui.manageNamed', { name: plugin.name }));
       if (plugin.status === 'crashed') footer.append(button(t('settings.plugins.restart'), () => void run(() => api.restart(plugin.id)), 'plugin-restart plugin-inline-action'));
+      const update = catalogData?.entries.find(entry => entry.id === plugin.id && entry.status === 'update' && entry.origin.id === plugin.installation?.origin.id);
+      if (update) footer.append(button(t('plugins.catalog.updateTo', { version: update.version }), () => catalogDialog(update), 'plugin-update-action'));
       footer.append(manage); card.append(footer);
       return card;
     }
@@ -771,7 +983,7 @@
       if (consentFor === plugin.id && !plugin.managementOnly && !['invalid', 'missing'].includes(plugin.status)) wrap.append(consentPanel(plugin));
       else if (plugin.status === 'needsApproval') {
         const actions = el(document, 'div', 'settings-actions');
-        actions.append(button(t('settings.plugins.reapprove'), () => { consentFor = plugin.id; diagnostics = false; render(); })); wrap.append(actions);
+        actions.append(button(t(plugin.installation?.origin.kind === 'official' ? 'settings.plugins.enable' : 'settings.plugins.reapprove', { name: plugin.name }), () => { consentFor = plugin.id; diagnostics = false; render(); })); wrap.append(actions);
       }
       if (plugin.installation && ['invalid', 'missing'].includes(plugin.status)) {
         const note = el(document, 'p', 'plugin-risk', t(plugin.status === 'missing' ? 'plugins.package.missingNote' : 'plugins.package.repairRequired'));
@@ -924,6 +1136,7 @@
       }
       content.setAttribute('aria-labelledby', tabControls.get(activeTab).id);
       setBusy();
+      catalogRefreshControls();
       restorePosition(saved);
     }
 
@@ -972,7 +1185,7 @@
               // the current page and its drafts intact.
               if (tab !== 'installed') catalogData = await api.catalog();
               activeTab = tab; query = ''; sourcesOpen = false; if (tab === 'installed') { selectedPluginId = ''; diagnostics = false; } return null;
-            });
+            }).then(() => { if (tab === 'discover' && activeTab === tab) void refreshCatalog(); });
           });
           control.dataset.tab = tab;
           control.id = `${container.id || 'plugin-settings'}-tab-${tab}`;
@@ -1082,6 +1295,7 @@
       async refresh() {
         try {
           list = await api.list();
+          if (api.catalog) catalogData = await api.catalog();
           if (actionError?.load) actionError = null;
         } catch (error) {
           actionError = { error, target: '', scope: errorScope(), load: true };
@@ -1089,7 +1303,7 @@
         render();
       },
       render,
-      dispose() { authorSettings.clear(); for (const held of settingsMounts.values()) unmountSettings(held.node); settingsMounts.clear(); },
+      dispose() { disposed = true; catalogModal?.close(); authorSettings.clear(); for (const held of settingsMounts.values()) unmountSettings(held.node); settingsMounts.clear(); },
       summary() {
         if (!list) return '';
         const active = list.plugins.filter((plugin) => plugin.status === 'active').length;
@@ -1098,7 +1312,7 @@
       list: () => list,
       // Consent and logs are interaction state: a background push must not
       // close an open consent panel the user is reading.
-      isInteracting: () => activeTab === 'style' || Boolean(consentFor || packagePreview || operation || selectedPluginId || aboutOpen) || busy || Boolean(container.querySelector('.plugin-menu:popover-open, .plugin-location-count [role="tooltip"]:popover-open')) || container.contains(document.activeElement)
+      isInteracting: () => activeTab === 'style' || Boolean(catalogModal || consentFor || packagePreview || operation || selectedPluginId || aboutOpen) || busy || Boolean(container.querySelector('.plugin-menu:popover-open, .plugin-location-count [role="tooltip"]:popover-open')) || container.contains(document.activeElement)
     };
   }
 
