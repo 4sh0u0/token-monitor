@@ -313,17 +313,20 @@
       if (p.origin.url) panel.append(el(document, 'code', 'plugin-log', p.origin.url));
       if (p.origin.packageUrl) panel.append(el(document, 'code', 'plugin-log', p.origin.packageUrl));
       panel.append(el(document, 'p', 'plugin-risk', t('plugins.trusted.warning')));
-      panel.append(el(document, 'p', 'settings-note', t(p.operation === 'install' ? 'plugins.package.enableLater' : 'plugins.package.grants')));
+      panel.append(el(document, 'p', 'settings-note', t(p.operation === 'install' ? (list.enabled ? 'plugins.package.installConsent' : 'plugins.package.enableLater') : 'plugins.package.grants')));
       const details = el(document, 'details', 'plugin-logs'); details.append(el(document, 'summary', '', t('plugins.package.integrity')));
       details.append(el(document, 'code', 'plugin-log', p.sha256)); panel.append(details);
       const actions = el(document, 'div', 'settings-actions plugin-consent-actions');
-      actions.append(button(t('settings.plugins.cancel'), () => { void api.cancelInstall(p.token); packagePreview = null; catalogReview = null; render(); }),
-        button(t(`plugins.package.${p.operation}`), () => void run(async () => {
-          const next = await api.install(p.token); packagePreview = null; catalogReview = null;
-          activeTab = 'installed';
-          if (p.operation === 'install' || next.plugins.find(plugin => plugin.id === p.id)?.status === 'needsApproval') { consentFor = p.id; revealConsent = true; }
-          return next;
-        }, 'package'), 'plugin-allow'));
+      const install = trustInstall => void run(async () => {
+        const next = await api.install(p.token, { trustUpdate: p.operation === 'update', trustInstall });
+        packagePreview = null; catalogReview = null; activeTab = 'installed';
+        if (p.operation === 'update' && next.plugins.find(plugin => plugin.id === p.id)?.status === 'needsApproval') { consentFor = p.id; revealConsent = true; }
+        return next;
+      }, 'package');
+      actions.append(button(t('settings.plugins.cancel'), () => { void api.cancelInstall(p.token); packagePreview = null; catalogReview = null; render(); }));
+      if (p.operation === 'install' && list.enabled) actions.append(button(t('plugins.package.installOnly'), () => install(false)));
+      actions.append(button(t(p.operation === 'update' ? 'plugins.package.trustUpdate' : list.enabled ? 'plugins.package.trustInstall' : 'plugins.package.installOnly'),
+        () => install(p.operation === 'install' && list.enabled), 'plugin-allow'));
       panel.append(actions); return panel;
     }
 
@@ -928,8 +931,8 @@
         ]) {
           const node = el(document, tag, className); overviewLabels.set(key, node); heading.append(node);
         }
-        const note = el(document, 'p', 'plugin-overview-note');
-        overviewLabels.set('settings.plugins.experimentalNote', note);
+        const description = el(document, 'p', 'plugin-overview-note');
+        overviewLabels.set('settings.plugins.overviewDescription', description);
         const guides = el(document, 'div', 'plugin-guide-links');
         for (const [page, key] of [['plugins', 'settings.plugins.guide'], ['plugin-quickstart', 'settings.plugins.authorGuide']]) {
           const link = el(document, 'a', 'plugin-guide-link');
@@ -940,7 +943,7 @@
           });
           overviewLabels.set(key, link); guideLinks.set(page, link); guides.append(link);
         }
-        overview.append(heading, note, guides);
+        overview.append(heading, description, guides);
         tabs = el(document, 'nav', 'plugin-catalog-tabs');
         tabs.setAttribute('aria-label', t('settings.plugins.title'));
         tabs.setAttribute('role', 'tablist');
@@ -976,6 +979,26 @@
       }
       for (const [key, node] of overviewLabels) {
         const label = t(key); if (node.textContent !== label) node.textContent = label;
+      }
+      const sectionToggle = document.querySelector('[data-settings-section="plugins"]');
+      const experimentalBadge = sectionToggle?.querySelector('.plugin-section-experimental');
+      if (experimentalBadge && setDetailTooltip) {
+        let trigger = sectionToggle.querySelector('.plugin-experimental-tooltip');
+        if (!trigger) {
+          trigger = el(document, 'span', 'plugin-experimental-tooltip');
+          experimentalBadge.before(trigger);
+          trigger.append(experimentalBadge);
+          // The disclosure remains the sole keyboard stop; only the badge is a hover target.
+          sectionToggle.addEventListener('focus', () => trigger.dispatchEvent(new Event('focusin')));
+          sectionToggle.addEventListener('blur', () => trigger.dispatchEvent(new Event('focusout')));
+          sectionToggle.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+          });
+        }
+        setDetailTooltip(trigger, [{ full: t('settings.plugins.experimentalNote') }], { centered: true });
+        trigger.removeAttribute('tabindex');
+        const tooltip = trigger.querySelector('[role="tooltip"]');
+        if (tooltip) { tooltip.id = 'plugin-experimental-tip'; sectionToggle.setAttribute('aria-describedby', tooltip.id); }
       }
       for (const [page, link] of guideLinks) link.href = `https://javis-ai.com/token-monitor/docs/${page}.html?lang=${encodeURIComponent(getLocale())}`;
       overview.hidden = activeTab === 'installed' && Boolean(selectedPluginId || aboutOpen);

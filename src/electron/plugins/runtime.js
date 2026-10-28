@@ -322,11 +322,12 @@ function createPluginRuntime({
     }));
     return results.filter(item => !item.host.isDestroyed() && item.loaded);
   }
-  async function confirm(event, note) {
+  async function confirm(event, note, detail = null) {
     requireMain(event);
     const response = await dialog.showMessageBox(BrowserWindow.fromWebContents(event.sender), {
-      type: 'warning', title: translate(getLocale(), note === 'plugins.trusted.unsavedNote' ? 'plugins.trusted.disableTitle' : 'plugins.trusted.reloadTitle'),
+      type: 'warning', title: translate(getLocale(), note === 'plugins.trusted.unsavedNote' ? 'plugins.trusted.disableTitle' : note === 'plugins.trusted.packageUnsavedNote' ? 'plugins.trusted.packageTitle' : 'plugins.trusted.reloadTitle'),
       message: translate(getLocale(), note),
+      ...(detail ? { detail: translate(getLocale(), detail) } : {}),
       buttons: [translate(getLocale(), 'settings.plugins.cancel'), translate(getLocale(), 'plugins.trusted.continue')],
       defaultId: 0, cancelId: 0
     });
@@ -392,6 +393,61 @@ function createPluginRuntime({
     const result = listWithPlacements();
     reloadHosts(affected.map(item => item.host));
     return result;
+  }
+
+  async function changePackage(event, change, ids) {
+    requireMain(event);
+    const affected = await inspectHosts(ids);
+    for (const [host, failedIds] of failedCleanup) {
+      if (host.isDestroyed() || !ids.some(id => failedIds.has(id))) continue;
+      const item = affected.find(item => item.host === host);
+      if (item) item.error = 'Previous cleanup failed';
+      else affected.push({ host, ids: ids.filter(id => failedIds.has(id)), error: 'Previous cleanup failed' });
+    }
+    const reload = affected.filter(item => item.error).map(item => item.host);
+    const unsaved = affected.some(item => item.unsaved);
+    if (reload.length) await confirm(event, 'plugins.trusted.reloadNote', unsaved ? 'plugins.trusted.packageUnsavedNote' : null);
+    else if (unsaved) await confirm(event, 'plugins.trusted.packageUnsavedNote');
+    const released = [], recovery = [];
+    try {
+      for (const item of affected.filter(item => !item.error)) {
+        // Include partially released hosts in recovery if author cleanup fails.
+        try {
+          await requestLifecycle(item.host, 'release', item.ids);
+          released.push(item);
+        } catch (error) {
+          failedCleanup.set(item.host, new Set([...(failedCleanup.get(item.host) || []), ...item.ids]));
+          recovery.push(item.host);
+          log(`[plugins] package cleanup failed: ${error.message}`);
+          await confirm(event, 'plugins.trusted.reloadNote');
+          reload.push(item.host);
+        }
+      }
+      await change();
+    } finally {
+      // Resume after both commit and rollback. Descriptor publication during
+      // the transaction was ignored by blocked hosts, so publish once more.
+      for (const item of released) {
+        try { await requestLifecycle(item.host, 'resume', item.ids); }
+        catch (error) {
+          failedCleanup.set(item.host, new Set(item.ids));
+          log(`[plugins] package resume failed: ${error.message}`);
+          recovery.push(item.host);
+        }
+      }
+      const needsRecovery = [...new Set(recovery)].filter(host => !host.isDestroyed() && !reload.includes(host));
+      if (needsRecovery.length) {
+        const response = await dialog.showMessageBox(BrowserWindow.fromWebContents(event.sender), {
+          type: 'warning', title: translate(getLocale(), 'plugins.trusted.reloadTitle'),
+          message: translate(getLocale(), 'plugins.trusted.packageRecoveryNote'),
+          buttons: [translate(getLocale(), 'plugins.trusted.later'), translate(getLocale(), 'plugins.trusted.reloadNow')], defaultId: 1, cancelId: 0
+        });
+        if (response.response === 1) reload.push(...needsRecovery);
+      }
+      reloadHosts(reload);
+      manager.settingsChanged();
+    }
+    return listWithPlacements();
   }
 
   function registerIpc() {
@@ -464,10 +520,10 @@ function createPluginRuntime({
       if (selection.canceled || !selection.filePaths.length) return null;
       return kind === 'directory' ? managed.previewDirectory(selection.filePaths[0]) : managed.previewFile(selection.filePaths[0]);
     });
-    handle('plugins:install', (event, token) => changeCode(event, () => managed.install(token), [managed.previewId(token)]));
+    handle('plugins:install', (event, token, options) => changePackage(event, () => managed.install(token, { trustUpdate: options?.trustUpdate === true, trustInstall: options?.trustInstall === true }), [managed.previewId(token)]));
     handle('plugins:cancelInstall', (event, token) => { requireMain(event); managed.cancel(token); });
     handle('plugins:rollback', (event, id) => changeCode(event, () => managed.rollback(id), [id]));
-    handle('plugins:uninstall', (event, id, options) => changeCode(event, () => managed.uninstall(id, options), [id]));
+    handle('plugins:uninstall', (event, id, options) => changePackage(event, () => managed.uninstall(id, options), [id]));
     handle('plugins:openPage', (event, ref) => { requireMain(event); pages.open(ref); return { ok: true }; });
     handle('plugins:openFolder', async (event) => {
       requireMain(event);
