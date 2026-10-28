@@ -31,6 +31,11 @@ for (let y=0;y<60;y++) for (let x=0;x<160;x++) {
   const offset=(y*160+x)*4; pixels[offset]=bar?180:32; pixels[offset+1]=bar?190:32; pixels[offset+2]=bar?100:32; pixels[offset+3]=255;
 }
 fs.writeFileSync(path.join(fixtureDir,'fixture.png'),nativeImage.createFromBitmap(pixels,{width:160,height:60}).toPNG());
+if (process.env.TM_NAV_ICONS === '1') {
+  manifest.identityIcon = nativeImage.createFromBitmap(pixels,{width:160,height:60}).toDataURL();
+  manifest.views = [{ id: 'panel', title: 'Fixture', surfaces: ['page'] }];
+  if (process.env.TM_NAV_HEIGHT === '1') for (let i=1;i<=3;i++) manifest.views.push({id:`extra-${i}`,title:`Plugin page ${i}`,surfaces:['page']});
+}
 fs.writeFileSync(path.join(fixtureDir, 'manifest.json'), JSON.stringify(manifest));
 fs.writeFileSync(path.join(fixtureDir, 'ui.mjs'), `
 import { activate as base } from './basic.mjs';
@@ -143,7 +148,7 @@ app.whenReady().then(async () => {
     pluginCalls.push({ channel, frameUrl: event.senderFrame?.url });
     return handler(event, ...args);
   });
-  const demandListener = event => pluginCalls.push({ channel: 'plugins:demand', frameUrl: event.senderFrame?.url });
+  const demandListener = (event, { surface, refs }) => pluginCalls.push({ channel: 'plugins:demand', frameUrl: event.senderFrame?.url, surface, refs });
   ipcMain.on('plugins:demand', demandListener);
   const toggleDialogs = []; let toggleResponse = 1, selectedDirectory = fixtureDir;
   runtime = createPluginRuntime({ electron: { BrowserWindow, ipcMain: pluginIpc, session, utilityProcess,
@@ -418,6 +423,78 @@ app.whenReady().then(async () => {
     await runtime.dispose();runtime=null;clearTimeout(deadline);app.exit(0);return;
   }
   await js("pluginApi.setEnabled('trusted-fixture',true)");
+  if (process.env.TM_NAV_ICONS === '1') {
+    await js("pluginApi.place('trusted-fixture/panel','page',true).then(applyPluginCatalog)");
+    if (process.env.TM_NAV_HEIGHT === '1') for (let i=1;i<=3;i++) await js(`pluginApi.place('trusted-fixture/extra-${i}','page',true).then(applyPluginCatalog)`);
+    await js("if(isSettingsPanelOpen())els.settingsButton.click();setViewSwitcherOpen(true)");
+    await waitFor("document.querySelector('[data-view=\"plugin:trusted-fixture/panel\"] img')?.naturalWidth > 0", 'navigation artwork before opening page');
+    assert.equal(await js("globalThis.fixtureMountCount || 0"),0);
+    assert.equal(runtime.manager.backendCount(),0);
+    fs.writeFileSync(path.join(evidence,'main-navigation.png'),(await capture()).toPNG());
+    if (process.env.TM_NAV_HEIGHT === '1') {
+      const measure = () => js("(() => {const menu=document.querySelector('#viewSwitcherMenu'),r=menu.getBoundingClientRect();return {height:r.height,top:r.top,bottom:r.bottom,viewport:innerHeight,client:menu.clientHeight,scroll:menu.scrollHeight};})()");
+      const tall = await measure();
+      fs.writeFileSync(path.join(evidence,'navigation-tall.json'),JSON.stringify(tall));
+      assert.ok(tall.height > 280, 'menu uses available height rather than a fixed cap');
+      assert.ok(tall.scroll <= tall.client + 1, 'all entries fit without scrolling in tall window');
+      win.setSize(400,400); await pause(300);
+      const short = await measure();
+      console.log('menu short geometry', JSON.stringify({ ...short, nativeSize: win.getSize() }));
+      assert.ok(short.top >= 0 && short.bottom <= short.viewport, 'short menu stays inside viewport');
+      assert.ok(short.scroll > short.client, 'short window retains scrolling');
+      await js("document.querySelector('#viewSwitcherMenu').dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}))");
+      await pause(100);
+      assert.equal(await js("document.activeElement.dataset.view"),'plugin:trusted-fixture/extra-3');
+      fs.writeFileSync(path.join(evidence,'navigation-short.json'),JSON.stringify(short));
+      fs.writeFileSync(path.join(evidence,'navigation-short.png'),(await capture()).toPNG());
+    }
+    await js("pluginApi.openPage('trusted-fixture/panel')");
+    await waitFor("document.querySelector('.view-switcher-current img')?.naturalWidth > 0", 'selected navigation artwork');
+    await js("pluginApi.setEnabled('trusted-fixture',false)");
+    assert.equal(await js("Boolean(document.querySelector('[data-view=\"plugin:trusted-fixture/panel\"]'))"),false);
+    assertConsoleClean();
+    for(const host of BrowserWindow.getAllWindows())host.destroy();
+    await runtime.dispose();runtime=null;clearTimeout(deadline);app.exit(0);return;
+  }
+  if (process.env.TM_PAGE_SETTINGS_LAYOUT === '1') {
+    await js("pluginApi.place('trusted-fixture/panel','page',true).then(applyPluginCatalog).then(()=>pluginApi.openPage('trusted-fixture/panel'))");
+    await waitFor("document.querySelector('.plugin-main-content input')", 'plugin page input');
+    await js("globalThis.retainedLayoutInput=document.querySelector('.plugin-main-content input');retainedLayoutInput.value='Keep my draft';els.settingsButton.click();document.querySelectorAll('.settings-section-toggle[aria-expanded=true]').forEach(node=>node.click())");
+    await pause(500);
+    fs.writeFileSync(path.join(evidence,'plugin-settings.png'),(await capture()).toPNG());
+    const geometry = await js(`(() => {
+      const shell=els.shell.getBoundingClientRect(),footer=document.querySelector('.footer').getBoundingClientRect();
+      return {bottomGap:shell.bottom-footer.bottom,viewport:innerHeight,pluginHidden:getComputedStyle(document.querySelector('.plugin-main-panel')).display==='none'};
+    })()`);
+    fs.writeFileSync(path.join(evidence,'page-settings-layout.json'),JSON.stringify(geometry,null,2));
+    assert.equal(geometry.pluginHidden,false, 'settings must retain the plugin page');
+    assert.ok(geometry.bottomGap < 40, 'footer must remain at the bottom with plugin content visible: '+JSON.stringify(geometry));
+    assert.ok(await js("document.querySelector('.plugin-main-content').getBoundingClientRect().height > 100"));
+    assert.ok(pluginCalls.filter(call=>call.channel==='plugins:demand' && call.surface==='page').at(-1)?.refs.includes('trusted-fixture/panel'), 'visible page retains foreground demand');
+    await js("retainedLayoutInput.focus()");
+    await win.webContents.insertText(' + continued');
+    assert.equal(await js("retainedLayoutInput.value"),'Keep my draft + continued');
+    const expandedLayouts = {};
+    for (const page of ['plugin:trusted-fixture/panel', 'model']) {
+      await js(`openViewFromTray(${JSON.stringify(page)});openSettingsPanel();document.querySelectorAll('.settings-section-toggle[aria-expanded=true]').forEach(node=>node.click());setSettingsSectionExpanded('general',true)`);
+      await pause(500);
+      expandedLayouts[page] = await js(`(() => {
+        const rect = selector => { const r=document.querySelector(selector).getBoundingClientRect();return {top:r.top,height:r.height,bottom:r.bottom}; };
+        return {settings:rect('.settings-panel'),content:rect(state.breakdown.startsWith('plugin:')?'.plugin-main-panel':'.breakdown'),footer:rect('.footer'),viewport:innerHeight};
+      })()`);
+      fs.writeFileSync(path.join(evidence,page.startsWith('plugin:')?'expanded-plugin.png':'expanded-native.png'),(await capture()).toPNG());
+    }
+    fs.writeFileSync(path.join(evidence,'expanded-layouts.json'),JSON.stringify(expandedLayouts,null,2));
+    await js("openViewFromTray('plugin:trusted-fixture/panel');openSettingsPanel();document.querySelectorAll('.settings-section-toggle[aria-expanded=true]').forEach(node=>node.click())");
+    await pause(500);
+    assert.ok(await js("document.querySelector('.plugin-main-content').getBoundingClientRect().height > 100"));
+    await js("els.settingsButton.click()");await pause(200);
+    assert.equal(await js("document.querySelector('.plugin-main-content input')===retainedLayoutInput && retainedLayoutInput.value==='Keep my draft + continued'"),true);
+    fs.writeFileSync(path.join(evidence,'plugin-restored.png'),(await capture()).toPNG());
+    assertConsoleClean();
+    for(const host of BrowserWindow.getAllWindows())host.destroy();
+    await runtime.dispose();runtime=null;clearTimeout(deadline);app.exit(0);return;
+  }
   if (process.env.TM_PLACEMENTS_ONLY === '1') {
     // Exercise the installed-view route through the real existing composers.
     const placementBaseline = process.env.TM_EXPECT_BASELINE === '1';

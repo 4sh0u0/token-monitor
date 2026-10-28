@@ -6160,6 +6160,8 @@ function nextBreakdown(value) {
 }
 
 function viewSwitcherIcon(id) {
+  const page = pluginPageOptions().find(page => page.id === id);
+  if (page) return window.TokenMonitorPluginViews.navigationIcon(document, page, 14);
   const icon = document.createElement('span');
   icon.className = `view-switcher-icon ${VIEW_ICON_CLASSES[id] || (pluginPlacementsApi.isHomeToken(id) ? 'view-icon-plugin' : 'view-icon-home')}`;
   icon.setAttribute('aria-hidden', 'true');
@@ -12904,7 +12906,7 @@ function renderNotchPageChoices() {
     resetButton: document.getElementById('resetNotchPageOrderButton'),
     save: async patch => { await saveSettings(patch); },
     place: async (ref, placed) => { await pluginApi.place(ref, 'notch', placed); },
-    pluginIcon: name => window.TokenMonitorPluginViews?.iconNode(document, name, null, 14),
+    pluginIcon: (name, identityIcon) => window.TokenMonitorPluginViews?.navigationIcon(document, { icon: name, identityIcon }, 14),
     createRowDrag: config => rowDragControllerApi.createRowDragController({
       dragSort: verticalDragSortApi, getScrollPanel: () => els.settingsPanel,
       preserveScroll: preserveSettingsPanelScroll, ...config
@@ -12938,7 +12940,9 @@ pluginViewHost = pluginViewsApi && pluginBridge ? pluginViewsApi.createPluginVie
   onDemand: (surface, refs) => pluginBridge.setDemand(surface, refs),
   motionAllowed: () => !prefersReducedMotion(),
   motionMode: () => tokenNumberAnimationApi.normalize(state.settings?.tokenNumberAnimation),
-  isSurfaceActive: surface => !isRendererWindowHidden() && !state.floatingBubble.collapsed && (surface === 'settings' ? isSettingsPanelOpen() : !isSettingsPanelOpen())
+  isSurfaceActive: (surface, container) => !isRendererWindowHidden() && !state.floatingBubble.collapsed
+    && (surface === 'settings' ? isSettingsPanelOpen() : !isSettingsPanelOpen()
+      || (surface === 'page' && Boolean(container?.closest('#pluginMainPanel'))))
 }) : null;
 pluginContent = pluginViewHost ? window.TokenMonitorPluginContent.create({ document,
   host: { mount: (container, view, context) => pluginViewHost.mount(container, view.ref, 'page', context), unmount: container => pluginViewHost.unmount(container) },
