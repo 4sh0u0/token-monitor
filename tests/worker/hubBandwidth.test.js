@@ -35,10 +35,10 @@ function ingestRequest(payload, extraHeaders = {}) {
 
 function waitFor(predicate, timeoutMs = 1000) {
   return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeoutMs;
+    const deadline = performance.now() + timeoutMs;
     const check = () => {
       if (predicate()) return resolve();
-      if (Date.now() >= deadline) return reject(new Error('timed out waiting for Worker SSE event'));
+      if (performance.now() >= deadline) return reject(new Error('timed out waiting for Worker SSE event'));
       setTimeout(check, 10);
     };
     check();
@@ -90,7 +90,10 @@ test('the Worker negotiates compact ingest acknowledgements and gzip JSON', asyn
   assert.equal(body.stats.devices[0].deviceId, 'dev-a');
 });
 
-test('the Worker stream matches the Node Hub freshness and coalescing behavior', async () => {
+test('the Worker stream matches the Node Hub freshness and coalescing behavior', async (t) => {
+  // Lease observations must be in the past regardless of the runner's wall clock.
+  // Only Date is mocked; SSE timers and monotonic wait deadlines remain real.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 9, 28, 12) });
   const hub = await createHub();
   const initialAt = utcTodayAt('10:00:00.000');
   const refreshedAt = utcTodayAt('10:01:00.000');

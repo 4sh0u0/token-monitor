@@ -12,10 +12,10 @@ const { codexAccountKey } = require('../../src/shared/providers/codex/auth');
 
 function waitFor(predicate, timeoutMs = 1000) {
   return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeoutMs;
+    const deadline = performance.now() + timeoutMs;
     const check = () => {
       if (predicate()) return resolve();
-      if (Date.now() >= deadline) return reject(new Error('timed out waiting for SSE event'));
+      if (performance.now() >= deadline) return reject(new Error('timed out waiting for SSE event'));
       setTimeout(check, 10);
     };
     check();
@@ -614,7 +614,10 @@ test('official senders can request a minimal ingest acknowledgement while legacy
   }
 });
 
-test('the stats stream coalesces bursts and negotiates timestamp-only freshness events', async () => {
+test('the stats stream coalesces bursts and negotiates timestamp-only freshness events', async (t) => {
+  // Lease observations must be in the past regardless of the runner's wall clock.
+  // Only Date is mocked; SSE timers and monotonic wait deadlines remain real.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 9, 28, 12) });
   const dataFile = tempDataFile();
   const hub = createHub({
     port: 0,
