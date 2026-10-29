@@ -291,6 +291,7 @@ Token Monitor supports token usage, account-limit checks, and session details se
 | Output speed/token consumption rate | Claude Code, Codex, OpenCode, Antigravity, Kimi, GitHub Copilot, Pi, Oh My Pi, OmO Native, Kilo CLI, MiMo Code/MiMo Desktop, Muse Code, ZCode CLI, Kiro, DeepSeek Harness, Devin CLI | Output speed in `tok/s`, total token consumption in `tok/min`; timing can include waiting. |
 | Reasoning effort setting | Claude Code, Codex | Only settings explicitly recorded in the session are shown. |
 | Reasoning token counts | Codex, OpenCode, Pi, Oh My Pi, OmO Native, CodeBuddy, WorkBuddy, Reasonix, DeepSeek Harness | — |
+| Turn start/completion detection | Claude Code, Codex, OpenCode, Cursor, CodeBuddy, WorkBuddy, DeepSeek Harness | Uses turn signals recorded by the tool. For other tools or without valid signals, running is estimated for about 10 minutes after the last activity. |
 | Native running/waiting-for-input status | Claude Code, Codex | — |
 | Parent/subagent grouping | Codex, Antigravity, Oh My Pi, ZCode; T3 Code sessions with verifiable parent links | Claude Code grouping is available through T3 Code. |
 | Continuation-record grouping for the same conversation | Codex; T3 Code sessions with verified thread links | — |

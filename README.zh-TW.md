@@ -296,6 +296,7 @@ Qoder CN 的 Token 用量來自應用程式本機資料，而非 API —— 在 
 | 輸出速度／Token 消耗速率 | Claude Code, Codex, OpenCode, Antigravity, Kimi, GitHub Copilot, Pi, Oh My Pi, OmO Native, Kilo CLI, MiMo Code/MiMo Desktop, Muse Code, ZCode CLI, Kiro, DeepSeek Harness, Devin CLI | `tok/s` 為輸出速度，`tok/min` 為總 Token 消耗速率；計時可能包含等待。 |
 | 推理強度設定 | Claude Code, Codex | 僅顯示會話中明確記錄的設定值。 |
 | 推理 Token 數 | Codex, OpenCode, Pi, Oh My Pi, OmO Native, CodeBuddy, WorkBuddy, Reasonix, DeepSeek Harness | — |
+| 回合開始／完成辨識 | Claude Code, Codex, OpenCode, Cursor, CodeBuddy, WorkBuddy, DeepSeek Harness | 依據工具記錄的回合訊號。其他工具或缺少有效訊號時，最後活動後約 10 分鐘內估算為執行中。 |
 | 原生執行中／等待輸入狀態 | Claude Code, Codex | — |
 | 父會話／子代理分組 | Codex, Antigravity, Oh My Pi, ZCode；具有可驗證父會話連結的 T3 Code 會話 | Claude Code 的分組透過 T3 Code 提供。 |
 | 同一對話的延續紀錄分組 | Codex；具有已驗證討論串連結的 T3 Code 會話 | — |
