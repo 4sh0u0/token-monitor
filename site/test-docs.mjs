@@ -83,19 +83,33 @@ test("agent Markdown relative links resolve to repository files in their origina
   }
 });
 
-test("quickstart query can be pasted into its first mount without changing async context", async () => {
+for (const scenario of [
+  { name: 'success', query: async () => ({ availability: 'available', rows: [{totalTokens: 42}] }), expected: 'Today snapshot: 42 tokens' },
+  { name: 'not collected', query: async () => ({ availability: 'notCollected', rows: [] }), expected: 'Today snapshot: notCollected' },
+  { name: 'rejection', query: async () => { throw new Error('Plugin is disabled'); }, expected: 'Today snapshot: could not read data: Plugin is disabled' }
+]) test(`standalone quickstart query labels ${scenario.name} without retaining data in the mount`, async () => {
   const markdown = await readFile(new URL('docs/plugins/author-quickstart.md', root), 'utf8');
   const blocks = [...markdown.matchAll(/```js\n([\s\S]*?)```/g)].map(match => match[1]);
-  const combined = blocks[0].replace('      return { update,', blocks[1] + '\n      return { update,');
-  const module = await import('data:text/javascript,' + encodeURIComponent(combined));
-  const output = { remove() {} };
+  const describeToday = new Function(blocks[1] + '; return describeToday;')();
+  const ctx = { data: { query: async query => {
+    assert.deepEqual(query, { resource: 'usage', period: 'today' });
+    return scenario.query();
+  } } };
+  assert.equal(await describeToday(ctx), scenario.expected);
+  const module = await import('data:text/javascript,' + encodeURIComponent(blocks[0]));
+  const nodes = [];
   const savedDocument = globalThis.document;
-  globalThis.document = { createElement: () => output };
+  globalThis.document = { createElement: () => ({ remove() { this.removed = true; } }) };
   try {
-    const ctx = { data: { query: async () => ({availability: 'available', rows: [{totalTokens: 42}]}) } };
-    const mount = await module.activate(ctx).mount({ append() {} }, {surface: 'page'});
-    assert.equal(output.textContent, '42');
+    const mount = module.activate(ctx).mount({ append(...children) { nodes.push(...children); } }, {surface: 'page'});
+    assert.equal(nodes.length, 1, 'first UI retains only its context label');
+    mount.update({surface: 'page', width: 600, height: 400});
+    assert.equal(nodes[0].textContent, 'My view: page');
+    mount.update({surface: 'page', period: 'month', width: 800, height: 500});
+    assert.equal(nodes[0].textContent, 'My view: month');
+    assert.ok(!nodes[0].textContent.includes('42'), 'no previous query result remains under the new context');
     mount.dispose();
+    assert.ok(nodes.every(node => node.removed));
   } finally { globalThis.document = savedDocument; }
 });
 
