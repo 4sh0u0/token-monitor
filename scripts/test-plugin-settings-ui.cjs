@@ -137,6 +137,8 @@ async function main() {
     catalog.entries.push({id:'third-party',name:'Third party',description:'Custom listing',version:'1.0.0',types:['appearance'],origin:{id:'custom',kind:'community',label:'Example source'},status:'incompatible'});await panel.refresh();
     check('discover-combines-origins-with-distinct-attribution',box.querySelectorAll('[data-catalog-id]').length===2&&box.querySelector('[data-catalog-id="third-party"] .plugin-origin-note')?.textContent==='Example source'&&!box.querySelector('[data-catalog-id="third-party"] .plugin-shield'));
     check('incompatible-card-explains-unavailability',box.querySelector('[data-catalog-id="third-party"] .plugin-card-meta').textContent.includes('plugins.catalog.incompatible'));
+    const incompatibleAction=box.querySelector('[data-catalog-id="third-party"] .settings-actions button');
+    check('incompatible-card-keeps-disabled-install-action',incompatibleAction.textContent==='plugins.package.install'&&incompatibleAction.disabled);
     box.querySelector('[data-catalog-id="third-party"] .plugin-catalog-title').click();await tick();
     check('incompatible-details-explain-unavailability-without-install',box.querySelector('dialog footer .plugin-risk')?.textContent==='plugins.catalog.incompatible'&&!box.querySelector('dialog .plugin-allow'));
     box.querySelector('.plugin-dialog-close').click();await tick();
@@ -381,6 +383,13 @@ async function main() {
     check('custom-title-author-flags-cannot-get-shield-or-featured-group',!detailsBox.querySelector('[data-catalog-id="custom-detail"] .plugin-shield')&&detailsBox.querySelector('[data-catalog-id="custom-detail"]').closest('section').querySelector('h3').textContent==='plugins.catalog.custom');
     const title=detailsBox.querySelector('[data-catalog-id="official-detail"] .plugin-catalog-title');title.focus();title.click();await tick();
     const dialog=detailsBox.querySelector('dialog');
+    const surfaceProbe=document.createElement('div');surfaceProbe.className='view-switcher-menu';document.body.append(surfaceProbe);
+    for(const liquid of [false,true]){
+      document.documentElement.classList.toggle('native-liquid-glass',liquid);
+      const menuStyle=getComputedStyle(surfaceProbe),dialogStyle=getComputedStyle(dialog);
+      check('details-reuses-shared-menu-surface-'+liquid,['backgroundImage','backgroundColor','borderTopColor','boxShadow','backdropFilter'].every(key=>dialogStyle[key]===menuStyle[key]));
+    }
+    document.documentElement.classList.remove('native-liquid-glass');surfaceProbe.remove();
     check('official-detail-shows-same-host-publisher',dialog.querySelector('.plugin-origin-official')?.textContent==='Token Monitor plugins.origin.official'&&Boolean(dialog.querySelector('.plugin-shield')));
     check('details-opens-with-version-before-types',dialog.open&&dialog.querySelector('.plugin-card-meta').firstChild.className==='plugin-version');
     await new Promise(r=>setTimeout(r,80));
@@ -518,6 +527,36 @@ async function main() {
     }
     host.dispose(); box.remove(); return checks;
   })()`);
+  // Actual input modality on the Plugins disclosure: pointer focus is not badge hover.
+  const disclosurePoint=await win.webContents.executeJavaScript(`(async()=>{
+    document.querySelectorAll('[data-settings-section="plugins"]').forEach(node=>node.removeAttribute('data-settings-section'));
+    const host=document.createElement('div');host.id='tooltip-fixture';host.style.cssText='position:fixed;inset:0;z-index:9999;background:#17191c;padding:20px';
+    host.innerHTML='<button id="tip-before">Before</button><button data-settings-section="plugins" style="display:block;margin-top:50px;width:300px;height:42px;text-align:left">Plugins <span class="plugin-section-experimental">Experimental</span></button><div id="tip-settings"></div>';
+    document.body.append(host);
+    const tips=TokenMonitorLimitWindowsView.createLimitWindowsView({document,tooltip:{hasOpened:()=>false,markOpened:()=>{},release:()=>{}}});
+    window.tipPanel=TokenMonitorPluginSettings.createPluginSettingsPanel({document,container:host.querySelector('#tip-settings'),t:key=>key,setDetailTooltip:tips.setDetailTooltip,api:{list:async()=>({enabled:true,plugins:[]}),catalog:async()=>({entries:[],sources:[]})}});
+    await tipPanel.refresh();const button=host.querySelector('[data-settings-section]');const rect=button.getBoundingClientRect();
+    return {x:rect.left+8,y:rect.top+rect.height/2};
+  })()`);
+  const pointerAt=async(point,click=false)=>{
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
+    if(click)for(const type of ['mousePressed','mouseReleased'])await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent',{type,...point,button:'left',clickCount:1});
+    await new Promise(resolve=>setTimeout(resolve,30));
+  };
+  const tipOpen=()=>win.webContents.executeJavaScript('Boolean(document.querySelector("#plugin-experimental-tip:popover-open"))');
+  await pointerAt(disclosurePoint,true);
+  result.checks.push({name:'pointer-disclosure-focus-does-not-open-experimental-tooltip',ok:!(await tipOpen())});
+  const badgePoint=await win.webContents.executeJavaScript(`(()=>{const r=document.querySelector('.plugin-experimental-tooltip').getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);
+  await pointerAt(badgePoint);
+  result.checks.push({name:'badge-hover-still-opens-experimental-tooltip',ok:await tipOpen()});
+  await pointerAt({x:350,y:25});
+  result.checks.push({name:'leaving-badge-closes-experimental-tooltip',ok:!(await tipOpen())});
+  await win.webContents.executeJavaScript('document.getElementById("tip-before").focus()');
+  for(const type of ['keyDown','keyUp'])await win.webContents.debugger.sendCommand('Input.dispatchKeyEvent',{type,key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+  result.checks.push({name:'keyboard-disclosure-focus-retains-accessible-tooltip',ok:await tipOpen()});
+  await pointerAt(disclosurePoint,true);
+  result.checks.push({name:'pointer-on-keyboard-focused-disclosure-closes-unrelated-tooltip',ok:!(await tipOpen())});
+  await win.webContents.executeJavaScript('tipPanel.dispose();document.getElementById("tooltip-fixture").remove()');
   result.checks.push(...authorChecks);
   result.checks.push(...scrollChecks);
   for (const check of result.checks) console.log(`${check.ok ? 'PASS' : 'FAIL'} ${check.name}`, check.evidence || '');

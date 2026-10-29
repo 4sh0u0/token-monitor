@@ -579,7 +579,10 @@
             const actions = el(document, 'div', 'settings-actions');
             const available = entry.versions?.find(v => v.version === entry.version)?.installable ?? ['available', 'update'].includes(entry.status);
             if (available) actions.append(button(t(entry.installedVersion ? 'plugins.package.update' : 'plugins.package.install'), () => void run(async () => { catalogReview = entry; await previewCatalog(entry, catalogVersion(entry)); return null; })));
-            else actions.append(button(t('plugins.catalog.details'), () => catalogDialog(entry)));
+            else if (entry.versions?.length || entry.status === 'incompatible' || entry.status === 'installed') {
+              const install = button(t(entry.installedVersion ? 'plugins.package.update' : 'plugins.package.install'), () => {});
+              install.disabled = true; actions.append(install);
+            }
             if (entry.installedVersion) actions.append(button(t('plugins.catalog.installed'), () => { activeTab = 'installed'; selectedPluginId = ''; diagnostics = false; render(); container.querySelector(`[data-plugin-id="${entry.id}"]`)?.scrollIntoView({ block: 'nearest' }); }, 'plugin-installed-link plugin-installed-check'));
             head.append(actions);
             card.append(head, el(document, 'p', 'plugin-description', entry.description));
@@ -1250,7 +1253,10 @@
           experimentalBadge.before(trigger);
           trigger.append(experimentalBadge);
           // The disclosure remains the sole keyboard stop; only the badge is a hover target.
-          sectionToggle.addEventListener('focus', () => trigger.dispatchEvent(new Event('focusin')));
+          sectionToggle.addEventListener('focus', () => {
+            if (sectionToggle.matches(':focus-visible')) trigger.dispatchEvent(new Event('focusin'));
+          });
+          sectionToggle.addEventListener('pointerdown', () => trigger.dispatchEvent(new Event('focusout')));
           sectionToggle.addEventListener('blur', () => trigger.dispatchEvent(new Event('focusout')));
           sectionToggle.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));

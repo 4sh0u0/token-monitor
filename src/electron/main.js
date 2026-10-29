@@ -9728,7 +9728,7 @@ app.whenReady().then(() => {
     try {
       pluginRuntime = createPluginRuntime({
         getAppSettings: settingsForRenderer,
-        electron: { app, BrowserWindow, utilityProcess: require('electron').utilityProcess, Notification, ipcMain, session, shell, dialog },
+        electron: { app, BrowserWindow, utilityProcess: require('electron').utilityProcess, Notification, ipcMain, nativeImage, session, shell, dialog },
         userDataDir: app.getPath('userData'),
         getSettings: () => settings,
         applySettingsPatch,
